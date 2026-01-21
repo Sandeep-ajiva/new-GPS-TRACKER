@@ -4,6 +4,7 @@ const router = express.Router();
 const verifyToken = require("../../middleware/verifyToken");
 const checkOrganization = require("../../middleware/checkOrganization");
 const checkAuthorization = require("../../middleware/checkAuthorization");
+const { handleVehicleImageUpload } = require("../../middleware/multerUpload");
 
 const Controller = require('./controller')
 
@@ -13,6 +14,7 @@ router.post(
   verifyToken,  
   checkAuthorization(["admin", "superadmin"], "vehicle", "create"),
   checkOrganization,
+  handleVehicleImageUpload,
   Controller.create
 );
 
@@ -40,6 +42,7 @@ router.put(
   verifyToken,
   checkAuthorization(["admin", "superadmin"], "vehicle", "update"),
   checkOrganization,
+  handleVehicleImageUpload,
   Controller.update
 );
 

@@ -9,7 +9,6 @@ const validateCreateVehicle = async (data, user) => {
     vehicleType: "required|in:car,bus,truck,bike,other",
     model: "string",
     make: "string",
-    year: "number",
     color: "string",
     status: "in:active,inactive",
   };
@@ -84,7 +83,10 @@ exports.create = async (req, res) => {
   try {
     await validateCreateVehicle(req.body, req.user);
 
-    const { vehicleType, vehicleNumber, make, model, year, color, image, deviceId, driverId, status } = req.body;
+    const { vehicleType, vehicleNumber, make, model, year, color, deviceId, driverId, status } = req.body;
+
+    // Handle image upload - use uploaded file path if available, otherwise use from body
+    const image = req.file ? `/uploads/vehicles/${req.file.filename}` : (req.body.image || null);
 
     const organizationId =
       req.user.role === "superadmin"
@@ -266,6 +268,11 @@ exports.update = async (req, res) => {
       }
 
       req.body.vehicleNumber = req.body.vehicleNumber.toUpperCase().trim();
+    }
+
+    // Handle image upload - use uploaded file path if available, otherwise keep existing or use from body
+    if (req.file) {
+      req.body.image = `/uploads/vehicles/${req.file.filename}`;
     }
 
     // Update with new fields

@@ -9,7 +9,6 @@ const validateOrganizationData = async (data) => {
         organizationType: "required|in:logistics,transport,school,taxi,fleet",
         email: "required|email",
         phone: "required|string",
-        logo: "string",
     }
     const validator = new Validator(data, rules);
     await validator.validate()
@@ -98,6 +97,19 @@ const validateManagerData = async (data) => {
 
 exports.createOrganization = async (req, res) => {
     try {
+        // Parse nested objects from form-data
+        if (typeof req.body.address === "string") {
+            req.body.address = JSON.parse(req.body.address);
+        }
+
+        if (typeof req.body.geo === "string") {
+            req.body.geo = JSON.parse(req.body.geo);
+        }
+
+        if (typeof req.body.settings === "string") {
+            req.body.settings = JSON.parse(req.body.settings);
+        }
+
         await validateOrganizationData(req.body);
         validateAddressData(req.body.address);
         validateGeoData(req.body.geo);
@@ -184,7 +196,7 @@ exports.getById = async (req, res) => {
 exports.update = async (req, res) => {
     try {
         const organization = await Organization.findById(req.params.id);
-        
+
         if (!organization) {
             return res.status(404).json({
                 status: false,
@@ -372,7 +384,7 @@ exports.createSubOrgWithManager = async (req, res) => {
         validateAddressData(organizationData.address);
         validateGeoData(organizationData.geo);
         validateSettingsData(organizationData.settings);
-        
+
         // Validate manager data
         await validateManagerData(managerData);
 

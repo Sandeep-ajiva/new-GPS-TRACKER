@@ -1,0 +1,211 @@
+{
+  "info": {
+    "name": "GPS Tracker API - GPS Device Module",
+    "description": "Complete API collection for GPS Device management with authentication",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{auth_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:5000/api/gpsdevice",
+      "type": "string"
+    },
+    {
+      "key": "auth_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "device_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "organization_id",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Create GPS Device",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"imei\": \"123456789012345\",\n  \"deviceModel\": \"GPS-Tracker Pro\",\n  \"manufacturer\": \"GPS Corp\",\n  \"simNumber\": \"9876543210\",\n  \"serialNumber\": \"SN123456789\",\n  \"firmwareVersion\": \"1.2.3\",\n  \"hardwareVersion\": \"HW-1.0\",\n  \"warrantyExpiry\": \"2025-12-31\",\n  \"status\": \"active\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}",
+          "host": ["{{base_url}}"]
+        },
+        "description": "Create a new GPS device. For superadmin, include organizationId in the body."
+      },
+      "response": []
+    },
+    {
+      "name": "Get All GPS Devices",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}?page=1&limit=10&status=active&connectionStatus=online",
+          "host": ["{{base_url}}"],
+          "query": [
+            {
+              "key": "page",
+              "value": "1",
+              "description": "Page number for pagination"
+            },
+            {
+              "key": "limit",
+              "value": "10",
+              "description": "Number of items per page"
+            },
+            {
+              "key": "status",
+              "value": "active",
+              "description": "Filter by device status (active/inactive)"
+            },
+            {
+              "key": "connectionStatus",
+              "value": "online",
+              "description": "Filter by connection status (online/offline)"
+            },
+            {
+              "key": "search",
+              "value": "",
+              "description": "Search by IMEI, device model, or manufacturer"
+            }
+          ]
+        },
+        "description": "Get all GPS devices with optional filtering and pagination"
+      },
+      "response": []
+    },
+    {
+      "name": "Get Available GPS Devices",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/available",
+          "host": ["{{base_url}}"],
+          "path": ["available"]
+        },
+        "description": "Get all GPS devices that are currently online"
+      },
+      "response": []
+    },
+    {
+      "name": "Get GPS Device by ID",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/{{device_id}}",
+          "host": ["{{base_url}}"],
+          "path": ["{{device_id}}"]
+        },
+        "description": "Get a specific GPS device by its ID"
+      },
+      "response": []
+    },
+    {
+      "name": "Update GPS Device",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"deviceModel\": \"GPS-Tracker Pro V2\",\n  \"manufacturer\": \"GPS Corp Updated\",\n  \"simNumber\": \"9876543211\",\n  \"firmwareVersion\": \"1.2.4\",\n  \"status\": \"active\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/{{device_id}}",
+          "host": ["{{base_url}}"],
+          "path": ["{{device_id}}"]
+        },
+        "description": "Update GPS device information. Only allowed fields can be updated."
+      },
+      "response": []
+    },
+    {
+      "name": "Update Connection Status",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"connectionStatus\": \"online\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/{{device_id}}/status",
+          "host": ["{{base_url}}"],
+          "path": ["{{device_id}}", "status"]
+        },
+        "description": "Update the connection status of a GPS device (online/offline)"
+      },
+      "response": []
+    },
+    {
+      "name": "Delete GPS Device",
+      "request": {
+        "method": "DELETE",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/{{device_id}}",
+          "host": ["{{base_url}}"],
+          "path": ["{{device_id}}"]
+        },
+        "description": "Delete a GPS device (Superadmin only)"
+      },
+      "response": []
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Set auth token from environment or login response",
+          "if (pm.response && pm.response.code === 200) {",
+          "    const response = pm.response.json();",
+          "    if (response.token) {",
+          "        pm.collectionVariables.set('auth_token', response.token);",
+          "    }",
+          "    if (response.data && response.data._id) {",
+          "        pm.collectionVariables.set('device_id', response.data._id);",
+          "    }",
+          "}"
+        ]
+      }
+    }
+  ]
+}

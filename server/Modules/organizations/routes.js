@@ -3,7 +3,7 @@ const router = express.Router();
 
 const requireAuth = require("../../middleware/verifyToken");
 const checkAuthorization = require("../../middleware/checkAuthorization");
-const handleLogoUpload = require("../../middleware/multerUpload");
+const { handleLogoUpload } = require("../../middleware/multerUpload");
 
 const Controller = require('./controller')
 
@@ -15,7 +15,7 @@ router.post(
   Controller.createOrganization
 );
 
-router.get("/", requireAuth, checkAuthorization(["superadmin"], "organizations", "read"), Controller.getAll);
+router.get("/", requireAuth, checkAuthorization(["superadmin" ], "organizations", "read"), Controller.getAll);
 router.get("/sub", requireAuth, checkAuthorization(["superadmin" , "admin"], "organizations", "read"), Controller.getSubOrganizations);
 router.get("/:id", requireAuth, checkAuthorization(["superadmin"], "organizations", "read"), Controller.getById);
 
