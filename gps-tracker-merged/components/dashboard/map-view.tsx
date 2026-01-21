@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef } from "react"
 import { GoogleMap, Marker, Polyline, useLoadScript } from "@react-google-maps/api"
-import { vehicles } from "@/lib/vehicles"
+import type { Vehicle } from "@/lib/vehicles"
 import type { VehiclePositions } from "@/lib/use-vehicle-positions"
 
 const mapContainerStyle = {
@@ -28,9 +28,11 @@ const mapStyles: google.maps.MapTypeStyle[] = [
 export function MapView({
   selectedVehicleId,
   positions,
+  vehicles,
 }: {
   selectedVehicleId?: string | null
   positions: VehiclePositions
+  vehicles: Vehicle[]
 }) {
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
   const { isLoaded, loadError } = useLoadScript({
@@ -41,7 +43,7 @@ export function MapView({
 
   const selectedVehicle = useMemo(
     () => vehicles.find((vehicle) => vehicle.id === selectedVehicleId),
-    [selectedVehicleId]
+    [selectedVehicleId, vehicles]
   )
   const visibleVehicles = useMemo(
     () => (selectedVehicle ? [selectedVehicle] : vehicles),

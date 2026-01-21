@@ -59,7 +59,7 @@ router.post(
 router.post(
   "/system",
   verifyToken,
-  checkAuthorization(["superadmin"], "permissions"),
+  checkAuthorization(["superadmin", "admin"], "permissions"),
   permissionscontroller.FileCreate
 );
 

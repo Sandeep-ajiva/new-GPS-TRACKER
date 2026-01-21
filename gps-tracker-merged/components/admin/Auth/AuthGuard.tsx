@@ -13,7 +13,7 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
         const token = localStorage.getItem("token");
         const role = localStorage.getItem("userRole");
 
-        if (!token || role !== "admin") {
+        if (!token || (role !== "admin" && role !== "superadmin")) {
             // If no token or admin role, redirect to login
             router.push("/");
         } else {

@@ -83,17 +83,19 @@ export default function VehiclesPage() {
         { header: "Organization", accessor: (row: any) => row.organizationId?.name || "N/A" },
         {
             header: "Status", accessor: (row: any) => (
-                <span className={`px-2 py-1 rounded-lg text-xs font-bold uppercase ${row.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-widest ${row.status === 'active'
+                    ? 'border-emerald-500/30 bg-emerald-500/20 text-emerald-200'
+                    : 'border-rose-500/30 bg-rose-500/20 text-rose-200'
                     }`}>
-                    {row.status}
+                    {row.status || "inactive"}
                 </span>
             )
         },
         {
             header: "Actions", accessor: (row: any) => (
                 <div className="flex gap-2">
-                    <button onClick={() => openEditModal(row)} className="text-blue-600 hover:text-blue-800"><Edit size={16} /></button>
-                    <button onClick={() => handleDelete(row._id)} className="text-red-500 hover:text-red-700"><Trash2 size={16} /></button>
+                    <button onClick={() => openEditModal(row)} className="text-slate-200 hover:text-white"><Edit size={16} /></button>
+                    <button onClick={() => handleDelete(row._id)} className="text-rose-300 hover:text-rose-200"><Trash2 size={16} /></button>
                 </div>
             )
         }
@@ -102,29 +104,31 @@ export default function VehiclesPage() {
     return (
         <ApiErrorBoundary hasError={false}>
             <div className="space-y-6">
-            <div className="flex justify-between items-center">
-                <div>
-                    <h1 className="text-2xl font-black text-slate-900">Vehicles</h1>
-                    <p className="text-sm text-slate-500">Manage your fleet vehicles here.</p>
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                    <div>
+                        <p className="text-[11px] font-black uppercase tracking-[0.3em] text-emerald-400/70">Fleet</p>
+                        <h1 className="text-2xl font-black text-slate-100">Vehicles</h1>
+                        <p className="text-sm text-slate-400">Manage your fleet vehicles here.</p>
+                    </div>
+                    <button
+                        onClick={openCreateModal}
+                        className="rounded-xl border border-emerald-500/30 bg-emerald-500/20 px-4 py-2 text-xs font-black uppercase tracking-widest text-emerald-200 transition hover:bg-emerald-500/30"
+                    >
+                        <span className="inline-flex items-center gap-2"><Plus size={16} /> Add Vehicle</span>
+                    </button>
                 </div>
-                <button
-                    onClick={openCreateModal}
-                    className="bg-slate-900 text-white px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 hover:bg-slate-800 transition-colors"
-                >
-                    <Plus size={16} /> Add Vehicle
-                </button>
-            </div>
 
-            <Table columns={columns} data={vehicles} loading={false} />
+            <Table columns={columns} data={vehicles} loading={false} variant="dark" />
 
             {isModalOpen && (
-                <div className="fixed inset-0 bg-slate-950/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-                    <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl border border-slate-200">
-                        <h2 className="text-xl font-bold mb-4">{editingVehicle ? "Edit Vehicle" : "New Vehicle"}</h2>
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
+                    <div className="w-full max-w-md rounded-2xl border border-slate-800/80 bg-slate-900/90 p-6 shadow-[0_30px_80px_-40px_rgba(15,23,42,0.9)]">
+                        <h2 className="text-xl font-black text-slate-100">{editingVehicle ? "Edit Vehicle" : "New Vehicle"}</h2>
+                        <p className="text-xs text-slate-400">Define fleet vehicles and assign organizations.</p>
                         <form onSubmit={handleSubmit} className="space-y-4">
                             <div>
-                                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Organization</label>
-                                <select required className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-slate-900/10 outline-none"
+                                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Organization</label>
+                                <select required className="w-full rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
                                     value={formData.organizationId} onChange={e => setFormData({ ...formData, organizationId: e.target.value })}>
                                     <option value="">Select Organization</option>
                                     {organizations.map((org: any) => (
@@ -133,8 +137,8 @@ export default function VehiclesPage() {
                                 </select>
                             </div>
                             <div>
-                                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Vehicle Type</label>
-                                <select required className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-slate-900/10 outline-none"
+                                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Vehicle Type</label>
+                                <select required className="w-full rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
                                     value={formData.vehicleType} onChange={e => setFormData({ ...formData, vehicleType: e.target.value })}>
                                     <option value="car">Car</option>
                                     <option value="truck">Truck</option>
@@ -144,19 +148,19 @@ export default function VehiclesPage() {
                                 </select>
                             </div>
                             <div>
-                                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Vehicle Number</label>
-                                <input type="text" required className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-slate-900/10 outline-none"
+                                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Vehicle Number</label>
+                                <input type="text" required className="w-full rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
                                     value={formData.vehicleNumber} onChange={e => setFormData({ ...formData, vehicleNumber: e.target.value })} />
                             </div>
                             <div>
-                                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Model</label>
-                                <input type="text" className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-slate-900/10 outline-none"
+                                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Model</label>
+                                <input type="text" className="w-full rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
                                     value={formData.model} onChange={e => setFormData({ ...formData, model: e.target.value })} />
                             </div>
 
                             <div className="flex gap-3 mt-6">
-                                <button type="button" onClick={closeModal} className="flex-1 py-2.5 bg-slate-100 text-slate-700 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-slate-200">Cancel</button>
-                                <button type="submit" className="flex-1 py-2.5 bg-slate-900 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-slate-800">Save</button>
+                                <button type="button" onClick={closeModal} className="flex-1 rounded-xl border border-slate-800 bg-slate-950/70 py-2.5 text-[11px] font-black uppercase tracking-widest text-slate-200 hover:bg-slate-900">Cancel</button>
+                                <button type="submit" className="flex-1 rounded-xl bg-emerald-500/30 py-2.5 text-[11px] font-black uppercase tracking-widest text-emerald-100 hover:bg-emerald-500/40">Save</button>
                             </div>
                         </form>
                     </div>

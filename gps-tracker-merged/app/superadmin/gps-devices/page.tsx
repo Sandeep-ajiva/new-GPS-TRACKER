@@ -71,23 +71,20 @@ export default function GpsDevicesPage() {
         { header: "IMEI", accessor: "imei" },
         { header: "SIM Number", accessor: "simNumber" },
         {
-            header: "Status",
-            accessor: (row: any) => (
-                <span
-                    className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-widest ${row.currentVehicleId
-                        ? "border-amber-200 bg-amber-50 text-amber-700"
-                        : "border-slate-200 bg-slate-50 text-slate-600"
-                        }`}
-                >
-                    {row.currentVehicleId ? "Assigned" : "Unassigned"}
+            header: "Status", accessor: (row: any) => (
+                <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-widest ${row.currentVehicleId
+                    ? 'border-amber-500/30 bg-amber-500/20 text-amber-200'
+                    : 'border-slate-500/30 bg-slate-500/20 text-slate-200'
+                    }`}>
+                    {row.currentVehicleId ? 'Assigned' : 'Unassigned'}
                 </span>
             )
         },
         {
             header: "Actions", accessor: (row: any) => (
                 <div className="flex gap-2">
-                    <button onClick={() => openEditModal(row)} className="text-slate-700 hover:text-slate-900"><Edit size={16} /></button>
-                    <button onClick={() => handleDelete(row._id)} className="text-rose-600 hover:text-rose-700"><Trash2 size={16} /></button>
+                    <button onClick={() => openEditModal(row)} className="text-slate-200 hover:text-white"><Edit size={16} /></button>
+                    <button onClick={() => handleDelete(row._id)} className="text-rose-300 hover:text-rose-200"><Trash2 size={16} /></button>
                 </div>
             )
         }
@@ -98,40 +95,40 @@ export default function GpsDevicesPage() {
             <div className="space-y-6">
                 <div className="flex flex-wrap items-center justify-between gap-4">
                     <div>
-                        <p className="text-[11px] font-black uppercase tracking-[0.3em] text-slate-400">Hardware</p>
-                        <h1 className="text-2xl font-black text-slate-900">GPS Devices</h1>
-                        <p className="text-sm text-slate-500">Manage your GPS hardware inventory.</p>
+                        <p className="text-[11px] font-black uppercase tracking-[0.3em] text-emerald-400/70">Hardware</p>
+                        <h1 className="text-2xl font-black text-slate-100">GPS Devices</h1>
+                        <p className="text-sm text-slate-400">Manage your GPS hardware inventory.</p>
                     </div>
                     <button
                         onClick={openCreateModal}
-                        className="rounded-xl bg-slate-900 px-4 py-2 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-slate-900/20 transition hover:bg-slate-800"
+                        className="rounded-xl border border-emerald-500/30 bg-emerald-500/20 px-4 py-2 text-xs font-black uppercase tracking-widest text-emerald-200 transition hover:bg-emerald-500/30"
                     >
                         <span className="inline-flex items-center gap-2"><Plus size={16} /> Add Device</span>
                     </button>
                 </div>
 
-            <Table columns={columns} data={devices} loading={false} />
+            <Table columns={columns} data={devices} loading={false} variant="dark" />
 
             {isModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm">
-                    <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
-                        <h2 className="text-xl font-black text-slate-900">{editingDevice ? "Edit Device" : "New Device"}</h2>
-                        <p className="text-xs text-slate-500">Register IMEI and SIM details for tracking.</p>
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
+                    <div className="w-full max-w-md rounded-2xl border border-slate-800/80 bg-slate-900/90 p-6 shadow-[0_30px_80px_-40px_rgba(15,23,42,0.9)]">
+                        <h2 className="text-xl font-black text-slate-100">{editingDevice ? "Edit Device" : "New Device"}</h2>
+                        <p className="text-xs text-slate-400">Register IMEI and SIM details.</p>
                         <form onSubmit={handleSubmit} className="space-y-4">
                             <div>
-                                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">IMEI</label>
-                                <input type="text" required className="w-full rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
+                                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">IMEI</label>
+                                <input type="text" required className="w-full rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
                                     value={formData.imei} onChange={e => setFormData({ ...formData, imei: e.target.value })} />
                             </div>
                             <div>
-                                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">SIM Number</label>
-                                <input type="text" className="w-full rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
+                                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">SIM Number</label>
+                                <input type="text" className="w-full rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
                                     value={formData.simNumber} onChange={e => setFormData({ ...formData, simNumber: e.target.value })} />
                             </div>
 
                             <div className="flex gap-3 mt-6">
-                                <button type="button" onClick={closeModal} className="flex-1 rounded-xl bg-slate-100 py-2.5 text-[11px] font-black uppercase tracking-widest text-slate-700 hover:bg-slate-200">Cancel</button>
-                                <button type="submit" className="flex-1 rounded-xl bg-slate-900 py-2.5 text-[11px] font-black uppercase tracking-widest text-white hover:bg-slate-800">Save</button>
+                                <button type="button" onClick={closeModal} className="flex-1 rounded-xl border border-slate-800 bg-slate-950/70 py-2.5 text-[11px] font-black uppercase tracking-widest text-slate-200 hover:bg-slate-900">Cancel</button>
+                                <button type="submit" className="flex-1 rounded-xl bg-emerald-500/30 py-2.5 text-[11px] font-black uppercase tracking-widest text-emerald-100 hover:bg-emerald-500/40">Save</button>
                             </div>
                         </form>
                     </div>

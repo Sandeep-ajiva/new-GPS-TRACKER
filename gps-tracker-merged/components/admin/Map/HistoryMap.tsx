@@ -28,8 +28,11 @@ export default function HistoryMap({ pathData }: HistoryMapProps) {
         return <div className="h-full w-full bg-gray-100 flex items-center justify-center">Loading Map...</div>;
     }
 
-    const polylinePositions = pathData.map((p) => [p.lat, p.lng]);
-    const center = polylinePositions.length > 0 ? polylinePositions[0] : [20.5937, 78.9629];
+    const polylinePositions = pathData
+        .map((p) => [p.latitude ?? p.lat, p.longitude ?? p.lng])
+        .filter((point) => Number.isFinite(point[0]) && Number.isFinite(point[1]));
+    const center =
+        polylinePositions.length > 0 ? polylinePositions[0] : [20.5937, 78.9629];
 
     return (
         <MapContainer
@@ -46,16 +49,19 @@ export default function HistoryMap({ pathData }: HistoryMapProps) {
             )}
 
             {/* Start Marker */}
-            {pathData.length > 0 && (
-                <Marker position={[pathData[0].lat, pathData[0].lng] as L.LatLngExpression} icon={icon}>
-                    <Popup>Start Point: {new Date(pathData[0].timestamp).toLocaleString()}</Popup>
+            {polylinePositions.length > 0 && (
+                <Marker position={polylinePositions[0] as L.LatLngExpression} icon={icon}>
+                    <Popup>Start Point</Popup>
                 </Marker>
             )}
 
             {/* End Marker */}
-            {pathData.length > 1 && (
-                <Marker position={[pathData[pathData.length - 1].lat, pathData[pathData.length - 1].lng] as L.LatLngExpression} icon={icon}>
-                    <Popup>End Point: {new Date(pathData[pathData.length - 1].timestamp).toLocaleString()}</Popup>
+            {polylinePositions.length > 1 && (
+                <Marker
+                    position={polylinePositions[polylinePositions.length - 1] as L.LatLngExpression}
+                    icon={icon}
+                >
+                    <Popup>End Point</Popup>
                 </Marker>
             )}
         </MapContainer>

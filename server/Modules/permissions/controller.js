@@ -202,7 +202,7 @@ exports.FileCreate = async (req, res) => {
       };
     });
 
-    const filePath = path.join(__dirname, "../config/permissions.json"); // Adjust path if needed
+    const filePath = path.join(__dirname, "../../config/permissions.json");
 
     fs.writeFileSync(
       filePath,

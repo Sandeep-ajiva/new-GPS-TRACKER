@@ -7,10 +7,20 @@ import { Lock, Mail, Loader2 } from "lucide-react"
 // Dummy accounts for testing
 const DUMMY_ACCOUNTS = [
   { email: "admin@test.com", password: "admin123", role: "admin", name: "Admin User" },
-  { email: "manager@test.com", password: "manager123", role: "manager", name: "Manager User" },
+  {
+    email: "manager@test.com",
+    password: "manager123",
+    role: "manager",
+    name: "Manager User",
+    organizationId: "org_ajiva_tracker",
+    organizationName: "Ajiva Tracker",
+  },
   { email: "driver@test.com", password: "driver123", role: "driver", name: "Driver User" },
   { email: "superadmin@test.com", password: "superadmin123", role: "superadmin", name: "Super Admin" },
 ]
+
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"
 
 export default function LoginPage() {
   const router = useRouter()
@@ -24,33 +34,63 @@ export default function LoginPage() {
     setError("")
     setIsSubmitting(true)
 
-    // Simulate a small delay like an API call
-    await new Promise(resolve => setTimeout(resolve, 500))
-
     try {
-      // Find matching dummy account
+      const res = await fetch(`${API_BASE_URL}/users/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      })
+      const data = await res.json()
+
+      if (res.ok && data?.token) {
+        const role = data?.user?.role || "admin"
+        localStorage.setItem("token", data.token)
+        localStorage.setItem("userRole", role)
+        localStorage.setItem("userId", data?.user?._id || "")
+        localStorage.setItem("userEmail", email)
+        localStorage.setItem("userName", data?.user?.firstName || "")
+        if (data?.user?.organizationId) {
+          localStorage.setItem("organizationId", data.user.organizationId)
+        }
+
+        if (role === "superadmin") {
+          router.push("/superadmin")
+        } else if (role === "admin") {
+          router.push("/admin")
+        } else {
+          router.push("/dashboard")
+        }
+        return
+      }
+
+      // Fallback to dummy accounts when API is unavailable
       const account = DUMMY_ACCOUNTS.find(
         acc => acc.email.toLowerCase() === email.toLowerCase() && acc.password === password
       )
 
       if (!account) {
-        setError("Invalid email or password. Check dummy accounts below.")
+        setError(data?.message || "Invalid email or password. Check dummy accounts below.")
         setIsSubmitting(false)
         return
       }
 
-      // Create a dummy token
       const dummyToken = `dummy_token_${Date.now()}_${Math.random().toString(36).substring(7)}`
 
-      // Save to localStorage
       localStorage.setItem("token", dummyToken)
       localStorage.setItem("userRole", account.role)
       localStorage.setItem("userId", `user_${account.email}`)
       localStorage.setItem("userEmail", account.email)
       localStorage.setItem("userName", account.name)
+      if ("organizationId" in account && account.organizationId) {
+        localStorage.setItem("organizationId", account.organizationId)
+      }
+      if ("organizationName" in account && account.organizationName) {
+        localStorage.setItem("organizationName", account.organizationName)
+      }
 
-      // Role-based redirect
-      if (account.role === "superadmin" || account.role === "admin") {
+      if (account.role === "superadmin") {
+        router.push("/superadmin")
+      } else if (account.role === "admin") {
         router.push("/admin")
       } else {
         router.push("/dashboard")

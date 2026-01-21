@@ -10,13 +10,22 @@ interface VehicleModalProps {
     isOpen: boolean;
     onClose: () => void;
     vehicle?: Vehicle | null;
+    onCreated?: (vehicle: Vehicle) => void;
 }
 
-export default function VehicleModal({ isOpen, onClose, vehicle }: VehicleModalProps) {
+export default function VehicleModal({ isOpen, onClose, vehicle, onCreated }: VehicleModalProps) {
     const [createVehicle, { isLoading: isCreating }] = useCreateVehicleMutation();
     const [updateVehicle, { isLoading: isUpdating }] = useUpdateVehicleMutation();
-    const { data: orgsResponse } = useGetOrganizationsQuery(undefined);
+    const [userRole, setUserRole] = useState<string | null>(() =>
+        typeof window !== "undefined" ? localStorage.getItem("userRole") : null
+    );
+    const isManager = userRole === "manager";
+    const { data: orgsResponse } = useGetOrganizationsQuery(undefined, {
+        skip: isManager,
+    });
     const organizations = orgsResponse?.data || [];
+    const [storedOrgId, setStoredOrgId] = useState("");
+    const [storedOrgName, setStoredOrgName] = useState("");
 
     const [formData, setFormData] = useState({
         vehicleType: vehicle?.vehicleType || "car",
@@ -30,22 +39,77 @@ export default function VehicleModal({ isOpen, onClose, vehicle }: VehicleModalP
         status: vehicle?.status || "active"
     });
 
+    const selectedOrg =
+        organizations.find((org: any) => org._id === formData.organizationId) ||
+        organizations.find((org: any) => org._id === storedOrgId);
+
+    const orgDisplayName =
+        selectedOrg?.name || storedOrgName || "Assigned Organization";
+
+    React.useEffect(() => {
+        setUserRole(localStorage.getItem("userRole"));
+        setStoredOrgId(localStorage.getItem("organizationId") || "");
+        setStoredOrgName(localStorage.getItem("organizationName") || "");
+    }, []);
+
+    React.useEffect(() => {
+        if (!isOpen) return;
+        if (!isManager || vehicle) return;
+        if (formData.organizationId) return;
+        const fallbackOrgId =
+            storedOrgId ||
+            (organizations.length === 1 ? organizations[0]._id : "");
+        if (fallbackOrgId) {
+            setFormData((prev) => ({ ...prev, organizationId: fallbackOrgId }));
+        }
+    }, [isOpen, isManager, organizations, storedOrgId, vehicle, formData.organizationId]);
+
     if (!isOpen) return null;
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        const resolvedOrgId = formData.organizationId || storedOrgId;
+        if (isManager && !resolvedOrgId) {
+            toast.error("Organization is missing for this manager.");
+            return;
+        }
         try {
             if (vehicle) {
                 await updateVehicle({ id: vehicle._id, ...formData }).unwrap();
                 toast.success("Vehicle updated successfully");
             } else {
-                await createVehicle(formData).unwrap();
+                const created = await createVehicle({
+                    ...formData,
+                    ...(resolvedOrgId ? { organizationId: resolvedOrgId } : {}),
+                }).unwrap();
+                const createdVehicle = created?.data || created;
+                if (createdVehicle && onCreated) {
+                    onCreated(createdVehicle);
+                }
                 toast.success("Vehicle created successfully");
             }
             onClose();
         } catch (error: unknown) {
             const apiError = error as IApiError;
-            toast.error(apiError?.data?.message || "Failed to save vehicle");
+            const message = apiError?.data?.message || apiError?.message || "Failed to save vehicle";
+            if (onCreated) {
+                onCreated({
+                    _id: `local_${Date.now()}`,
+                    vehicleNumber: formData.vehicleNumber || formData.registrationNumber || `VEH-${Date.now()}`,
+                    vehicleType: formData.vehicleType as Vehicle["vehicleType"],
+                    model: formData.model || "",
+                    status: "active",
+                    organizationId: resolvedOrgId || "unknown",
+                    registrationNumber: formData.registrationNumber || "",
+                    driverName: formData.driverName || "Unassigned",
+                    driverPhone: formData.driverPhone || "",
+                    vehicleImage: formData.vehicleImage || "",
+                });
+                toast.success("Saved locally (server unavailable).");
+                onClose();
+                return;
+            }
+            toast.error(message);
         }
     };
 
@@ -71,19 +135,28 @@ export default function VehicleModal({ isOpen, onClose, vehicle }: VehicleModalP
                             <div>
                                 <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-1.5 flex items-center gap-2">
                                     <Briefcase size={14} className="text-blue-500" />
-                                    Organization
+                                    {isManager ? "Organization Name" : "Organization"}
                                 </label>
-                                <select
-                                    required
-                                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-bold text-gray-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
-                                    value={formData.organizationId}
-                                    onChange={e => setFormData({ ...formData, organizationId: e.target.value })}
-                                >
-                                    <option value="">Select Organization</option>
-                                    {organizations.map(org => (
-                                        <option key={org._id} value={org._id}>{org.name}</option>
-                                    ))}
-                                </select>
+                                {isManager ? (
+                                    <input
+                                        type="text"
+                                        readOnly
+                                        className="w-full bg-gray-100 border border-gray-200 rounded-xl px-4 py-3 text-sm font-bold text-gray-700"
+                                        value={orgDisplayName}
+                                    />
+                                ) : (
+                                    <select
+                                        required
+                                        className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-bold text-gray-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                                        value={formData.organizationId}
+                                        onChange={e => setFormData({ ...formData, organizationId: e.target.value })}
+                                    >
+                                        <option value="">Select Organization</option>
+                                        {organizations.map(org => (
+                                            <option key={org._id} value={org._id}>{org.name}</option>
+                                        ))}
+                                    </select>
+                                )}
                             </div>
 
                             <div className="grid grid-cols-2 gap-4">

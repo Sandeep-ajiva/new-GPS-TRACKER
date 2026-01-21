@@ -11,7 +11,7 @@ const Controller = require('./controller')
 router.post(
   "/",
   verifyToken,  
-  checkAuthorization(["admin", "superadmin"], "vehicle", "create"),
+  checkAuthorization(["admin", "superadmin", "manager"], "vehicle", "create"),
   checkOrganization,
   Controller.create
 );
@@ -20,7 +20,7 @@ router.post(
 router.get(
   "/",
   verifyToken,
-  checkAuthorization(["admin", "superadmin"], "vehicle", "read"),
+  checkAuthorization(["admin", "superadmin", "manager"], "vehicle", "read"),
   checkOrganization,
   Controller.getAll
 );
@@ -29,7 +29,7 @@ router.get(
 router.get(
   "/:id",
   verifyToken,
-  checkAuthorization(["admin", "superadmin"], "vehicle", "read"),
+  checkAuthorization(["admin", "superadmin", "manager"], "vehicle", "read"),
   checkOrganization,
   Controller.getById
 );

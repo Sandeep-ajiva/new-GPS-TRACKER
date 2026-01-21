@@ -1,4 +1,16 @@
-const permissions = require("../config/permissions.json");
+const fs = require("fs");
+const path = require("path");
+
+const loadPermissions = () => {
+  try {
+    const filePath = path.join(__dirname, "../config/permissions.json");
+    const raw = fs.readFileSync(filePath, "utf-8");
+    return JSON.parse(raw);
+  } catch (err) {
+    console.error("Failed to load permissions.json:", err);
+    return {};
+  }
+};
 
 // HTTP method → action mapping
 const methodToAction = {
@@ -68,7 +80,13 @@ const checkAuthorization = (
         });
       }
 
+      // Superadmin always allowed
+      if (userRole === "superadmin") {
+        return next();
+      }
+
       // 4️⃣ Permission check from permissions.json
+      const permissions = loadPermissions();
       const rolePermissions = permissions[userRole]?.modules;
 
       if (

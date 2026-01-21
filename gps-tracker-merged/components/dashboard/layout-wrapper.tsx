@@ -7,10 +7,11 @@ import { StatusCards } from "@/components/dashboard/status-cards"
 import { VehicleSidebar } from "@/components/dashboard/vehicle-sidebar"
 import { MapWrapper } from "@/components/dashboard/map-wrapper"
 import { useVehiclePositions } from "@/lib/use-vehicle-positions"
+import { vehicles as seedVehicles } from "@/lib/vehicles"
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
     const [selectedVehicle, setSelectedVehicle] = useState<string | null>(null)
-    const positions = useVehiclePositions()
+    const positions = useVehiclePositions(seedVehicles)
 
     return (
         <div className="flex min-h-screen flex-col bg-slate-950 font-sans text-slate-100 overflow-hidden">
@@ -25,6 +26,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     <div className="flex flex-1 min-h-0 overflow-hidden">
                         <div className="w-90 shrink-0 border-r border-white/10">
                             <VehicleSidebar
+                                vehicles={seedVehicles}
                                 selectedId={selectedVehicle}
                                 onSelect={(id) => setSelectedVehicle(id === selectedVehicle ? null : id)}
                                 isFullWidth={false}
@@ -32,7 +34,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                         </div>
                         <div className="flex-1 overflow-hidden bg-slate-950">
                             <div className="h-full w-full overflow-hidden">
-                                <MapWrapper selectedVehicleId={selectedVehicle} positions={positions} />
+                                <MapWrapper
+                                    selectedVehicleId={selectedVehicle}
+                                    positions={positions}
+                                    vehicles={seedVehicles}
+                                />
                             </div>
                         </div>
                     </div>

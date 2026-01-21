@@ -9,15 +9,28 @@ interface TableProps {
   }[];
   data: any[];
   loading?: boolean;
+  variant?: "light" | "dark";
 }
 
-export default function Table({ columns, data, loading }: TableProps) {
+export default function Table({ columns, data, loading, variant = "light" }: TableProps) {
+  const isDark = variant === "dark";
+  const containerClass = isDark
+    ? "rounded-2xl border border-slate-800/80 bg-slate-900/60 shadow-[0_20px_60px_-40px_rgba(15,23,42,0.8)]"
+    : "rounded-2xl border border-slate-200 bg-white shadow-sm";
+  const headerClass = isDark
+    ? "border-b border-slate-800 bg-slate-900/80 text-slate-400"
+    : "border-b border-slate-200 bg-slate-50 text-slate-500";
+  const cellTextClass = isDark ? "text-slate-100" : "text-slate-900";
+  const hoverClass = isDark ? "hover:bg-slate-800/60" : "hover:bg-slate-50";
+  const emptyClass = isDark ? "text-slate-400" : "text-slate-400";
+  const skeletonClass = isDark ? "bg-slate-800/80" : "bg-slate-100";
+
   if (loading) {
     return (
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8">
+      <div className={`${containerClass} p-8`}>
         <div className="space-y-4">
           {[...Array(5)].map((_, i) => (
-            <div key={i} className="h-12 bg-gray-100 rounded-lg animate-pulse" />
+            <div key={i} className={`h-12 rounded-lg animate-pulse ${skeletonClass}`} />
           ))}
         </div>
       </div>
@@ -26,21 +39,21 @@ export default function Table({ columns, data, loading }: TableProps) {
 
   if (!data || data.length === 0) {
     return (
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-16 text-center">
-        <p className="text-gray-400 font-medium">No data available</p>
+      <div className={`${containerClass} p-16 text-center`}>
+        <p className={`font-medium ${emptyClass}`}>No data available</p>
       </div>
     );
   }
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-      <table className="w-full">
+    <div className={`${containerClass} overflow-hidden`}>
+      <table className="w-full text-sm">
         <thead>
-          <tr className="border-b border-gray-100 bg-gray-50">
+          <tr className={headerClass}>
             {columns.map((col, idx) => (
               <th
                 key={idx}
-                className="px-6 py-4 text-left text-xs font-black text-gray-600 uppercase tracking-widest"
+                className="px-6 py-4 text-left text-[10px] font-black uppercase tracking-[0.32em]"
               >
                 {col.header}
               </th>
@@ -51,12 +64,12 @@ export default function Table({ columns, data, loading }: TableProps) {
           {data.map((row, rowIdx) => (
             <tr
               key={rowIdx}
-              className="border-b border-gray-100 hover:bg-gray-50 transition-colors"
+              className={`border-b ${isDark ? "border-slate-800/70" : "border-slate-100"} ${hoverClass} transition-colors`}
             >
               {columns.map((col, colIdx) => (
                 <td
                   key={colIdx}
-                  className="px-6 py-4 text-sm font-medium text-gray-900"
+                  className={`px-6 py-4 font-medium ${cellTextClass}`}
                 >
                   {typeof col.accessor === "function"
                     ? col.accessor(row)

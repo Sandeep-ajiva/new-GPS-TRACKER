@@ -4,10 +4,6 @@ import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 import { useEffect, useState } from "react";
-import { useAppDispatch, useAppSelector } from "@/redux/hooks";
-import { setLiveVehicles, updateVehicleLocation, setConnectionStatus } from "@/redux/features/liveTrackingSlice";
-import { useGetLiveVehiclesQuery } from "@/redux/api/gpsLiveApi";
-import { io } from "socket.io-client";
 
 // Fix for default marker icon in Next.js
 const icon = L.icon({
@@ -17,41 +13,41 @@ const icon = L.icon({
     iconAnchor: [12, 41],
 });
 
-export default function LiveMap() {
-    const dispatch = useAppDispatch();
-    const { liveVehicles } = useAppSelector((state: any) => state.liveTracking);
-    const { data: initialData } = useGetLiveVehiclesQuery({});
+type LiveVehicle = {
+    id: string;
+    vehicleNumber: string;
+    lat: number;
+    lng: number;
+    speed: number;
+    lastUpdated: string;
+};
+
+const demoVehicles: LiveVehicle[] = [
+    {
+        id: "veh_1",
+        vehicleNumber: "DL 10CK1840",
+        lat: 28.6139,
+        lng: 77.209,
+        speed: 42,
+        lastUpdated: new Date().toISOString(),
+    },
+    {
+        id: "veh_2",
+        vehicleNumber: "PB 10AX2234",
+        lat: 28.7041,
+        lng: 77.1025,
+        speed: 0,
+        lastUpdated: new Date().toISOString(),
+    },
+];
+
+export default function LiveMap({ vehicles = demoVehicles }: { vehicles?: LiveVehicle[] }) {
     const [isMounted, setIsMounted] = useState(false);
 
     useEffect(() => {
         setIsMounted(true);
 
-        // Initial Data Load
-        if (initialData) {
-            dispatch(setLiveVehicles(initialData));
-        }
-
-        // Socket Connection
-        const socket = io(); // Connects to same host by default
-
-        socket.on("connect", () => {
-            console.log("Socket Connected");
-            dispatch(setConnectionStatus(true));
-        });
-
-        socket.on("disconnect", () => {
-            console.log("Socket Disconnected");
-            dispatch(setConnectionStatus(false));
-        });
-
-        socket.on("gps_update", (data: any) => {
-            dispatch(updateVehicleLocation(data));
-        });
-
-        return () => {
-            socket.disconnect();
-        }
-    }, [dispatch, initialData]);
+    }, []);
 
     if (!isMounted) {
         return <div className="h-full w-full bg-gray-100 flex items-center justify-center">Loading Map...</div>;
@@ -67,9 +63,9 @@ export default function LiveMap() {
                 attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             />
-            {liveVehicles.map((vehicle: any) => (
+            {vehicles.map((vehicle) => (
                 vehicle.lat && vehicle.lng ? (
-                    <Marker key={vehicle.vehicleId} position={[vehicle.lat, vehicle.lng]} icon={icon}>
+                    <Marker key={vehicle.id} position={[vehicle.lat, vehicle.lng]} icon={icon}>
                         <Popup>
                             <div className="text-sm font-bold">{vehicle.vehicleNumber}</div>
                             <div className="text-xs">Speed: {vehicle.speed} km/h</div>

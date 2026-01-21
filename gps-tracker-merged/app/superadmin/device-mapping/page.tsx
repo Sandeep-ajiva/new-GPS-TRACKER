@@ -79,7 +79,7 @@ export default function DeviceMappingPage() {
         { header: "Assigned Date", accessor: (row: any) => new Date(row.createdAt).toLocaleDateString() },
         {
             header: "Actions", accessor: (row: any) => (
-                <button onClick={() => handleUnassign(row._id)} className="inline-flex items-center gap-1 text-[11px] font-black uppercase tracking-widest text-rose-600 hover:text-rose-700">
+                <button onClick={() => handleUnassign(row._id)} className="inline-flex items-center gap-1 text-[11px] font-black uppercase tracking-widest text-rose-300 hover:text-rose-200">
                     <Trash2 size={14} /> Unassign
                 </button>
             )
@@ -91,52 +91,52 @@ export default function DeviceMappingPage() {
             <div className="space-y-6">
                 <div className="flex flex-wrap items-center justify-between gap-4">
                     <div>
-                        <p className="text-[11px] font-black uppercase tracking-[0.3em] text-slate-400">Operations</p>
-                        <h1 className="text-2xl font-black text-slate-900">Device Mapping</h1>
-                        <p className="text-sm text-slate-500">Associate GPS devices with vehicles.</p>
+                        <p className="text-[11px] font-black uppercase tracking-[0.3em] text-emerald-400/70">Operations</p>
+                        <h1 className="text-2xl font-black text-slate-100">Device Mapping</h1>
+                        <p className="text-sm text-slate-400">Associate GPS devices with vehicles.</p>
                     </div>
                     <button
                         onClick={openCreateModal}
-                        className="rounded-xl bg-slate-900 px-4 py-2 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-slate-900/20 transition hover:bg-slate-800"
+                        className="rounded-xl border border-emerald-500/30 bg-emerald-500/20 px-4 py-2 text-xs font-black uppercase tracking-widest text-emerald-200 transition hover:bg-emerald-500/30"
                     >
                         <span className="inline-flex items-center gap-2"><Link2 size={16} /> Assign Device</span>
                     </button>
                 </div>
 
-            <Table columns={columns} data={mappings} loading={false} />
+            <Table columns={columns} data={mappings} loading={false} variant="dark" />
 
             {isModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm">
-                    <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
-                        <h2 className="text-xl font-black text-slate-900">Assign Device to Vehicle</h2>
-                        <p className="text-xs text-slate-500">Link available assets and keep tracking synced.</p>
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
+                    <div className="w-full max-w-md rounded-2xl border border-slate-800/80 bg-slate-900/90 p-6 shadow-[0_30px_80px_-40px_rgba(15,23,42,0.9)]">
+                        <h2 className="text-xl font-black text-slate-100">Assign Device to Vehicle</h2>
+                        <p className="text-xs text-slate-400">Link devices to vehicles in the fleet.</p>
                         <form onSubmit={handleSubmit} className="space-y-4">
                             <div>
-                                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Select Vehicle</label>
-                                <select required className="w-full rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
+                                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Select Vehicle</label>
+                                <select required className="w-full rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
                                     value={formData.vehicleId} onChange={e => setFormData({ ...formData, vehicleId: e.target.value })}>
                                     <option value="">Select available vehicle...</option>
                                     {availableVehicles?.map((v: any) => (
                                         <option key={v._id} value={v._id}>{v.vehicleNumber} ({v.model})</option>
                                     ))}
                                 </select>
-                                {availableVehicles?.length === 0 && <p className="mt-1 text-xs font-semibold text-rose-600">No available vehicles found</p>}
+                                {availableVehicles?.length === 0 && <p className="mt-1 text-xs font-semibold text-rose-300">No available vehicles found</p>}
                             </div>
                             <div>
-                                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Select Device</label>
-                                <select required className="w-full rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
+                                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Select Device</label>
+                                <select required className="w-full rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
                                     value={formData.deviceId} onChange={e => setFormData({ ...formData, deviceId: e.target.value })}>
                                     <option value="">Select available device...</option>
                                     {availableDevices?.map((d: any) => (
                                         <option key={d._id} value={d._id}>{d.imei}</option>
                                     ))}
                                 </select>
-                                {availableDevices?.length === 0 && <p className="mt-1 text-xs font-semibold text-rose-600">No available devices found</p>}
+                                {availableDevices?.length === 0 && <p className="mt-1 text-xs font-semibold text-rose-300">No available devices found</p>}
                             </div>
 
                             <div className="flex gap-3 mt-6">
-                                <button type="button" onClick={closeModal} className="flex-1 rounded-xl bg-slate-100 py-2.5 text-[11px] font-black uppercase tracking-widest text-slate-700 hover:bg-slate-200">Cancel</button>
-                                <button type="submit" disabled={!formData.vehicleId || !formData.deviceId} className="flex-1 rounded-xl bg-slate-900 py-2.5 text-[11px] font-black uppercase tracking-widest text-white hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed">Assign</button>
+                                <button type="button" onClick={closeModal} className="flex-1 rounded-xl border border-slate-800 bg-slate-950/70 py-2.5 text-[11px] font-black uppercase tracking-widest text-slate-200 hover:bg-slate-900">Cancel</button>
+                                <button type="submit" disabled={!formData.vehicleId || !formData.deviceId} className="flex-1 rounded-xl bg-emerald-500/30 py-2.5 text-[11px] font-black uppercase tracking-widest text-emerald-100 hover:bg-emerald-500/40 disabled:opacity-50 disabled:cursor-not-allowed">Assign</button>
                             </div>
                         </form>
                     </div>
