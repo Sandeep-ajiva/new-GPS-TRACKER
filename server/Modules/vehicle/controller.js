@@ -8,6 +8,9 @@ const validateCreateVehicle = async (data, user) => {
   const rules = {
     vehicleType: "required|in:car,bus,truck,bike,other",
     model: "string",
+    make: "string",
+    year: "number",
+    color: "string",
     status: "in:active,inactive",
   };
 
@@ -27,8 +30,14 @@ const validateUpdateVehicle = async (data) => {
   const rules = {
     vehicleType: "in:car,bus,truck,bike,other",
     vehicleNumber: "string",
+    make: "string",
     model: "string",
+    year: "number",
+    color: "string",
     status: "in:active,inactive",
+    runningStatus: "in:running,idle,stopped,inactive",
+    deviceId: "string",
+    driverId: "string",
   };
 
   // ❌ Empty string check
@@ -45,8 +54,15 @@ const validateUpdateVehicle = async (data) => {
   const allowedFields = [
     "vehicleType",
     "vehicleNumber",
+    "make",
     "model",
+    "year",
+    "color",
+    "image",
     "status",
+    "runningStatus",
+    "deviceId",
+    "driverId",
   ];
 
   Object.keys(data).forEach((key) => {
@@ -68,8 +84,7 @@ exports.create = async (req, res) => {
   try {
     await validateCreateVehicle(req.body, req.user);
 
-
-    const { vehicleType, vehicleNumber, model, status } = req.body;
+    const { vehicleType, vehicleNumber, make, model, year, color, image, deviceId, driverId, status } = req.body;
 
     const organizationId =
       req.user.role === "superadmin"
@@ -99,18 +114,25 @@ exports.create = async (req, res) => {
     });
 
     if (exists) {
-      return res.status(400).json({
+      return res.status(409).json({
         status: false,
-        message: "Vehicle already exists",
+        message: "Vehicle with this number already exists in this organization",
       });
     }
 
     const vehicle = await VehicleModel.create({
       organizationId,
       vehicleType,
-      vehicleNumber,
-      model,
+      vehicleNumber: vehicleNumber ? vehicleNumber.toUpperCase().trim() : null,
+      make: make || null,
+      model: model || null,
+      year: year || null,
+      color: color || null,
+      image: image || null,
+      deviceId: deviceId || null,
+      driverId: driverId || null,
       status: status || "active",
+      runningStatus: "inactive",
       createdBy: req.user._id,
     });
 
@@ -120,9 +142,10 @@ exports.create = async (req, res) => {
       data: vehicle,
     });
   } catch (error) {
-    return res.status(500).json({
+    console.error("Create Vehicle Error:", error);
+    return res.status(error.status || 500).json({
       status: false,
-      message: error.message,
+      message: error.message || "Internal server error",
     });
   }
 };
@@ -211,17 +234,43 @@ exports.update = async (req, res) => {
     const vehicle = await VehicleModel.findById(req.params.id);
 
     if (!vehicle) {
-      return res.status(404).json({ message: "Vehicle not found" });
+      return res.status(404).json({ 
+        status: false,
+        message: "Vehicle not found" 
+      });
     }
 
     if (
       req.user.role !== "superadmin" &&
       vehicle.organizationId.toString() !== req.orgId.toString()
     ) {
-      return res.status(403).json({ message: "Forbidden" });
+      return res.status(403).json({ 
+        status: false,
+        message: "Forbidden" 
+      });
     }
 
+    // Check for duplicate vehicle number if updating it
+    if (req.body.vehicleNumber) {
+      const duplicate = await VehicleModel.findOne({
+        organizationId: vehicle.organizationId,
+        vehicleNumber: req.body.vehicleNumber.toUpperCase().trim(),
+        _id: { $ne: vehicle._id }
+      });
+
+      if (duplicate) {
+        return res.status(409).json({
+          status: false,
+          message: "Vehicle number already exists in this organization"
+        });
+      }
+
+      req.body.vehicleNumber = req.body.vehicleNumber.toUpperCase().trim();
+    }
+
+    // Update with new fields
     Object.assign(vehicle, req.body);
+    vehicle.updatedAt = new Date();
     await vehicle.save();
 
     return res.json({
@@ -230,9 +279,10 @@ exports.update = async (req, res) => {
       data: vehicle,
     });
   } catch (error) {
+    console.error("Update Vehicle Error:", error);
     return res.status(error.status || 500).json({
       status: false,
-      message: error.message,
+      message: error.message || "Internal server error",
       errors: error.errors || null
     });
   }
@@ -277,36 +327,56 @@ exports.deactivate = async (req, res) => {
  */
 exports.updateStatus = async (req, res) => {
   try {
-    const { status } = req.body;
+    const { status, runningStatus } = req.body;
 
-    if (!["active", "inactive"].includes(status)) {
-      return res.status(400).json({ message: "Invalid status" });
+    if (status && !["active", "inactive"].includes(status)) {
+      return res.status(400).json({ 
+        status: false,
+        message: "Invalid status. Must be 'active' or 'inactive'" 
+      });
+    }
+
+    if (runningStatus && !["running", "idle", "stopped", "inactive"].includes(runningStatus)) {
+      return res.status(400).json({ 
+        status: false,
+        message: "Invalid running status. Must be 'running', 'idle', 'stopped', or 'inactive'" 
+      });
     }
 
     const vehicle = await VehicleModel.findById(req.params.id);
 
     if (!vehicle) {
-      return res.status(404).json({ message: "Vehicle not found" });
+      return res.status(404).json({ 
+        status: false,
+        message: "Vehicle not found" 
+      });
     }
 
     if (
       req.user.role !== "superadmin" &&
       vehicle.organizationId.toString() !== req.orgId.toString()
     ) {
-      return res.status(403).json({ message: "Forbidden" });
+      return res.status(403).json({ 
+        status: false,
+        message: "Forbidden" 
+      });
     }
 
-    vehicle.status = status;
+    if (status) vehicle.status = status;
+    if (runningStatus) vehicle.runningStatus = runningStatus;
+    vehicle.updatedAt = new Date();
     await vehicle.save();
 
     return res.json({
       status: true,
-      message: `Vehicle ${status}`,
+      message: "Vehicle status updated successfully",
+      data: vehicle,
     });
   } catch (error) {
+    console.error("Update Status Error:", error);
     return res.status(error.status || 500).json({
       status: false,
-      message: error.message,
+      message: error.message || "Internal server error",
       errors: error.errors || null
     });
   }

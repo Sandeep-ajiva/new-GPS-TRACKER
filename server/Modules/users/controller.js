@@ -129,6 +129,11 @@ exports.createOrganizationAdmin = async (req, res) => {
             role: "admin",
             status: "active"
         })
+
+        // Update organization's adminUser field
+        org.adminUser = admin._id;
+        await org.save();
+
         return res.status(201).json({
             status: true,
             message: "Organization Admin Created",
@@ -193,6 +198,64 @@ exports.updateUser = async (req, res) => {
         return res.status(500).json({ status: false, message: error.message });
     }
 };
+
+exports.createManager = async (req, res) => {
+    try {
+        await validateAdminData(req.body);
+        const {
+            firstName,
+            lastName,
+            email,
+            mobile,
+            passwordHash,
+            organizationId
+        } = req.body
+
+        const org = await Organization.findById(organizationId)
+        if (!org) {
+            return res.status(404).json({
+                status: false,
+                message: "Organization not found"
+            })
+        }
+
+        const existingUser = await User.findOne({
+            $or: [{ email }, { mobile }]
+        });
+
+        if (existingUser) {
+            return res.status(409).json({
+                status: false,
+                message: "User already exist"
+            })
+        }
+
+        const password = await bcrypt.hash(passwordHash, 10);
+
+        const manager = await User.create({
+            organizationId,
+            firstName,
+            lastName,
+            email,
+            mobile,
+            passwordHash: password,
+            role: "manager",
+            status: "active"
+        })
+        return res.status(201).json({
+            status: true,
+            message: "Manager created successfully",
+            data: manager,
+        });
+
+    } catch (error) {
+        console.error("Create Manager Error:", error);
+        return res.status(500).json({
+            status: false,
+            message: "Internal server error",
+        });
+    }
+}
 
 exports.deleteUser = async (req, res) => {
     try {

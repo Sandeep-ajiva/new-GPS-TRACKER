@@ -6,6 +6,7 @@ const vehicleSchema = {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Organization",
     required: true,
+    index: true,
   },
 
   vehicleType: {
@@ -16,36 +17,62 @@ const vehicleSchema = {
 
   vehicleNumber: {
     type: String,
-    required: function(){
+    required: function () {
       return ["car", "bus", "truck", "bike"].includes(this.vehicleType);
     },
     trim: true,
-  },
-  image:{
-    type: String,
-    trim: true,
+    uppercase: true,
+    minlength: 2,
   },
 
-  model: {
-    type: String,
-    trim: true,
+  make: String,
+  model: String,
+
+  year: {
+    type: Number,
+    min: 1900,
+    max: new Date().getFullYear() + 1,
+  },
+
+  color: String,
+  image: String,
+
+  deviceId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "GpsDevice",
+    default: null,
+  },
+
+  driverId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Driver",
+    default: null,
   },
 
   status: {
     type: String,
     enum: ["active", "inactive"],
     default: "active",
+    index: true,
+  },
+
+  runningStatus: {
+    type: String,
+    enum: ["running", "idle", "stopped", "inactive"],
+    default: "inactive",
   },
 
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "User",
-  },
-  engine: {
-    type: Boolean,
-    default: false,
+    required: true,
   },
 };
 
-const VehicleModel = new ajModel("Vehicle", vehicleSchema).getModel();
+const VehicleModel = new ajModel("Vehicle", vehicleSchema, {
+  indexes: [
+    { fields: { organizationId: 1, vehicleNumber: 1 }, options: { unique: true } }
+  ]
+}).getModel();
+
 module.exports = VehicleModel;

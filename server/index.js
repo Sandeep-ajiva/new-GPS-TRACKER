@@ -22,6 +22,9 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(responseTimeLogger);
 
+// Serve uploaded files as static content
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
 app.use(cors({
   origin: "*",
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
