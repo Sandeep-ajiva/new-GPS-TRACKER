@@ -1,13 +1,15 @@
 import { Search, Info, Power, Zap, Fan, Signal, Pencil, Trash2, Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { vehicles } from "@/lib/vehicles"
+import type { Vehicle } from "@/lib/vehicles"
 
 export function VehicleSidebar({
+    vehicles,
     selectedId,
     onSelect,
     isFullWidth = false,
     statusFilter = "total"
 }: {
+    vehicles: Vehicle[],
     selectedId?: string | null,
     onSelect?: (id: string) => void,
     isFullWidth?: boolean,

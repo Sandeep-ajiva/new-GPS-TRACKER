@@ -87,7 +87,7 @@ export default function UsersPage() {
         {
             header: "Role",
             accessor: (row: any) => (
-                <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-slate-700">
+                <span className="inline-flex items-center rounded-full border border-emerald-500/30 bg-emerald-500/20 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-emerald-200">
                     {row.role}
                 </span>
             )
@@ -96,8 +96,8 @@ export default function UsersPage() {
         {
             header: "Actions", accessor: (row: any) => (
                 <div className="flex gap-2">
-                    <button onClick={() => openEditModal(row)} className="text-slate-700 hover:text-slate-900"><Edit size={16} /></button>
-                    <button onClick={() => handleDelete(row._id)} className="text-rose-600 hover:text-rose-700"><Trash2 size={16} /></button>
+                    <button onClick={() => openEditModal(row)} className="text-slate-200 hover:text-white"><Edit size={16} /></button>
+                    <button onClick={() => handleDelete(row._id)} className="text-rose-300 hover:text-rose-200"><Trash2 size={16} /></button>
                 </div>
             )
         }
@@ -108,45 +108,45 @@ export default function UsersPage() {
             <div className="space-y-6">
                 <div className="flex flex-wrap items-center justify-between gap-4">
                     <div>
-                        <p className="text-[11px] font-black uppercase tracking-[0.3em] text-slate-400">Access Control</p>
-                        <h1 className="text-2xl font-black text-slate-900">Users</h1>
-                        <p className="text-sm text-slate-500">Manage administrators and access across organizations.</p>
+                        <p className="text-[11px] font-black uppercase tracking-[0.3em] text-emerald-400/70">Access</p>
+                        <h1 className="text-2xl font-black text-slate-100">Users</h1>
+                        <p className="text-sm text-slate-400">Manage administrators and access.</p>
                     </div>
                     <button
                         onClick={openCreateModal}
-                        className="rounded-xl bg-slate-900 px-4 py-2 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-slate-900/20 transition hover:bg-slate-800"
+                        className="rounded-xl border border-emerald-500/30 bg-emerald-500/20 px-4 py-2 text-xs font-black uppercase tracking-widest text-emerald-200 transition hover:bg-emerald-500/30"
                     >
                         <span className="inline-flex items-center gap-2"><Plus size={16} /> Add User</span>
                     </button>
                 </div>
 
-            <Table columns={columns} data={users} loading={false} />
+            <Table columns={columns} data={users} loading={false} variant="dark" />
 
             {isModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm">
-                    <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
-                        <h2 className="text-xl font-black text-slate-900">{editingUser ? "Edit User" : "New User"}</h2>
-                        <p className="text-xs text-slate-500">Define roles and assign organization scope.</p>
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
+                    <div className="w-full max-w-md rounded-2xl border border-slate-800/80 bg-slate-900/90 p-6 shadow-[0_30px_80px_-40px_rgba(15,23,42,0.9)]">
+                        <h2 className="text-xl font-black text-slate-100">{editingUser ? "Edit User" : "New User"}</h2>
+                        <p className="text-xs text-slate-400">Assign roles and scope by organization.</p>
                         <form onSubmit={handleSubmit} className="space-y-4">
                             <div>
-                                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Name</label>
-                                <input type="text" required className="w-full rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
+                                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Name</label>
+                                <input type="text" required className="w-full rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
                                     value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} />
                             </div>
                             <div>
-                                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Email</label>
-                                <input type="email" required className="w-full rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
+                                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Email</label>
+                                <input type="email" required className="w-full rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
                                     value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })} />
                             </div>
                             <div>
-                                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Password</label>
-                                <input type="password" required={!editingUser} className="w-full rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
+                                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Password</label>
+                                <input type="password" required={!editingUser} className="w-full rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
                                     placeholder={editingUser ? "Leave blank to keep current" : ""}
                                     value={formData.password} onChange={e => setFormData({ ...formData, password: e.target.value })} />
                             </div>
                             <div>
-                                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Role</label>
-                                <select required className="w-full rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
+                                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Role</label>
+                                <select required className="w-full rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
                                     value={formData.role} onChange={e => setFormData({ ...formData, role: e.target.value })}>
                                     <option value="admin">Organization Admin</option>
                                     <option value="superadmin">Super Admin</option>
@@ -154,8 +154,8 @@ export default function UsersPage() {
                             </div>
                             {formData.role === 'admin' && (
                                 <div>
-                                    <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Organization</label>
-                                    <select required className="w-full rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
+                                    <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Organization</label>
+                                    <select required className="w-full rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
                                         value={formData.organizationId} onChange={e => setFormData({ ...formData, organizationId: e.target.value })}>
                                         <option value="">Select Organization</option>
                                         {organizations.map((org: any) => (
@@ -166,8 +166,8 @@ export default function UsersPage() {
                             )}
 
                             <div className="flex gap-3 mt-6">
-                                <button type="button" onClick={closeModal} className="flex-1 rounded-xl bg-slate-100 py-2.5 text-[11px] font-black uppercase tracking-widest text-slate-700 hover:bg-slate-200">Cancel</button>
-                                <button type="submit" className="flex-1 rounded-xl bg-slate-900 py-2.5 text-[11px] font-black uppercase tracking-widest text-white hover:bg-slate-800">Save</button>
+                                <button type="button" onClick={closeModal} className="flex-1 rounded-xl border border-slate-800 bg-slate-950/70 py-2.5 text-[11px] font-black uppercase tracking-widest text-slate-200 hover:bg-slate-900">Cancel</button>
+                                <button type="submit" className="flex-1 rounded-xl bg-emerald-500/30 py-2.5 text-[11px] font-black uppercase tracking-widest text-emerald-100 hover:bg-emerald-500/40">Save</button>
                             </div>
                         </form>
                     </div>

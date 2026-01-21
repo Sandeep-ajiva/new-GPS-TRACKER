@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic"
 import { Loader2 } from "lucide-react"
+import type { Vehicle } from "@/lib/vehicles"
 import type { VehiclePositions } from "@/lib/use-vehicle-positions"
 
 // Dynamically import Map with no SSR
@@ -18,9 +19,11 @@ const Map = dynamic(() => import("./map-view").then((mod) => mod.MapView), {
 export function MapWrapper({
     selectedVehicleId,
     positions,
+    vehicles,
 }: {
     selectedVehicleId?: string | null
     positions: VehiclePositions
+    vehicles: Vehicle[]
 }) {
-    return <Map selectedVehicleId={selectedVehicleId} positions={positions} />
+    return <Map selectedVehicleId={selectedVehicleId} positions={positions} vehicles={vehicles} />
 }

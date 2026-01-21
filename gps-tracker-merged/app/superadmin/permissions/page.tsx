@@ -285,8 +285,8 @@ const PermissionsForm = () => {
 
   if (loading) {
     return (
-      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <p className="text-sm font-semibold text-slate-600">
+      <div className="rounded-2xl border border-slate-800/80 bg-slate-900/60 p-6 shadow-[0_20px_60px_-40px_rgba(15,23,42,0.8)]">
+        <p className="text-sm font-semibold text-slate-300">
           Loading permissions...
         </p>
       </div>
@@ -295,7 +295,7 @@ const PermissionsForm = () => {
 
   if (loadError) {
     return (
-      <div className="rounded-2xl border border-rose-200 bg-rose-50 p-6 text-sm font-semibold text-rose-600 shadow-sm">
+      <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 p-6 text-sm font-semibold text-rose-200 shadow-[0_20px_60px_-40px_rgba(15,23,42,0.8)]">
         {loadError}
       </div>
     );
@@ -308,20 +308,20 @@ const PermissionsForm = () => {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <p className="text-[11px] font-black uppercase tracking-[0.3em] text-slate-400">Access Control</p>
-        <h2 className="text-2xl font-black text-slate-900">Permissions</h2>
-        <p className="text-sm text-slate-500">Set module access by role hierarchy.</p>
+      <div className="rounded-2xl border border-slate-800/80 bg-slate-900/60 p-6 shadow-[0_20px_60px_-40px_rgba(15,23,42,0.8)]">
+        <p className="text-[11px] font-black uppercase tracking-[0.3em] text-emerald-400/70">Access Control</p>
+        <h2 className="text-2xl font-black text-slate-100">Permissions</h2>
+        <p className="text-sm text-slate-400">Set module access by role hierarchy.</p>
 
         <div className="mt-5 grid gap-4 md:grid-cols-[1.2fr_0.6fr]">
           <div>
-            <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-slate-500">Role</label>
+            <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-slate-400">Role</label>
             <select
               name="roleId"
               value={formData.roleId}
               onChange={handleChange}
               onBlur={handleBlur}
-              className="w-full rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
+              className="w-full rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
             >
               <option value="" disabled></option>
               {permissionRecords.map((record) => (
@@ -331,41 +331,41 @@ const PermissionsForm = () => {
               ))}
             </select>
             {errors.roleId && (
-              <p className="mt-1 text-xs font-semibold text-rose-600">{errors.roleId}</p>
+              <p className="mt-1 text-xs font-semibold text-rose-300">{errors.roleId}</p>
             )}
           </div>
           <div>
-            <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-slate-500">Hierarchy</label>
+            <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-slate-400">Hierarchy</label>
             <input
               type="number"
               name="hierarchy"
               value={formData.hierarchy}
               onChange={handleChange}
               onBlur={handleBlur}
-              className="w-full rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
+              className="w-full rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
               min="0"
             />
             {errors.hierarchy && (
-              <p className="mt-1 text-xs font-semibold text-rose-600">{errors.hierarchy}</p>
+              <p className="mt-1 text-xs font-semibold text-rose-300">{errors.hierarchy}</p>
             )}
           </div>
         </div>
       </div>
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="rounded-2xl border border-slate-800/80 bg-slate-900/60 p-4 shadow-[0_20px_60px_-40px_rgba(15,23,42,0.8)]">
         <div className="overflow-x-auto">
           {Object.entries(permissions).map(([role, { modules }]) => (
             <div key={role} className="mb-6 last:mb-0">
               <div className="mb-3 flex items-center justify-between">
-                <h3 className="text-sm font-black uppercase tracking-widest text-slate-600">Permissions</h3>
-                <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-slate-500">
+                <h3 className="text-sm font-black uppercase tracking-widest text-slate-300">Permissions</h3>
+                <span className="rounded-full border border-emerald-500/30 bg-emerald-500/20 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-emerald-200">
                   {role}
                 </span>
               </div>
               <table className="min-w-full table-auto border-collapse">
                 <thead>
-                  <tr className="bg-slate-50 text-left text-[10px] font-black uppercase tracking-widest text-slate-500">
-                    <th className="border-b border-slate-200 px-4 py-3">
+                  <tr className="bg-slate-900/80 text-left text-[10px] font-black uppercase tracking-widest text-slate-400">
+                    <th className="border-b border-slate-800 px-4 py-3">
                       <div className="flex items-center gap-2">
                         <input
                           type="checkbox"
@@ -400,7 +400,7 @@ const PermissionsForm = () => {
                               actions.includes("update") &&
                               actions.includes("delete")
                           )}
-                          className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900/20"
+                          className="h-4 w-4 rounded border-slate-600 text-emerald-400 focus:ring-emerald-500/30"
                         />
                         Module
                       </div>
@@ -408,7 +408,7 @@ const PermissionsForm = () => {
                     {["create", "read", "update", "delete"].map((action) => (
                       <th
                         key={action}
-                        className="border-b border-slate-200 px-4 py-3 text-center"
+                        className="border-b border-slate-800 px-4 py-3 text-center"
                       >
                         <div className="flex items-center justify-center gap-2">
                           <input
@@ -417,7 +417,7 @@ const PermissionsForm = () => {
                             checked={Object.values(modules).every((a) =>
                               a.includes(action)
                             )}
-                            className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900/20"
+                            className="h-4 w-4 rounded border-slate-600 text-emerald-400 focus:ring-emerald-500/30"
                           />
                           {action}
                         </div>
@@ -428,8 +428,8 @@ const PermissionsForm = () => {
 
                 <tbody>
                   {Object.entries(modules).map(([moduleName, actions]) => (
-                    <tr key={moduleName} className="text-sm text-slate-700">
-                      <td className="border-b border-slate-100 px-4 py-3 font-semibold capitalize">
+                    <tr key={moduleName} className="text-sm text-slate-200">
+                      <td className="border-b border-slate-800 px-4 py-3 font-semibold capitalize">
                         <div className="flex items-center gap-2">
                           <input
                             type="checkbox"
@@ -439,7 +439,7 @@ const PermissionsForm = () => {
                             checked={["create", "read", "update", "delete"].every(
                               (action) => actions.includes(action)
                             )}
-                            className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900/20"
+                            className="h-4 w-4 rounded border-slate-600 text-emerald-400 focus:ring-emerald-500/30"
                           />
                           {moduleName}
                         </div>
@@ -447,7 +447,7 @@ const PermissionsForm = () => {
                       {["create", "read", "update", "delete"].map((action) => (
                         <td
                           key={action}
-                          className="border-b border-slate-100 px-4 py-3 text-center"
+                          className="border-b border-slate-800 px-4 py-3 text-center"
                         >
                           <input
                             type="checkbox"
@@ -455,7 +455,7 @@ const PermissionsForm = () => {
                             onChange={() =>
                               togglePermission(role, moduleName, action)
                             }
-                            className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900/20"
+                            className="h-4 w-4 rounded border-slate-600 text-emerald-400 focus:ring-emerald-500/30"
                           />
                         </td>
                       ))}
@@ -470,7 +470,7 @@ const PermissionsForm = () => {
 
       <button
         type="submit"
-        className="rounded-xl bg-slate-900 px-6 py-2.5 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-slate-900/20 transition hover:bg-slate-800 disabled:opacity-50"
+        className="rounded-xl border border-emerald-500/30 bg-emerald-500/20 px-6 py-2.5 text-xs font-black uppercase tracking-widest text-emerald-200 transition hover:bg-emerald-500/30 disabled:opacity-50"
         disabled={!activeRoleName || Object.keys(activeModules).length === 0}
       >
         Update Permissions
