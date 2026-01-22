@@ -9,24 +9,54 @@ const startTcpServer = (port = 6000) => {
             const dataString = data.toString().trim();
             console.log("TCP Data:", dataString);
 
-            // Basic Protocol: IMEI,LAT,LNG,SPEED,IGNITION
-            // Example: 123456789012345,12.34,56.78,60,1
-            const parts = dataString.split(",");
-            if (parts.length >= 3) {
-                const payload = {
-                    imei: parts[0],
-                    lat: parts[1],
-                    lng: parts[2],
-                    speed: parts[3] || 0,
-                    ignition: parts[4] === "1"
-                };
+            // Accept either JSON payloads or legacy CSV: IMEI,LAT,LNG,SPEED,IGNITION
+            // Try JSON first, fall back to CSV parsing for existing devices.
+            let payload = null;
+            let parsedAs = null;
+            try {
+                payload = JSON.parse(dataString);
+                parsedAs = 'json';
+            } catch (e) {
+                const parts = dataString.split(",");
+                if (parts.length >= 3) {
+                    payload = {
+                        imei: parts[0],
+                        lat: parts[1],
+                        lng: parts[2],
+                        speed: parts[3] || 0,
+                        ignition: parts[4] === "1"
+                    };
+                    parsedAs = 'csv';
+                }
+            }
 
-                const result = await GpsService.processGpsData(payload);
+            if (!payload) {
+                socket.write("ERROR: invalid payload\n");
+                return;
+            }
+
+            console.log(`Parsed TCP payload as ${parsedAs}`);
+
+            try {
+                // Normalize payload keys so service can accept either CSV-style or JSON keys
+                const normalized = Object.assign({}, payload);
+                // latitude / longitude -> lat / lng
+                if (normalized.latitude && !normalized.lat) normalized.lat = normalized.latitude;
+                if (normalized.longitude && !normalized.lng) normalized.lng = normalized.longitude;
+                // currentSpeed -> speed
+                if (normalized.currentSpeed && !normalized.speed) normalized.speed = normalized.currentSpeed;
+                // ignitionStatus -> ignition
+                if (typeof normalized.ignitionStatus !== 'undefined' && typeof normalized.ignition === 'undefined') normalized.ignition = normalized.ignitionStatus;
+
+                const result = await GpsService.processGpsData(normalized);
                 if (result.success) {
                     socket.write("ACK\n");
                 } else {
                     socket.write(`ERROR: ${result.message}\n`);
                 }
+            } catch (err) {
+                console.error('Error processing GPS data:', err && err.stack ? err.stack : err);
+                socket.write(`ERROR: ${err && err.message ? err.message : 'processing error'}\n`);
             }
         });
 

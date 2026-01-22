@@ -73,6 +73,11 @@ const vehicleSchema = {
 const VehicleModel = new ajModel("Vehicle", vehicleSchema, null).getModel();
 
 // Add compound index after model creation
-VehicleModel.collection.createIndex({ organizationId: 1, vehicleNumber: 1 }, { unique: true });
+VehicleModel.collection.createIndex(
+  { organizationId: 1, vehicleNumber: 1 },
+  { unique: true, background: true }
+).catch((err) => {
+  console.error("VehicleModel index creation error:", err && err.message ? err.message : err);
+});
 
 module.exports = VehicleModel;
