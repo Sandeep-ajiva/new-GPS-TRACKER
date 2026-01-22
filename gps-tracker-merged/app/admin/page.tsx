@@ -2,11 +2,13 @@
 
 import { Users, Car, Radio, Activity, Plus, ArrowLeft } from "lucide-react";
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import OrganizationCreateModal from "@/components/admin/Modals/OrganizationCreateModal";
 import OrganizationMap from "@/components/admin/Map/OrganizationMap";
 import { VehicleSidebar } from "@/components/dashboard/vehicle-sidebar";
 import { MapWrapper } from "@/components/dashboard/map-wrapper";
 import { useVehiclePositions } from "@/lib/use-vehicle-positions";
+import { getOrganizations, getVehicles, getDevices } from "@/lib/admin-dummy-data";
 type DashboardVehicle = {
   id: string;
   driver: string;
@@ -24,25 +26,7 @@ type DashboardVehicle = {
 
 const defaultCenter = { lat: 28.6139, lng: 77.209 };
 
-const demoOrganizations = [
-  { _id: "org_ajiva", name: "Ajiva Tracker" },
-  { _id: "org_north", name: "North Branch" },
-  { _id: "org_west", name: "West Branch" },
-  { _id: "org_south", name: "South Branch" },
-];
-
-const demoVehicles = [
-  { _id: "veh_1", vehicleNumber: "DL 10CK1840", driverName: "Dave Mathew", organizationId: "org_ajiva", status: "active" },
-  { _id: "veh_2", vehicleNumber: "DL 10CK1841", driverName: "Mitchell", organizationId: "org_north", status: "active" },
-  { _id: "veh_3", vehicleNumber: "DL 10CK1842", driverName: "Olivia", organizationId: "org_west", status: "active" },
-  { _id: "veh_4", vehicleNumber: "DL 10CK1843", driverName: "Ravi", organizationId: "org_south", status: "inactive" },
-];
-
-const demoDevices = [
-  { _id: "gps_1", imei: "86543210001" },
-  { _id: "gps_2", imei: "86543210002" },
-  { _id: "gps_3", imei: "86543210003" },
-];
+// Using dummy data from shared store
 
 const demoLiveData = [
   {
@@ -84,19 +68,20 @@ const demoLiveData = [
 ];
 
 export default function DashboardPage() {
+  const router = useRouter();
   const [isOrgModalOpen, setIsOrgModalOpen] = useState(false);
   const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<"all" | "running" | "idle" | "stopped">("all");
 
-  const displayOrgs = demoOrganizations;
-  const displayVehicles = demoVehicles;
-  const displayDevices = demoDevices;
+  const displayOrgs = getOrganizations();
+  const displayVehicles = getVehicles();
+  const displayDevices = getDevices();
   const displayLiveData = demoLiveData;
   const hasApiError = false;
 
-  const onlineVehicles = displayLiveData.filter(
-    (v: any) => v.movementStatus === "running" || v.movementStatus === "idle"
+  const onlineVehicles = displayVehicles.filter(
+    (v: any) => v.status === "online"
   ).length;
   const offlineVehicles = displayVehicles.length - onlineVehicles;
 
@@ -201,12 +186,13 @@ export default function DashboardPage() {
   const filteredVehicles = useMemo(() => {
     if (!selectedOrgId) return [];
     return uiVehicles.filter((vehicle) => {
-      const raw = displayVehicles.find((item: any) =>
+      const raw: any = displayVehicles.find((item: any) =>
         (item.vehicleNumber || item.registrationNumber || item._id) === vehicle.id
       );
-      const orgId = typeof raw?.organizationId === "string"
+      if (!raw) return false;
+      const orgId = typeof raw.organizationId === "string"
         ? raw.organizationId
-        : raw?.organizationId?._id;
+        : raw.organizationId?._id;
       return orgId === selectedOrgId;
     });
   }, [displayVehicles, uiVehicles, selectedOrgId]);
@@ -227,7 +213,7 @@ export default function DashboardPage() {
     <div className="space-y-8 pb-10">
       <div className="flex justify-between items-end">
         <div>
-          <h1 className="text-3xl font-black text-gray-900 tracking-tight">GPS superAdmin Dashboard</h1>
+          <h1 className="text-3xl font-black text-gray-900 tracking-tight">GPS Admin Dashboard</h1>
           <p className="text-gray-500 font-bold mt-1">Real-time overview of your fleet and devices.</p>
         </div>
         <div className="flex gap-3 items-center">
@@ -236,7 +222,7 @@ export default function DashboardPage() {
             className="px-4 py-2 rounded-xl text-xs font-black flex items-center gap-2 border uppercase tracking-widest bg-blue-600 text-white border-blue-600 hover:bg-blue-700"
           >
             <Plus className="h-4 w-4" />
-            Add Organization
+            Add Sub-Organization
           </button>
           <div className={`px-4 py-2 rounded-xl text-xs font-black flex items-center gap-2 border uppercase tracking-widest ${
             hasApiError 
@@ -261,24 +247,28 @@ export default function DashboardPage() {
           value={displayOrgs.length}
           icon={<Users size={20} />}
           color="blue"
+          onClick={() => router.push("/admin/organizations")}
         />
         <StatCard
           title="Total Vehicles"
           value={displayVehicles.length}
           icon={<Car size={20} />}
           color="orange"
+          onClick={() => router.push("/admin/vehicles")}
         />
         <StatCard
           title="GPS Devices"
           value={displayDevices.length}
           icon={<Radio size={20} />}
           color="purple"
+          onClick={() => router.push("/admin/gps-devices")}
         />
         <StatCard
           title="Online Vehicles"
           value={onlineVehicles}
           icon={<Activity size={20} />}
           color="green"
+          onClick={() => router.push("/admin/vehicles?filter=online")}
         />
       </div>
 
@@ -390,7 +380,7 @@ export default function DashboardPage() {
   );
 }
 
-function StatCard({ title, value, icon, color }: any) {
+function StatCard({ title, value, icon, color, onClick }: any) {
   const colors: any = {
     blue: "bg-blue-600 shadow-blue-200",
     orange: "bg-orange-500 shadow-orange-200",
@@ -399,7 +389,10 @@ function StatCard({ title, value, icon, color }: any) {
   };
 
   return (
-    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between">
+    <button
+      onClick={onClick}
+      className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between hover:shadow-md transition-shadow cursor-pointer text-left w-full"
+    >
       <div className="flex justify-between items-start mb-4">
         <div className={`p-3 rounded-xl shadow-lg text-white ${colors[color]}`}>
           {icon}
@@ -409,7 +402,7 @@ function StatCard({ title, value, icon, color }: any) {
         <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{title}</p>
         <h3 className="text-2xl font-black text-gray-900 mt-1">{value}</h3>
       </div>
-    </div>
+    </button>
   );
 }
 

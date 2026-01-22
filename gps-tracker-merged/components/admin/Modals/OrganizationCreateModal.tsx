@@ -48,7 +48,7 @@ export default function OrganizationCreateModal({
         <div className="flex items-center justify-between p-6 border-b border-gray-100 bg-gray-50/50">
           <div>
             <h2 className="text-xl font-black text-gray-900">
-              Create Organization
+              Add Sub-Organization
             </h2>
             <p className="text-sm text-gray-500 font-medium">
               Add organization details and set admin access.
@@ -139,13 +139,13 @@ export default function OrganizationCreateModal({
               <div>
                 <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-1.5 flex items-center gap-2">
                   <Lock size={14} className="text-blue-500" />
-                  Admin Password
+                  Password
                 </label>
                 <input
                   required
                   type="password"
                   className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-bold text-gray-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
-                  placeholder="Set admin password"
+                  placeholder="Set password"
                   value={formData.password}
                   onChange={(e) =>
                     setFormData({ ...formData, password: e.target.value })
@@ -171,7 +171,7 @@ export default function OrganizationCreateModal({
               {isSaving && (
                 <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
               )}
-              Create Organization
+              Add Sub-Organization
             </button>
           </div>
         </form>

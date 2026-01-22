@@ -15,15 +15,15 @@ interface TableProps {
 export default function Table({ columns, data, loading, variant = "light" }: TableProps) {
   const isDark = variant === "dark";
   const containerClass = isDark
-    ? "rounded-2xl border border-slate-800/80 bg-slate-900/60 shadow-[0_20px_60px_-40px_rgba(15,23,42,0.8)]"
-    : "rounded-2xl border border-slate-200 bg-white shadow-sm";
+    ? "rounded-xl border border-[#1E293B] bg-[#111827] shadow-[0_8px_24px_rgba(0,0,0,0.4)]"
+    : "rounded-xl border border-[#1E293B] bg-[#111827] shadow-[0_8px_24px_rgba(0,0,0,0.4)]";
   const headerClass = isDark
-    ? "border-b border-slate-800 bg-slate-900/80 text-slate-400"
-    : "border-b border-slate-200 bg-slate-50 text-slate-500";
-  const cellTextClass = isDark ? "text-slate-100" : "text-slate-900";
-  const hoverClass = isDark ? "hover:bg-slate-800/60" : "hover:bg-slate-50";
-  const emptyClass = isDark ? "text-slate-400" : "text-slate-400";
-  const skeletonClass = isDark ? "bg-slate-800/80" : "bg-slate-100";
+    ? "border-b border-[#1E293B] bg-[#020617] text-[#9CA3AF]"
+    : "border-b border-[#1E293B] bg-[#020617] text-[#9CA3AF]";
+  const cellTextClass = isDark ? "text-[#E5E7EB]" : "text-[#E5E7EB]";
+  const hoverClass = isDark ? "hover:bg-[#020617]" : "hover:bg-[#020617]";
+  const emptyClass = isDark ? "text-[#9CA3AF]" : "text-[#9CA3AF]";
+  const skeletonClass = isDark ? "bg-[#020617]" : "bg-[#020617]";
 
   if (loading) {
     return (
@@ -64,7 +64,7 @@ export default function Table({ columns, data, loading, variant = "light" }: Tab
           {data.map((row, rowIdx) => (
             <tr
               key={rowIdx}
-              className={`border-b ${isDark ? "border-slate-800/70" : "border-slate-100"} ${hoverClass} transition-colors`}
+              className={`border-b ${isDark ? "border-[#1E293B]" : "border-[#1E293B]"} ${hoverClass} transition-colors`}
             >
               {columns.map((col, colIdx) => (
                 <td

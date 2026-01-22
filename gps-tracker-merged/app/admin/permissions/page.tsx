@@ -5,20 +5,6 @@ const defaultActions = ["create", "read", "update", "delete"];
 
 const demoPermissions: PermissionRecord[] = [
   {
-    id: "perm_superadmin",
-    role: "superadmin",
-    hierarchy: 4,
-    modules: {
-      organizations: ["create", "read", "update", "delete"],
-      users: ["create", "read", "update", "delete"],
-      vehicle: ["create", "read", "update", "delete"],
-      gpsDevice: ["create", "read", "update", "delete"],
-      deviceMapping: ["create", "read", "update", "delete"],
-      gpsLiveData: ["create", "read", "update", "delete"],
-      gpsHistory: ["create", "read", "update", "delete"],
-    },
-  },
-  {
     id: "perm_admin",
     role: "admin",
     hierarchy: 3,
@@ -42,6 +28,20 @@ const demoPermissions: PermissionRecord[] = [
       vehicle: ["create", "read", "update"],
       gpsDevice: ["read"],
       deviceMapping: ["read"],
+      gpsLiveData: ["read"],
+      gpsHistory: ["read"],
+    },
+  },
+  {
+    id: "perm_driver",
+    role: "driver",
+    hierarchy: 1,
+    modules: {
+      organizations: [],
+      users: [],
+      vehicle: ["read"],
+      gpsDevice: [],
+      deviceMapping: [],
       gpsLiveData: ["read"],
       gpsHistory: ["read"],
     },
@@ -78,7 +78,7 @@ const buildModulesForRole = (
 
 const PermissionsForm = () => {
   const [permissionRecords, setPermissionRecords] =
-    useState<PermissionRecord[]>(demoPermissions);
+    useState<PermissionRecord[]>(demoPermissions.filter(p => p.role !== "superadmin"));
   const [permissions, setPermissions] = useState<
     Record<string, { hierarchy?: number; modules: Record<string, string[]> }>
   >({});
