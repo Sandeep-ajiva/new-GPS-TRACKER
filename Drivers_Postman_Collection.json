@@ -1,0 +1,262 @@
+{
+  "info": {
+    "name": "GPS Tracker - Drivers Module",
+    "description": "Complete API collection for testing all driver endpoints",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Drivers",
+      "item": [
+        {
+          "name": "Create Driver",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "// Set variables if not already set\nif (!pm.environment.get('token')) {\n    pm.environment.set('token', 'your_jwt_token_here');\n}\nif (!pm.environment.get('organizationId')) {\n    pm.environment.set('organizationId', 'your_organization_id_here');\n}\nif (!pm.environment.get('baseUrl')) {\n    pm.environment.set('baseUrl', 'http://localhost:5000');\n}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"John\",\n  \"lastName\": \"Doe\",\n  \"phone\": \"+91-9876543210\",\n  \"email\": \"john.doe@example.com\",\n  \"licenseNumber\": \"DL-123456789\",\n  \"licenseExpiry\": \"2026-12-31\",\n  \"photo\": \"https://example.com/photos/john.jpg\",\n  \"address\": \"123 Main Street, New York, NY 10001\",\n  \"assignedVehicleId\": null\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/drivers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "drivers"
+              ]
+            },
+            "description": "Create a new driver. For superadmin, you can specify organizationId in the body. For admin/manager, organizationId is auto-assigned from their organization."
+          },
+          "response": []
+        },
+        {
+          "name": "Get All Drivers",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "if (!pm.environment.get('token')) {\n    pm.environment.set('token', 'your_jwt_token_here');\n}\nif (!pm.environment.get('baseUrl')) {\n    pm.environment.set('baseUrl', 'http://localhost:5000');\n}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/drivers?page=1&limit=10&status=active&search=john",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "drivers"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "Page number (default: 1)"
+                },
+                {
+                  "key": "limit",
+                  "value": "10",
+                  "description": "Items per page (default: 10)"
+                },
+                {
+                  "key": "status",
+                  "value": "active",
+                  "description": "Filter by status: active, inactive, blocked",
+                  "disabled": true
+                },
+                {
+                  "key": "search",
+                  "value": "john",
+                  "description": "Search by firstName, lastName, email, or phone",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Get all drivers with pagination and filtering. Non-superadmin users see only their organization's drivers."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Driver By ID",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "if (!pm.environment.get('token')) {\n    pm.environment.set('token', 'your_jwt_token_here');\n}\nif (!pm.environment.get('driverId')) {\n    pm.environment.set('driverId', 'paste_driver_id_here');\n}\nif (!pm.environment.get('baseUrl')) {\n    pm.environment.set('baseUrl', 'http://localhost:5000');\n}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/drivers/{{driverId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "drivers",
+                "{{driverId}}"
+              ]
+            },
+            "description": "Get a specific driver by ID. Returns 403 if driver belongs to another organization."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Driver",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "if (!pm.environment.get('token')) {\n    pm.environment.set('token', 'your_jwt_token_here');\n}\nif (!pm.environment.get('driverId')) {\n    pm.environment.set('driverId', 'paste_driver_id_here');\n}\nif (!pm.environment.get('baseUrl')) {\n    pm.environment.set('baseUrl', 'http://localhost:5000');\n}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Jonathan\",\n  \"lastName\": \"Smith\",\n  \"phone\": \"+91-9876543211\",\n  \"email\": \"jonathan.smith@example.com\",\n  \"licenseNumber\": \"DL-987654321\",\n  \"licenseExpiry\": \"2027-12-31\",\n  \"address\": \"456 Oak Avenue, Los Angeles, CA 90001\",\n  \"status\": \"active\",\n  \"availability\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/drivers/{{driverId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "drivers",
+                "{{driverId}}"
+              ]
+            },
+            "description": "Update driver details. Only admin, superadmin, and manager roles can update. Cannot update drivers from other organizations."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Driver",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "if (!pm.environment.get('token')) {\n    pm.environment.set('token', 'your_jwt_token_here');\n}\nif (!pm.environment.get('driverId')) {\n    pm.environment.set('driverId', 'paste_driver_id_here');\n}\nif (!pm.environment.get('baseUrl')) {\n    pm.environment.set('baseUrl', 'http://localhost:5000');\n}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/drivers/{{driverId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "drivers",
+                "{{driverId}}"
+              ]
+            },
+            "description": "Delete a driver. Only superadmin can delete drivers."
+          },
+          "response": []
+        }
+      ],
+      "description": "Driver management endpoints"
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5000",
+      "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "organizationId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "driverId",
+      "value": "",
+      "type": "string"
+    }
+  ]
+}

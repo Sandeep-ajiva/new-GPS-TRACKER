@@ -9,10 +9,13 @@ module.exports = function checkOrganization(req, res, next) {
             });
         }
 
+        // For superadmin, get organizationId from body or user
         if (user.role === "superadmin") {
+            req.orgId = req.body.organizationId || user.organizationId || null;
             return next();
         }
 
+        // For other roles, use user's organizationId
         if (!user.organizationId) {
             return res.status(403).json({
                 status: false,
@@ -20,6 +23,7 @@ module.exports = function checkOrganization(req, res, next) {
             });
         }
         req.orgId = user.organizationId
+        console.log(req.orgId);
         next()
     } catch (error) {
         console.error("checkOrganization error:", error);

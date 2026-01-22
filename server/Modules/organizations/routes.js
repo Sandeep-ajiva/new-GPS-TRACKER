@@ -7,13 +7,13 @@ const { handleLogoUpload } = require("../../middleware/multerUpload");
 
 const Controller = require('./controller')
 
-router.post(
-  "/",
-  requireAuth,
-  checkAuthorization(["superadmin"], "organizations", "create"),
-  handleLogoUpload,
-  Controller.createOrganization
-);
+// router.post(
+//   "/",
+//   requireAuth,
+//   checkAuthorization(["superadmin"], "organizations", "create"),
+//   handleLogoUpload,
+//   Controller.createOrganization
+// );
 
 router.get("/", requireAuth, checkAuthorization(["superadmin" ], "organizations", "read"), Controller.getAll);
 router.get("/sub", requireAuth, checkAuthorization(["superadmin" , "admin"], "organizations", "read"), Controller.getSubOrganizations);

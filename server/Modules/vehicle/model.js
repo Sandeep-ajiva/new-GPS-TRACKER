@@ -57,6 +57,7 @@ const vehicleSchema = {
   },
 
   runningStatus: {
+    
     type: String,
     enum: ["running", "idle", "stopped", "inactive"],
     default: "inactive",
@@ -69,10 +70,9 @@ const vehicleSchema = {
   },
 };
 
-const VehicleModel = new ajModel("Vehicle", vehicleSchema, {
-  indexes: [
-    { fields: { organizationId: 1, vehicleNumber: 1 }, options: { unique: true } }
-  ]
-}).getModel();
+const VehicleModel = new ajModel("Vehicle", vehicleSchema, null).getModel();
+
+// Add compound index after model creation
+VehicleModel.collection.createIndex({ organizationId: 1, vehicleNumber: 1 }, { unique: true });
 
 module.exports = VehicleModel;

@@ -1,7 +1,7 @@
 const GpsLiveData = require("./model");
 const GpsHistory = require("../gpsHistory/model");
 const GpsDevice = require("../gpsDevice/model");
-const VehicleDeviceMapping = require("../deviceMapping/model");
+const VehicleDeviceMapping = require("../vehicleMapping/model");
 const redisClient = require("../../config/redis");
 const { getIo } = require("../../socket");
 

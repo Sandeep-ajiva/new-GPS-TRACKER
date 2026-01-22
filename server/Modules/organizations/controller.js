@@ -95,78 +95,78 @@ const validateManagerData = async (data) => {
     await validator.validate()
 }
 
-exports.createOrganization = async (req, res) => {
-    try {
-        // Parse nested objects from form-data
-        if (typeof req.body.address === "string") {
-            req.body.address = JSON.parse(req.body.address);
-        }
+// exports.createOrganization = async (req, res) => {
+//     try {
+//         // Parse nested objects from form-data
+//         if (typeof req.body.address === "string") {
+//             req.body.address = JSON.parse(req.body.address);
+//         }
 
-        if (typeof req.body.geo === "string") {
-            req.body.geo = JSON.parse(req.body.geo);
-        }
+//         if (typeof req.body.geo === "string") {
+//             req.body.geo = JSON.parse(req.body.geo);
+//         }
 
-        if (typeof req.body.settings === "string") {
-            req.body.settings = JSON.parse(req.body.settings);
-        }
+//         if (typeof req.body.settings === "string") {
+//             req.body.settings = JSON.parse(req.body.settings);
+//         }
 
-        await validateOrganizationData(req.body);
-        validateAddressData(req.body.address);
-        validateGeoData(req.body.geo);
-        validateSettingsData(req.body.settings);
+//         await validateOrganizationData(req.body);
+//         validateAddressData(req.body.address);
+//         validateGeoData(req.body.geo);
+//         validateSettingsData(req.body.settings);
 
-        const { name, organizationType, email, phone, address, geo, settings } = req.body;
+//         const { name, organizationType, email, phone, address, geo, settings } = req.body;
 
-        // Get logo from file upload or body
-        let logo = null;
-        if (req.file) {
-            logo = `/uploads/logos/${req.file.filename}`;
-        } else if (req.body.logo) {
-            logo = req.body.logo;
-        }
+//         // Get logo from file upload or body
+//         let logo = null;
+//         if (req.file) {
+//             logo = `/uploads/logos/${req.file.filename}`;
+//         } else if (req.body.logo) {
+//             logo = req.body.logo;
+//         }
 
-        const existingOrg = await Organization.findOne({
-            $or: [{ email }, { phone }]
-        })
-        if (existingOrg) {
-            return res.status(409).json({
-                status: false,
-                message: "Organization with this email or phone already exists"
-            })
-        }
+//         const existingOrg = await Organization.findOne({
+//             $or: [{ email }, { phone }]
+//         })
+//         if (existingOrg) {
+//             return res.status(409).json({
+//                 status: false,
+//                 message: "Organization with this email or phone already exists"
+//             })
+//         }
 
-        // Generate path (for hierarchical organization)
-        const path = `/${name.toLowerCase().replace(/\s+/g, '-')}`;
+//         // Generate path (for hierarchical organization)
+//         const path = `/${name.toLowerCase().replace(/\s+/g, '-')}`;
 
-        const organization = await Organization.create({
-            name,
-            organizationType,
-            email: email.toLowerCase(),
-            phone: phone.trim(),
-            logo: logo,
-            address: address || {},
-            geo: geo || { timezone: "Asia/Kolkata" },
-            settings: settings || {},
-            parentOrganizationId: null,
-            path,
-            adminUser: null,
-            createdBy: req.user._id,
-            status: "active"
-        })
+//         const organization = await Organization.create({
+//             name,
+//             organizationType,
+//             email: email.toLowerCase(),
+//             phone: phone.trim(),
+//             logo: logo,
+//             address: address || {},
+//             geo: geo || { timezone: "Asia/Kolkata" },
+//             settings: settings || {},
+//             parentOrganizationId: null,
+//             path,
+//             adminUser: null,
+//             createdBy: req.user._id,
+//             status: "active"
+//         })
 
-        return res.status(201).json({
-            status: true,
-            message: "Organization Created Successfully",
-            data: organization
-        })
-    } catch (error) {
-        console.error("Create Organization Error:", error);
-        return res.status(error.status || 500).json({
-            status: false,
-            message: error.message || "Internal server error",
-        });
-    }
-};
+//         return res.status(201).json({
+//             status: true,
+//             message: "Organization Created Successfully",
+//             data: organization
+//         })
+//     } catch (error) {
+//         console.error("Create Organization Error:", error);
+//         return res.status(error.status || 500).json({
+//             status: false,
+//             message: error.message || "Internal server error",
+//         });
+//     }
+// };
 
 exports.getAll = async (req, res) => {
     try {
