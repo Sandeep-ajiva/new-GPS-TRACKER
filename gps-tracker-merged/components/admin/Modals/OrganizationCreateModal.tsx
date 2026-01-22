@@ -75,7 +75,7 @@ export default function OrganizationCreateModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
+    <div className="fixed inset-0 bg-black/50 z-100 flex items-center justify-center p-4 backdrop-blur-sm">
       <div className={`${isDark ? "bg-slate-900/95 border border-slate-800 text-slate-100" : "bg-white"} rounded-2xl w-full max-w-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200`}>
         <div className={`flex items-center justify-between p-6 ${isDark ? "border-b border-slate-800 bg-slate-950/60" : "border-b border-gray-100 bg-gray-50/50"}`}>
           <div>

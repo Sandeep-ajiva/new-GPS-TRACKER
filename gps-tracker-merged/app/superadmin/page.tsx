@@ -452,7 +452,7 @@ export default function DashboardPage() {
             )}
           </div>
 
-          <div className="h-[420px] rounded-2xl border border-slate-800/80 bg-slate-900/60 p-1 shadow-[0_20px_60px_-40px_rgba(15,23,42,0.8)]">
+          <div className="h-105 rounded-2xl border border-slate-800/80 bg-slate-900/60 p-1 shadow-[0_20px_60px_-40px_rgba(15,23,42,0.8)]">
             {selectedOrg ? (
               <OrganizationMap
                 organizations={orgPoints}
