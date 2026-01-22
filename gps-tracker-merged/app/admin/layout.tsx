@@ -3,6 +3,8 @@ import React from "react";
 import AdminLayout from "@/components/admin/Layout/AdminLayout";
 import AuthGuard from "@/components/admin/Auth/AuthGuard";
 
+import { PopupProvider } from "./Helpers/PopupContext";
+
 export default function DashboardLayout({
     children,
 }: {
@@ -10,7 +12,9 @@ export default function DashboardLayout({
 }) {
     return (
         <AuthGuard>
-            <AdminLayout>{children}</AdminLayout>
+            <PopupProvider>
+                <AdminLayout>{children}</AdminLayout>
+            </PopupProvider>
         </AuthGuard>
     );
 }

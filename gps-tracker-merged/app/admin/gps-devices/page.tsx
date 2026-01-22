@@ -7,18 +7,21 @@ import { Plus, Edit, Trash2, Filter } from "lucide-react";
 import { toast } from "sonner";
 import { getDevices, getVehicles, setDevices, setVehicles, type GPSDevice } from "@/lib/admin-dummy-data";
 
+import { validators, validateForm } from "../Helpers/validators";
+import { usePopups } from "../Helpers/PopupContext";
+import { capitalizeFirstLetter } from "../Helpers/CapitalizeFirstLetter";
+
 export default function GpsDevicesPage() {
+    const { openPopup, closePopup, isPopupOpen } = usePopups();
     const [devices, setDevicesState] = useState(getDevices());
     const [vehicles] = useState(getVehicles());
     const [showFilters, setShowFilters] = useState(false);
-    const [isAssignVehicleModalOpen, setIsAssignVehicleModalOpen] = useState(false);
     const [selectedDeviceForAssignment, setSelectedDeviceForAssignment] = useState<any>(null);
     const [filters, setFilters] = useState({
         assigned: "",
         status: ""
     });
 
-    const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingDevice, setEditingDevice] = useState<any>(null);
     const [formData, setFormData] = useState({
         imei: "",
@@ -28,6 +31,7 @@ export default function GpsDevicesPage() {
         status: "active" as "active" | "inactive",
         assignedVehicleId: null as string | null
     });
+    const [errors, setErrors] = useState<any>({});
 
     const filteredDevices = useMemo(() => {
         let filtered = devices;
@@ -44,6 +48,22 @@ export default function GpsDevicesPage() {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+
+        // Use validators
+        const validationRules = {
+            imei: [validators.required],
+            simNumber: [validators.required],
+            model: [validators.required]
+        };
+
+        const { isValid, errors: validationErrors } = validateForm(formData, validationRules);
+
+        if (!isValid) {
+            setErrors(validationErrors);
+            toast.error("Please fix form errors");
+            return;
+        }
+
         if (editingDevice) {
             const updated = devices.map((device) =>
                 device._id === editingDevice._id ? { ...device, ...formData } : device
@@ -73,7 +93,8 @@ export default function GpsDevicesPage() {
     const openCreateModal = () => {
         setEditingDevice(null);
         setFormData({ imei: "", simNumber: "", model: "", firmwareVersion: "", status: "active", assignedVehicleId: null });
-        setIsModalOpen(true);
+        setErrors({});
+        openPopup("deviceModal");
     };
 
     const openEditModal = (device: any) => {
@@ -86,11 +107,12 @@ export default function GpsDevicesPage() {
             status: device.status || "active",
             assignedVehicleId: device.assignedVehicleId || null
         });
-        setIsModalOpen(true);
+        setErrors({});
+        openPopup("deviceModal");
     };
 
     const closeModal = () => {
-        setIsModalOpen(false);
+        closePopup("deviceModal");
         setEditingDevice(null);
     };
 
@@ -109,7 +131,7 @@ export default function GpsDevicesPage() {
 
     const openAssignVehicleModal = (device: any) => {
         setSelectedDeviceForAssignment(device);
-        setIsAssignVehicleModalOpen(true);
+        openPopup("assignVehicleModal");
     };
 
     const handleAssignVehicle = (vehicleId: string) => {
@@ -133,7 +155,7 @@ export default function GpsDevicesPage() {
         setDevices(updatedDevices);
         setVehicles(updatedVehicles);
 
-        setIsAssignVehicleModalOpen(false);
+        closePopup("assignVehicleModal");
         setSelectedDeviceForAssignment(null);
         toast.success("Vehicle assigned successfully");
     };
@@ -150,7 +172,7 @@ export default function GpsDevicesPage() {
             accessor: (row: any) => (
                 <span className={`px-2 py-1 rounded-lg text-xs font-bold uppercase ${row.status === "active" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
                     }`}>
-                    {row.status}
+                    {capitalizeFirstLetter(row.status)}
                 </span>
             )
         },
@@ -247,7 +269,7 @@ export default function GpsDevicesPage() {
 
                 <Table columns={columns} data={filteredDevices} loading={false} />
 
-                {isModalOpen && (
+                {isPopupOpen("deviceModal") && (
                     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm">
                         <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
                             <h2 className="text-xl font-black text-slate-900">{editingDevice ? "Edit Device" : "New Device"}</h2>
@@ -255,19 +277,22 @@ export default function GpsDevicesPage() {
                             <form onSubmit={handleSubmit} className="space-y-4">
                                 <div>
                                     <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">IMEI</label>
-                                    <input type="text" required className="w-full rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
+                                    <input type="text" className={`w-full rounded-xl border ${errors.imei ? 'border-red-500' : 'border-slate-200'} p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10`}
                                         value={formData.imei} onChange={e => setFormData({ ...formData, imei: e.target.value })} />
+                                    {errors.imei && <p className="text-red-500 text-[10px] mt-1 font-bold">{errors.imei}</p>}
                                 </div>
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
                                         <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">SIM Number</label>
-                                        <input type="text" className="w-full rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
+                                        <input type="text" className={`w-full rounded-xl border ${errors.simNumber ? 'border-red-500' : 'border-slate-200'} p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10`}
                                             value={formData.simNumber} onChange={e => setFormData({ ...formData, simNumber: e.target.value })} />
+                                        {errors.simNumber && <p className="text-red-500 text-[10px] mt-1 font-bold">{errors.simNumber}</p>}
                                     </div>
                                     <div>
                                         <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Model</label>
-                                        <input type="text" className="w-full rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
+                                        <input type="text" className={`w-full rounded-xl border ${errors.model ? 'border-red-500' : 'border-slate-200'} p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10`}
                                             value={formData.model} onChange={e => setFormData({ ...formData, model: e.target.value })} />
+                                        {errors.model && <p className="text-red-500 text-[10px] mt-1 font-bold">{errors.model}</p>}
                                     </div>
                                 </div>
                                 <div className="grid grid-cols-2 gap-4">
@@ -325,7 +350,7 @@ export default function GpsDevicesPage() {
                     </div>
                 )}
 
-                {isAssignVehicleModalOpen && (
+                {isPopupOpen("assignVehicleModal") && (
                     <div className="fixed inset-0 bg-slate-950/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
                         <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl border border-slate-200">
                             <h2 className="text-xl font-bold mb-4">Assign Vehicle</h2>
@@ -355,7 +380,7 @@ export default function GpsDevicesPage() {
                                 <button
                                     type="button"
                                     onClick={() => {
-                                        setIsAssignVehicleModalOpen(false);
+                                        closePopup("assignVehicleModal");
                                         setSelectedDeviceForAssignment(null);
                                     }}
                                     className="flex-1 py-2.5 bg-slate-100 text-slate-700 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-slate-200"

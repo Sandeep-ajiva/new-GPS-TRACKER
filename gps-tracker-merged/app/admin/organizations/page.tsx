@@ -7,18 +7,22 @@ import { Plus, Edit, Trash2, Filter } from "lucide-react";
 import { toast } from "sonner";
 import { getOrganizations, getRootOrganization, setOrganizations, type Organization } from "@/lib/admin-dummy-data";
 
+import { validators, validateForm } from "../Helpers/validators";
+import { usePopups } from "../Helpers/PopupContext";
+import { capitalizeFirstLetter } from "../Helpers/CapitalizeFirstLetter";
+
 export default function OrganizationsPage() {
+    const { openPopup, closePopup, isPopupOpen } = usePopups();
     const [organizations, setOrganizationsState] = useState(getOrganizations());
     const rootOrg = getRootOrganization();
     const hasRootOrg = !!rootOrg;
-    const [isModalOpen, setIsModalOpen] = useState(false);
     const [showFilters, setShowFilters] = useState(false);
     const [filters, setFilters] = useState({
         name: "",
         status: "",
         type: ""
     });
-    const [editingOrg, setEditingOrg] = useState<any>(null);
+    const [editingOrg, setEditingOrg] = useState<Organization | null>(null);
     const [formData, setFormData] = useState({
         name: "",
         email: "",
@@ -26,6 +30,7 @@ export default function OrganizationsPage() {
         address: "",
         status: "active" as "active" | "inactive"
     });
+    const [errors, setErrors] = useState<any>({});
 
     const filteredOrganizations = useMemo(() => {
         let filtered = organizations;
@@ -51,6 +56,22 @@ export default function OrganizationsPage() {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+
+        // Use validators
+        const validationRules = {
+            name: [validators.required],
+            email: [validators.required, validators.email],
+            phone: [validators.required]
+        };
+
+        const { isValid, errors: validationErrors } = validateForm(formData, validationRules);
+
+        if (!isValid) {
+            setErrors(validationErrors);
+            toast.error("Please fix form errors");
+            return;
+        }
+
         if (editingOrg) {
             const updated = organizations.map((org) =>
                 org._id === editingOrg._id ? { ...org, ...formData } : org
@@ -89,7 +110,8 @@ export default function OrganizationsPage() {
         }
         setEditingOrg(null);
         setFormData({ name: "", email: "", phone: "", address: "", status: "active" });
-        setIsModalOpen(true);
+        setErrors({});
+        openPopup("orgModal");
     };
 
     const openEditModal = (org: any) => {
@@ -101,11 +123,12 @@ export default function OrganizationsPage() {
             address: org.address || "",
             status: org.status || "active"
         });
-        setIsModalOpen(true);
+        setErrors({});
+        openPopup("orgModal");
     };
 
     const closeModal = () => {
-        setIsModalOpen(false);
+        closePopup("orgModal");
         setEditingOrg(null);
     };
 
@@ -135,7 +158,7 @@ export default function OrganizationsPage() {
             header: "Status", accessor: (row: any) => (
                 <span className={`px-2 py-1 rounded-lg text-xs font-bold uppercase ${row.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
                     }`}>
-                    {row.status}
+                    {capitalizeFirstLetter(row.status)}
                 </span>
             )
         },
@@ -224,25 +247,28 @@ export default function OrganizationsPage() {
 
                 <Table columns={columns} data={filteredOrganizations} loading={false} />
 
-                {isModalOpen && (
+                {isPopupOpen("orgModal") && (
                     <div className="fixed inset-0 bg-slate-950/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
                         <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl border border-slate-200">
                             <h2 className="text-xl font-bold mb-4">{editingOrg ? "Edit Sub-Organization" : "New Sub-Organization"}</h2>
                             <form onSubmit={handleSubmit} className="space-y-4">
                                 <div>
                                     <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Name</label>
-                                    <input type="text" required className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-slate-900/10 outline-none"
+                                    <input type="text" className={`w-full border ${errors.name ? 'border-red-500' : 'border-slate-200'} rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-slate-900/10 outline-none`}
                                         value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} />
+                                    {errors.name && <p className="text-red-500 text-[10px] mt-1 font-bold">{errors.name}</p>}
                                 </div>
                                 <div>
                                     <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Email</label>
-                                    <input type="email" required className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-slate-900/10 outline-none"
+                                    <input type="email" className={`w-full border ${errors.email ? 'border-red-500' : 'border-slate-200'} rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-slate-900/10 outline-none`}
                                         value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })} />
+                                    {errors.email && <p className="text-red-500 text-[10px] mt-1 font-bold">{errors.email}</p>}
                                 </div>
                                 <div>
                                     <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Phone</label>
-                                    <input type="text" required className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-slate-900/10 outline-none"
+                                    <input type="text" className={`w-full border ${errors.phone ? 'border-red-500' : 'border-slate-200'} rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-slate-900/10 outline-none`}
                                         value={formData.phone} onChange={e => setFormData({ ...formData, phone: e.target.value })} />
+                                    {errors.phone && <p className="text-red-500 text-[10px] mt-1 font-bold">{errors.phone}</p>}
                                 </div>
                                 <div>
                                     <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Address</label>

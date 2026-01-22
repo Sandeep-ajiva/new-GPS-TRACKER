@@ -43,7 +43,7 @@ export type User = {
   name: string;
   email: string;
   password?: string;
-  role: "admin" | "manager" | "driver";
+  role: "admin" | "manager" | "driver" | "superadmin";
   organizationId?: string | null;
   status?: "active" | "inactive";
 };

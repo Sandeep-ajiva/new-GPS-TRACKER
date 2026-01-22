@@ -8,15 +8,18 @@ import { Plus, Edit, Trash2, Filter } from "lucide-react";
 import { toast } from "sonner";
 import { getVehicles, getOrganizations, getDevices, setVehicles, setDevices, type Vehicle } from "@/lib/admin-dummy-data";
 
+import { validators, validateForm } from "../Helpers/validators";
+import { usePopups } from "../Helpers/PopupContext";
+import { capitalizeFirstLetter } from "../Helpers/CapitalizeFirstLetter";
+
 function VehiclesContent() {
+    const { openPopup, closePopup, isPopupOpen } = usePopups();
     const searchParams = useSearchParams();
     const filterParam = searchParams.get("filter");
     const [vehicles, setVehiclesState] = useState(getVehicles());
     const [organizations] = useState(getOrganizations());
     const [devices] = useState(getDevices());
-    const [isModalOpen, setIsModalOpen] = useState(false);
     const [showFilters, setShowFilters] = useState(false);
-    const [isAssignDeviceModalOpen, setIsAssignDeviceModalOpen] = useState(false);
     const [selectedVehicleForAssignment, setSelectedVehicleForAssignment] = useState<any>(null);
     const [filters, setFilters] = useState({
         organizationId: "",
@@ -35,6 +38,7 @@ function VehiclesContent() {
         status: "active" as "active" | "inactive" | "online" | "offline",
         assignedDeviceId: "" as string | null
     });
+    const [errors, setErrors] = useState<any>({});
 
     const filteredVehicles = useMemo(() => {
         let filtered = vehicles;
@@ -62,6 +66,22 @@ function VehiclesContent() {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+
+        // Use validators
+        const validationRules = {
+            organizationId: [validators.required],
+            vehicleNumber: [validators.required],
+            vehicleType: [validators.required]
+        };
+
+        const { isValid, errors: validationErrors } = validateForm(formData, validationRules);
+
+        if (!isValid) {
+            setErrors(validationErrors);
+            toast.error("Please fix form errors");
+            return;
+        }
+
         if (editingVehicle) {
             const updated = vehicles.map((vehicle) =>
                 vehicle._id === editingVehicle._id ? { ...vehicle, ...formData } : vehicle
@@ -103,7 +123,8 @@ function VehiclesContent() {
             status: "active",
             assignedDeviceId: null
         });
-        setIsModalOpen(true);
+        setErrors({});
+        openPopup("vehicleModal");
     };
 
     const openEditModal = (vehicle: any) => {
@@ -119,11 +140,12 @@ function VehiclesContent() {
             status: vehicle.status || "active",
             assignedDeviceId: vehicle.assignedDeviceId || null
         });
-        setIsModalOpen(true);
+        setErrors({});
+        openPopup("vehicleModal");
     };
 
     const closeModal = () => {
-        setIsModalOpen(false);
+        closePopup("vehicleModal");
         setEditingVehicle(null);
     };
 
@@ -142,7 +164,7 @@ function VehiclesContent() {
 
     const openAssignDeviceModal = (vehicle: any) => {
         setSelectedVehicleForAssignment(vehicle);
-        setIsAssignDeviceModalOpen(true);
+        openPopup("assignDeviceModal");
     };
 
     const handleAssignDevice = (deviceId: string) => {
@@ -166,7 +188,7 @@ function VehiclesContent() {
         setVehicles(updatedVehicles);
         setDevices(updatedDevices);
 
-        setIsAssignDeviceModalOpen(false);
+        closePopup("assignDeviceModal");
         setSelectedVehicleForAssignment(null);
         toast.success("Device assigned successfully");
     };
@@ -175,7 +197,7 @@ function VehiclesContent() {
 
     const columns = [
         { header: "Number", accessor: "vehicleNumber" },
-        { header: "Type", accessor: (row: any) => <span className="capitalize">{row.vehicleType}</span> },
+        { header: "Type", accessor: (row: any) => <span className="capitalize">{capitalizeFirstLetter(row.vehicleType)}</span> },
         { header: "Model", accessor: "model" },
         { header: "Driver", accessor: (row: any) => row.driverName || "Unassigned" },
         {
@@ -195,7 +217,7 @@ function VehiclesContent() {
                 };
                 return (
                     <span className={`px-2 py-1 rounded-lg text-xs font-bold uppercase ${statusColors[row.status] || "bg-gray-100 text-gray-700"}`}>
-                        {row.status || "active"}
+                        {capitalizeFirstLetter(row.status || "active")}
                     </span>
                 );
             }
@@ -306,7 +328,7 @@ function VehiclesContent() {
 
                 <Table columns={columns} data={filteredVehicles} loading={false} />
 
-                {isModalOpen && (
+                {isPopupOpen("vehicleModal") && (
                     <div className="fixed inset-0 bg-slate-950/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
                         <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl border border-slate-200">
                             <h2 className="text-xl font-bold mb-4">{editingVehicle ? "Edit Vehicle" : "New Vehicle"}</h2>
@@ -314,13 +336,14 @@ function VehiclesContent() {
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
                                         <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Organization</label>
-                                        <select required className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-slate-900/10 outline-none"
+                                        <select className={`w-full border ${errors.organizationId ? 'border-red-500' : 'border-slate-200'} rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-slate-900/10 outline-none`}
                                             value={formData.organizationId} onChange={e => setFormData({ ...formData, organizationId: e.target.value })}>
                                             <option value="">Select Organization</option>
                                             {organizations.map((org: any) => (
                                                 <option key={org._id} value={org._id}>{org.name}</option>
                                             ))}
                                         </select>
+                                        {errors.organizationId && <p className="text-red-500 text-[10px] mt-1 font-bold">{errors.organizationId}</p>}
                                     </div>
                                     <div>
                                         <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Vehicle Type</label>
@@ -336,8 +359,9 @@ function VehiclesContent() {
                                 </div>
                                 <div>
                                     <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Vehicle Number</label>
-                                    <input type="text" required className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-slate-900/10 outline-none"
+                                    <input type="text" className={`w-full border ${errors.vehicleNumber ? 'border-red-500' : 'border-slate-200'} rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-slate-900/10 outline-none`}
                                         value={formData.vehicleNumber} onChange={e => setFormData({ ...formData, vehicleNumber: e.target.value })} />
+                                    {errors.vehicleNumber && <p className="text-red-500 text-[10px] mt-1 font-bold">{errors.vehicleNumber}</p>}
                                 </div>
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
@@ -413,7 +437,7 @@ function VehiclesContent() {
                     </div>
                 )}
 
-                {isAssignDeviceModalOpen && (
+                {isPopupOpen("assignDeviceModal") && (
                     <div className="fixed inset-0 bg-slate-950/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
                         <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl border border-slate-200">
                             <h2 className="text-xl font-bold mb-4">Assign GPS Device</h2>
@@ -443,7 +467,7 @@ function VehiclesContent() {
                                 <button
                                     type="button"
                                     onClick={() => {
-                                        setIsAssignDeviceModalOpen(false);
+                                        closePopup("assignDeviceModal");
                                         setSelectedVehicleForAssignment(null);
                                     }}
                                     className="flex-1 py-2.5 bg-slate-100 text-slate-700 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-slate-200"

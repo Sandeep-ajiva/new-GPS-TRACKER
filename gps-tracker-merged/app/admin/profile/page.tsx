@@ -5,31 +5,60 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, Save, Upload, User, Mail, Building2 } from "lucide-react";
 import { toast } from "sonner";
 import { getAdminUser, getRootOrganization, setAdminUser } from "@/lib/admin-dummy-data";
+import { validators, validateForm } from "../Helpers/validators";
+import { saveSecureItem, getSecureItem } from "../Helpers/encryptionHelper";
+import { capitalizeFirstLetter } from "../Helpers/CapitalizeFirstLetter";
 
 export default function ProfilePage() {
     const router = useRouter();
-    const adminUser = getAdminUser();
+
+    // Use encryption helper to get data (simulated)
+    const secureUser = getSecureItem("admin_profile");
+    const adminUser = secureUser || getAdminUser();
     const rootOrg = getRootOrganization();
+
     const [formData, setFormData] = useState({
         name: adminUser.name,
         email: adminUser.email,
         organizationLogo: adminUser.organizationLogo || "",
     });
+    const [errors, setErrors] = useState<any>({});
     const [isSaving, setIsSaving] = useState(false);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+
+        // Use validators
+        const validationRules = {
+            name: [validators.required],
+            email: [validators.required, validators.email]
+        };
+
+        const { isValid, errors: validationErrors } = validateForm(formData, validationRules);
+
+        if (!isValid) {
+            setErrors(validationErrors);
+            toast.error("Please fix form errors");
+            return;
+        }
+
         setIsSaving(true);
-        
+
         setTimeout(() => {
-            setAdminUser({
+            const updatedUser = {
                 ...adminUser,
                 name: formData.name,
                 email: formData.email,
                 organizationLogo: formData.organizationLogo,
-            });
+            };
+
+            setAdminUser(updatedUser);
+            // Use encryption helper to save data (simulated)
+            saveSecureItem("admin_profile", updatedUser);
+
             setIsSaving(false);
-            toast.success("Profile updated successfully");
+            setErrors({});
+            toast.success("Profile updated successfully (Encrypted)");
         }, 500);
     };
 
@@ -71,7 +100,7 @@ export default function ProfilePage() {
                         </div>
                         <h2 className="text-lg font-black text-gray-900 uppercase tracking-widest">Admin Details</h2>
                     </div>
-                    
+
                     <div className="space-y-6">
                         <div>
                             <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-2">
@@ -80,13 +109,13 @@ export default function ProfilePage() {
                             </label>
                             <input
                                 type="text"
-                                required
                                 value={formData.name}
                                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                                className="w-full px-4 py-3 bg-gray-50 border-none rounded-xl text-sm font-bold focus:ring-2 focus:ring-blue-100 transition-all"
+                                className={`w-full px-4 py-3 bg-gray-50 border ${errors.name ? 'border-red-500' : 'border-none'} rounded-xl text-sm font-bold focus:ring-2 focus:ring-blue-100 transition-all`}
                             />
+                            {errors.name && <p className="text-red-500 text-[10px] mt-1 font-bold">{errors.name}</p>}
                         </div>
-                        
+
                         <div>
                             <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-2">
                                 <Mail size={14} className="text-blue-500" />
@@ -94,11 +123,11 @@ export default function ProfilePage() {
                             </label>
                             <input
                                 type="email"
-                                required
                                 value={formData.email}
                                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                                className="w-full px-4 py-3 bg-gray-50 border-none rounded-xl text-sm font-bold focus:ring-2 focus:ring-blue-100 transition-all"
+                                className={`w-full px-4 py-3 bg-gray-50 border ${errors.email ? 'border-red-500' : 'border-none'} rounded-xl text-sm font-bold focus:ring-2 focus:ring-blue-100 transition-all`}
                             />
+                            {errors.email && <p className="text-red-500 text-[10px] mt-1 font-bold">{errors.email}</p>}
                         </div>
                     </div>
                 </div>
@@ -111,14 +140,14 @@ export default function ProfilePage() {
                         </div>
                         <h2 className="text-lg font-black text-gray-900 uppercase tracking-widest">Organization Logo</h2>
                     </div>
-                    
+
                     <div className="space-y-6">
                         <div className="flex items-center gap-6">
                             <div className="w-32 h-32 bg-slate-100 rounded-xl flex items-center justify-center border-2 border-dashed border-slate-300 overflow-hidden">
                                 {formData.organizationLogo ? (
-                                    <img 
-                                        src={formData.organizationLogo} 
-                                        alt="Organization Logo" 
+                                    <img
+                                        src={formData.organizationLogo}
+                                        alt="Organization Logo"
                                         className="w-full h-full object-cover"
                                     />
                                 ) : (
@@ -128,7 +157,7 @@ export default function ProfilePage() {
                                     </div>
                                 )}
                             </div>
-                            
+
                             <div className="flex-1">
                                 <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">
                                     Upload Logo
@@ -150,7 +179,7 @@ export default function ProfilePage() {
                                 <p className="text-xs text-slate-500 mt-2">Recommended: 512x512px, PNG or JPG</p>
                             </div>
                         </div>
-                        
+
                         {formData.organizationLogo && (
                             <button
                                 type="button"
@@ -172,7 +201,7 @@ export default function ProfilePage() {
                             </div>
                             <h2 className="text-lg font-black text-gray-900 uppercase tracking-widest">Organization Info</h2>
                         </div>
-                        
+
                         <div className="space-y-3">
                             <div className="flex justify-between py-2 border-b border-gray-50">
                                 <span className="text-xs font-semibold text-gray-400">Organization Name</span>
@@ -188,10 +217,9 @@ export default function ProfilePage() {
                             </div>
                             <div className="flex justify-between py-2">
                                 <span className="text-xs font-semibold text-gray-400">Status</span>
-                                <span className={`text-xs font-bold uppercase px-2 py-1 rounded ${
-                                    rootOrg.status === "active" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
-                                }`}>
-                                    {rootOrg.status}
+                                <span className={`text-xs font-bold uppercase px-2 py-1 rounded ${rootOrg.status === "active" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+                                    }`}>
+                                    {capitalizeFirstLetter(rootOrg.status)}
                                 </span>
                             </div>
                         </div>

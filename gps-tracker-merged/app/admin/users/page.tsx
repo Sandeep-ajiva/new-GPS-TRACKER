@@ -7,7 +7,12 @@ import { Plus, Edit, Trash2, Filter } from "lucide-react";
 import { toast } from "sonner";
 import { getUsers, getOrganizations, setUsers, type User } from "@/lib/admin-dummy-data";
 
+import { validators, validateForm } from "../Helpers/validators";
+import { usePopups } from "../Helpers/PopupContext";
+import { capitalizeFirstLetter } from "../Helpers/CapitalizeFirstLetter";
+
 export default function UsersPage() {
+    const { openPopup, closePopup, isPopupOpen } = usePopups();
     const [users, setUsersState] = useState(getUsers());
     const [organizations] = useState(getOrganizations());
     const [showFilters, setShowFilters] = useState(false);
@@ -16,16 +21,16 @@ export default function UsersPage() {
         organizationId: ""
     });
 
-    const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<any>(null);
     const [formData, setFormData] = useState({
         name: "",
         email: "",
         password: "",
-        role: "admin" as "admin" | "manager" | "driver",
+        role: "admin" as "admin" | "manager" | "driver" | "superadmin",
         organizationId: "",
         status: "active" as "active" | "inactive"
     });
+    const [errors, setErrors] = useState<any>({});
 
     const filteredUsers = useMemo(() => {
         let filtered = users;
@@ -40,11 +45,28 @@ export default function UsersPage() {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+
+        // Use validators
+        const validationRules = {
+            name: [validators.required],
+            email: [validators.required, validators.email],
+            password: editingUser ? [] : [validators.required, validators.minLength(6)]
+        };
+
+        const { isValid, errors: validationErrors } = validateForm(formData, validationRules);
+
+        if (!isValid) {
+            setErrors(validationErrors);
+            toast.error("Please fix form errors");
+            return;
+        }
+
         // Prevent SuperAdmin from being added
         if (formData.role === "superadmin") {
             toast.error("SuperAdmin role cannot be added");
             return;
         }
+
         if (editingUser) {
             const updated = users.map((user) =>
                 user._id === editingUser._id
@@ -75,7 +97,8 @@ export default function UsersPage() {
     const openCreateModal = () => {
         setEditingUser(null);
         setFormData({ name: "", email: "", password: "", role: "admin", organizationId: "", status: "active" });
-        setIsModalOpen(true);
+        setErrors({});
+        openPopup("userModal");
     };
 
     const openEditModal = (user: any) => {
@@ -88,11 +111,12 @@ export default function UsersPage() {
             organizationId: user.organizationId?._id || user.organizationId || "",
             status: user.status || "active"
         });
-        setIsModalOpen(true);
+        setErrors({});
+        openPopup("userModal");
     };
 
     const closeModal = () => {
-        setIsModalOpen(false);
+        closePopup("userModal");
         setEditingUser(null);
     };
 
@@ -121,12 +145,12 @@ export default function UsersPage() {
             header: "Role",
             accessor: (row: any) => (
                 <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-slate-700">
-                    {row.role}
+                    {capitalizeFirstLetter(row.role)}
                 </span>
             )
         },
-        { 
-            header: "Organization", 
+        {
+            header: "Organization",
             accessor: (row: any) => {
                 if (!row.organizationId) return "Global";
                 const org = organizations.find(o => o._id === row.organizationId);
@@ -135,10 +159,9 @@ export default function UsersPage() {
         },
         {
             header: "Status", accessor: (row: any) => (
-                <span className={`px-2 py-1 rounded-lg text-xs font-bold uppercase ${
-                    row.status === "active" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
-                }`}>
-                    {row.status || "active"}
+                <span className={`px-2 py-1 rounded-lg text-xs font-bold uppercase ${row.status === "active" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+                    }`}>
+                    {capitalizeFirstLetter(row.status || "active")}
                 </span>
             )
         },
@@ -177,107 +200,109 @@ export default function UsersPage() {
                     </div>
                 </div>
 
-            {showFilters && (
-                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div>
-                            <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Role</label>
-                            <select 
-                                className="w-full rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
-                                value={filters.role}
-                                onChange={e => setFilters({ ...filters, role: e.target.value })}
-                            >
-                                <option value="">All Roles</option>
-                                <option value="admin">Admin</option>
-                                <option value="manager">Manager</option>
-                                <option value="driver">Driver</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Organization</label>
-                            <select 
-                                className="w-full rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
-                                value={filters.organizationId}
-                                onChange={e => setFilters({ ...filters, organizationId: e.target.value })}
-                            >
-                                <option value="">All Organizations</option>
-                                {organizations.map((org: any) => (
-                                    <option key={org._id} value={org._id}>{org.name}</option>
-                                ))}
-                            </select>
-                        </div>
-                        <div className="flex items-end">
-                            <button
-                                onClick={clearFilters}
-                                className="w-full bg-slate-100 text-slate-700 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-slate-200 transition-colors"
-                            >
-                                Clear Filters
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            <Table columns={columns} data={filteredUsers} loading={false} />
-
-            {isModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm">
-                    <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
-                        <h2 className="text-xl font-black text-slate-900">{editingUser ? "Edit User" : "New User"}</h2>
-                        <p className="text-xs text-slate-500">Define roles and assign organization scope.</p>
-                        <form onSubmit={handleSubmit} className="space-y-4">
+                {showFilters && (
+                    <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div>
-                                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Name</label>
-                                <input type="text" required className="w-full rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
-                                    value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} />
-                            </div>
-                            <div>
-                                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Email</label>
-                                <input type="email" required className="w-full rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
-                                    value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })} />
-                            </div>
-                            <div>
-                                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Password</label>
-                                <input type="password" required={!editingUser} className="w-full rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
-                                    placeholder={editingUser ? "Leave blank to keep current" : ""}
-                                    value={formData.password} onChange={e => setFormData({ ...formData, password: e.target.value })} />
-                            </div>
-                            <div>
-                                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Role</label>
-                                <select required className="w-full rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
-                                    value={formData.role} onChange={e => setFormData({ ...formData, role: e.target.value as "admin" | "manager" | "driver" })}>
+                                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Role</label>
+                                <select
+                                    className="w-full rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
+                                    value={filters.role}
+                                    onChange={e => setFilters({ ...filters, role: e.target.value })}
+                                >
+                                    <option value="">All Roles</option>
                                     <option value="admin">Admin</option>
                                     <option value="manager">Manager</option>
                                     <option value="driver">Driver</option>
                                 </select>
                             </div>
                             <div>
-                                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Status</label>
-                                <select className="w-full rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
-                                    value={formData.status} onChange={e => setFormData({ ...formData, status: e.target.value as "active" | "inactive" })}>
-                                    <option value="active">Active</option>
-                                    <option value="inactive">Inactive</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Organization</label>
-                                <select className="w-full rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
-                                    value={formData.organizationId} onChange={e => setFormData({ ...formData, organizationId: e.target.value })}>
-                                    <option value="">Select Organization (Optional)</option>
+                                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Organization</label>
+                                <select
+                                    className="w-full rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
+                                    value={filters.organizationId}
+                                    onChange={e => setFilters({ ...filters, organizationId: e.target.value })}
+                                >
+                                    <option value="">All Organizations</option>
                                     {organizations.map((org: any) => (
                                         <option key={org._id} value={org._id}>{org.name}</option>
                                     ))}
                                 </select>
                             </div>
-
-                            <div className="flex gap-3 mt-6">
-                                <button type="button" onClick={closeModal} className="flex-1 rounded-xl bg-slate-100 py-2.5 text-[11px] font-black uppercase tracking-widest text-slate-700 hover:bg-slate-200">Cancel</button>
-                                <button type="submit" className="flex-1 rounded-xl bg-slate-900 py-2.5 text-[11px] font-black uppercase tracking-widest text-white hover:bg-slate-800">Save</button>
+                            <div className="flex items-end">
+                                <button
+                                    onClick={clearFilters}
+                                    className="w-full bg-slate-100 text-slate-700 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-slate-200 transition-colors"
+                                >
+                                    Clear Filters
+                                </button>
                             </div>
-                        </form>
+                        </div>
                     </div>
-                </div>
-            )}
+                )}
+
+                <Table columns={columns} data={filteredUsers} loading={false} />
+
+                {isPopupOpen("userModal") && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm">
+                        <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
+                            <h2 className="text-xl font-black text-slate-900">{editingUser ? "Edit User" : "New User"}</h2>
+                            <p className="text-xs text-slate-500">Define roles and assign organization scope.</p>
+                            <form onSubmit={handleSubmit} className="space-y-4">
+                                <div>
+                                    <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Name</label>
+                                    <input type="text" className={`w-full rounded-xl border ${errors.name ? 'border-red-500' : 'border-slate-200'} p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10`}
+                                        value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} />
+                                    {errors.name && <p className="text-red-500 text-[10px] mt-1 font-bold">{errors.name}</p>}
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Email</label>
+                                    <input type="email" className={`w-full rounded-xl border ${errors.email ? 'border-red-500' : 'border-slate-200'} p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10`}
+                                        value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })} />
+                                    {errors.email && <p className="text-red-500 text-[10px] mt-1 font-bold">{errors.email}</p>}
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Password</label>
+                                    <input type="password" className={`w-full rounded-xl border ${errors.password ? 'border-red-500' : 'border-slate-200'} p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10`}
+                                        placeholder={editingUser ? "Leave blank to keep current" : ""}
+                                        value={formData.password} onChange={e => setFormData({ ...formData, password: e.target.value })} />
+                                    {errors.password && <p className="text-red-500 text-[10px] mt-1 font-bold">{errors.password}</p>}
+                                </div>
+                                <div>
+                                    <select required className="w-full rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
+                                        value={formData.role} onChange={e => setFormData({ ...formData, role: e.target.value as "admin" | "manager" | "driver" | "superadmin" })}>
+                                        <option value="admin">Admin</option>
+                                        <option value="manager">Manager</option>
+                                        <option value="driver">Driver</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Status</label>
+                                    <select className="w-full rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
+                                        value={formData.status} onChange={e => setFormData({ ...formData, status: e.target.value as "active" | "inactive" })}>
+                                        <option value="active">Active</option>
+                                        <option value="inactive">Inactive</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Organization</label>
+                                    <select className="w-full rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
+                                        value={formData.organizationId} onChange={e => setFormData({ ...formData, organizationId: e.target.value })}>
+                                        <option value="">Select Organization (Optional)</option>
+                                        {organizations.map((org: any) => (
+                                            <option key={org._id} value={org._id}>{org.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div className="flex gap-3 mt-6">
+                                    <button type="button" onClick={closeModal} className="flex-1 rounded-xl bg-slate-100 py-2.5 text-[11px] font-black uppercase tracking-widest text-slate-700 hover:bg-slate-200">Cancel</button>
+                                    <button type="submit" className="flex-1 rounded-xl bg-slate-900 py-2.5 text-[11px] font-black uppercase tracking-widest text-white hover:bg-slate-800">Save</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                )}
             </div>
         </ApiErrorBoundary>
     );

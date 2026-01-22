@@ -9,6 +9,8 @@ import {
     AlertCircle
 } from "lucide-react";
 import { toast } from "sonner";
+import { validators, validateForm } from "../Helpers/validators";
+import { capitalizeFirstLetter } from "../Helpers/CapitalizeFirstLetter";
 
 export default function SettingsPage() {
     const [appName, setAppName] = useState("GPS Tracker");
@@ -19,6 +21,30 @@ export default function SettingsPage() {
     const [pushNotifications, setPushNotifications] = useState(true);
     const [emailAlerts, setEmailAlerts] = useState(true);
     const [smsGateway, setSmsGateway] = useState(false);
+    const [errors, setErrors] = useState<any>({});
+
+    const handleSave = () => {
+        const formData = {
+            appName,
+            supportEmail
+        };
+
+        const validationRules = {
+            appName: [validators.required],
+            supportEmail: [validators.required, validators.email]
+        };
+
+        const { isValid, errors: validationErrors } = validateForm(formData, validationRules);
+
+        if (!isValid) {
+            setErrors(validationErrors);
+            toast.error("Please fix settings errors");
+            return;
+        }
+
+        setErrors({});
+        toast.success("Settings saved successfully (Validated)");
+    };
 
     return (
         <div className="space-y-8 pb-10 max-w-5xl font-bold">
@@ -37,8 +63,8 @@ export default function SettingsPage() {
                             <h2 className="text-lg font-black text-gray-900 uppercase tracking-widest">Platform Core</h2>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <SettingInput label="App Name" value={appName} onChange={setAppName} />
-                            <SettingInput label="Support Email" value={supportEmail} onChange={setSupportEmail} />
+                            <SettingInput label="App Name" value={appName} onChange={setAppName} error={errors.appName} />
+                            <SettingInput label="Support Email" value={supportEmail} onChange={setSupportEmail} error={errors.supportEmail} />
                             <div className="md:col-span-2">
                                 <SettingInput label="Maintenance Message" value={maintenanceMessage} onChange={setMaintenanceMessage} isTextarea />
                             </div>
@@ -98,6 +124,10 @@ export default function SettingsPage() {
                                 <span className="text-gray-400">Uptime</span>
                                 <span className="text-gray-900">14 Days, 2h</span>
                             </div>
+                            <div className="flex justify-between py-1 border-b border-gray-50">
+                                <span className="text-gray-400">Status</span>
+                                <span className="text-green-600 font-bold px-2 py-0.5 rounded bg-green-50">{capitalizeFirstLetter("online")}</span>
+                            </div>
                         </div>
                         <button
                             onClick={() => toast.success("Cache cleared (demo)")}
@@ -118,6 +148,7 @@ export default function SettingsPage() {
                         setPushNotifications(true);
                         setEmailAlerts(true);
                         setSmsGateway(false);
+                        setErrors({});
                         toast.message("Changes discarded");
                     }}
                     className="px-8 py-4 bg-white border border-gray-100 text-gray-400 rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-gray-50 transition-all"
@@ -125,7 +156,7 @@ export default function SettingsPage() {
                     Discard
                 </button>
                 <button
-                    onClick={() => toast.success("Settings saved (demo)")}
+                    onClick={handleSave}
                     className="px-10 py-4 bg-[#1877F2] text-white rounded-2xl text-xs font-black uppercase tracking-widest shadow-xl shadow-blue-200 hover:bg-blue-700 transition-all flex items-center gap-2"
                 >
                     <Save size={18} /> Save All Changes
@@ -135,23 +166,24 @@ export default function SettingsPage() {
     );
 }
 
-function SettingInput({ label, value, onChange, isTextarea }: any) {
+function SettingInput({ label, value, onChange, isTextarea, error }: any) {
     return (
         <div className="space-y-2">
             <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{label}</label>
             {isTextarea ? (
                 <textarea
-                    className="w-full px-4 py-3 bg-gray-50 border-none rounded-xl text-sm font-bold focus:ring-2 focus:ring-blue-100 h-28 pt-4 transition-all"
+                    className={`w-full px-4 py-3 bg-gray-50 border ${error ? 'border-red-500' : 'border-none'} rounded-xl text-sm font-bold focus:ring-2 focus:ring-blue-100 h-28 pt-4 transition-all`}
                     value={value}
                     onChange={(event) => onChange(event.target.value)}
                 />
             ) : (
                 <input
-                    className="w-full px-4 py-3 bg-gray-50 border-none rounded-xl text-sm font-bold focus:ring-2 focus:ring-blue-100 transition-all"
+                    className={`w-full px-4 py-3 bg-gray-50 border ${error ? 'border-red-500' : 'border-none'} rounded-xl text-sm font-bold focus:ring-2 focus:ring-blue-100 transition-all`}
                     value={value}
                     onChange={(event) => onChange(event.target.value)}
                 />
             )}
+            {error && <p className="text-red-500 text-[10px] mt-1 font-bold">{error}</p>}
         </div>
     );
 }
