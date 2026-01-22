@@ -1,14 +1,15 @@
 "use client";
 
 import { Users, Car, Radio, Activity, Plus, ArrowLeft } from "lucide-react";
-import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import OrganizationCreateModal from "@/components/admin/Modals/OrganizationCreateModal";
 import OrganizationMap from "@/components/admin/Map/OrganizationMap";
 import { VehicleSidebar } from "@/components/dashboard/vehicle-sidebar";
 import { MapWrapper } from "@/components/dashboard/map-wrapper";
 import { useVehiclePositions } from "@/lib/use-vehicle-positions";
 import { getOrganizations, getVehicles, getDevices } from "@/lib/admin-dummy-data";
+
 type DashboardVehicle = {
   id: string;
   driver: string;
@@ -69,10 +70,41 @@ const demoLiveData = [
 
 export default function DashboardPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const queryFromSuperadmin = searchParams.get("from") === "superadmin";
+  const queryOrgId = searchParams.get("org");
+  const [fromSuperadmin, setFromSuperadmin] = useState(false);
+  const [targetOrgId, setTargetOrgId] = useState<string | null>(null);
+
   const [isOrgModalOpen, setIsOrgModalOpen] = useState(false);
   const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<"all" | "running" | "idle" | "stopped">("all");
+
+  useEffect(() => {
+    let selectedOrg = queryOrgId;
+    let fromSuper = queryFromSuperadmin;
+
+    if (typeof window !== "undefined") {
+      const storedOrg = sessionStorage.getItem("adminSelectedOrgId");
+      const storedFrom = sessionStorage.getItem("adminFromSuperadmin");
+      if (!selectedOrg && storedOrg) {
+        selectedOrg = storedOrg;
+      }
+      if (!fromSuper && storedFrom === "true") {
+        fromSuper = true;
+      }
+    }
+
+    setTargetOrgId(selectedOrg);
+    setFromSuperadmin(fromSuper);
+  }, [queryOrgId, queryFromSuperadmin]);
+
+  useEffect(() => {
+    if (targetOrgId) {
+      setSelectedOrgId(targetOrgId);
+    }
+  }, [targetOrgId]);
 
   const displayOrgs = getOrganizations();
   const displayVehicles = getVehicles();
@@ -217,6 +249,15 @@ export default function DashboardPage() {
           <p className="text-gray-500 font-bold mt-1">Real-time overview of your fleet and devices.</p>
         </div>
         <div className="flex gap-3 items-center">
+          {fromSuperadmin && (
+            <button
+              onClick={() => router.push("/superadmin")}
+              className="px-4 py-2 rounded-xl text-xs font-black flex items-center gap-2 border uppercase tracking-widest bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Back to SuperAdmin
+            </button>
+          )}
           <button
             onClick={() => setIsOrgModalOpen(true)}
             className="px-4 py-2 rounded-xl text-xs font-black flex items-center gap-2 border uppercase tracking-widest bg-blue-600 text-white border-blue-600 hover:bg-blue-700"
@@ -224,11 +265,10 @@ export default function DashboardPage() {
             <Plus className="h-4 w-4" />
             Add Sub-Organization
           </button>
-          <div className={`px-4 py-2 rounded-xl text-xs font-black flex items-center gap-2 border uppercase tracking-widest ${
-            hasApiError 
-              ? "bg-yellow-100 text-yellow-700 border-yellow-200" 
+          <div className={`px-4 py-2 rounded-xl text-xs font-black flex items-center gap-2 border uppercase tracking-widest ${hasApiError
+              ? "bg-yellow-100 text-yellow-700 border-yellow-200"
               : "bg-green-100 text-green-700 border-green-200"
-          }`}>
+            }`}>
             <span className={`w-2 h-2 rounded-full ${hasApiError ? "bg-yellow-500" : "bg-green-500 animate-pulse"}`}></span>
             {hasApiError ? "API Unavailable - Demo Mode" : "System Live"}
           </div>
@@ -296,11 +336,10 @@ export default function DashboardPage() {
               <button
                 key={filter}
                 onClick={() => setStatusFilter(filter as typeof statusFilter)}
-                className={`px-4 py-2 rounded-full text-xs font-black uppercase tracking-widest border ${
-                  statusFilter === filter
+                className={`px-4 py-2 rounded-full text-xs font-black uppercase tracking-widest border ${statusFilter === filter
                     ? "bg-emerald-500 text-white border-emerald-500"
                     : "bg-white text-gray-500 border-gray-200 hover:border-emerald-400"
-                }`}
+                  }`}
               >
                 {filter}
               </button>

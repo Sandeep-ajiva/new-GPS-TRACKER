@@ -6,17 +6,17 @@ import { Lock, Mail, Loader2 } from "lucide-react"
 
 // Dummy accounts for testing
 const DUMMY_ACCOUNTS = [
-  { email: "admin@test.com", password: "admin123", role: "admin", name: "Admin User" },
+  { email: "admin1@gmail.com", password: "Admin@123", role: "admin", name: "Admin User" },
   {
-    email: "manager@test.com",
-    password: "manager123",
+    email: "rahul.sharma@gmail.com",
+    password: "Manager@123",
     role: "manager",
     name: "Manager User",
     organizationId: "org_ajiva_tracker",
     organizationName: "Ajiva Tracker",
   },
   { email: "driver@test.com", password: "driver123", role: "driver", name: "Driver User" },
-  { email: "superadmin@test.com", password: "superadmin123", role: "superadmin", name: "Super Admin" },
+  { email: "superadmin@gmail.com", password: "admin@123", role: "superadmin", name: "Super Admin" },
 ]
 
 const API_BASE_URL =
@@ -197,16 +197,16 @@ export default function LoginPage() {
             <p className="font-semibold text-white">📝 Test Accounts:</p>
             <div className="space-y-2 font-mono text-xs">
               <div className="flex items-center justify-between">
-                <span><span className="text-emerald-300">Admin:</span> admin@test.com / admin123</span>
+                <span><span className="text-emerald-300">Admin:</span> admin1@gmail.com / Admin@123</span>
               </div>
               <div className="flex items-center justify-between">
-                <span><span className="text-blue-300">Manager:</span> manager@test.com / manager123</span>
+                <span><span className="text-blue-300">Manager:</span> rahul.sharma@gmail.com / Manager@123</span>
               </div>
               <div className="flex items-center justify-between">
                 <span><span className="text-purple-300">Driver:</span> driver@test.com / driver123</span>
               </div>
               <div className="flex items-center justify-between">
-                <span><span className="text-orange-300">Super Admin:</span> superadmin@test.com / superadmin123</span>
+                <span><span className="text-orange-300">Super Admin:</span> superadmin@gmail.com / admin@123</span>
               </div>
             </div>
             <p className="mt-3 border-t border-white/10 pt-3 text-slate-400">

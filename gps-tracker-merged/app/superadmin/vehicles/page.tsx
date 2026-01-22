@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Table from "@/components/ui/Table";
 import ApiErrorBoundary from "@/components/admin/ErrorBoundary/ApiErrorBoundary";
-import { Plus, Edit, Trash2 } from "lucide-react";
+import { Plus, Edit, Trash2, Eye } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
 const demoOrganizations = [
@@ -12,13 +13,18 @@ const demoOrganizations = [
 ];
 
 const demoVehicles = [
-    { _id: "veh_1", organizationId: "org_ajiva", vehicleType: "car", vehicleNumber: "DL 10CK1840", model: "Camry" },
-    { _id: "veh_2", organizationId: "org_north", vehicleType: "truck", vehicleNumber: "PB 10AX2234", model: "Tata 407" },
+    { _id: "veh_1", organizationId: "org_ajiva", vehicleType: "car", vehicleNumber: "DL 10CK1840", model: "Camry", status: "active" },
+    { _id: "veh_2", organizationId: "org_north", vehicleType: "truck", vehicleNumber: "PB 10AX2234", model: "Tata 407", status: "inactive" },
+    { _id: "veh_3", organizationId: "org_ajiva", vehicleType: "bus", vehicleNumber: "DL 10CK1900", model: "Volvo", status: "active" },
 ];
 
 export default function VehiclesPage() {
+    const router = useRouter();
     const [vehicles, setVehicles] = useState(demoVehicles);
     const [organizations] = useState(demoOrganizations);
+    const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
+    const [typeFilter, setTypeFilter] = useState("all");
+    const [searchTerm, setSearchTerm] = useState("");
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingVehicle, setEditingVehicle] = useState<any>(null);
     const [formData, setFormData] = useState({
@@ -40,7 +46,7 @@ export default function VehiclesPage() {
         } else {
             setVehicles((prev) => [
                 ...prev,
-                { _id: `veh_${Date.now()}`, ...formData },
+                { _id: `veh_${Date.now()}`, status: "active", ...formData },
             ]);
             toast.success("Vehicle created successfully");
         }
@@ -76,6 +82,16 @@ export default function VehiclesPage() {
         }
     }
 
+    const filteredVehicles = useMemo(() => {
+        const trimmed = searchTerm.trim().toLowerCase();
+        return vehicles.filter((vehicle) => {
+            const matchesStatus = statusFilter === "all" || vehicle.status === statusFilter;
+            const matchesType = typeFilter === "all" || vehicle.vehicleType === typeFilter;
+            const matchesSearch = !trimmed || vehicle.vehicleNumber.toLowerCase().includes(trimmed);
+            return matchesStatus && matchesType && matchesSearch;
+        });
+    }, [vehicles, searchTerm, statusFilter, typeFilter]);
+
     const columns = [
         { header: "Number", accessor: "vehicleNumber" },
         { header: "Type", accessor: (row: any) => <span className="capitalize">{row.vehicleType}</span> },
@@ -94,6 +110,7 @@ export default function VehiclesPage() {
         {
             header: "Actions", accessor: (row: any) => (
                 <div className="flex gap-2">
+                    <button onClick={() => router.push(`/superadmin/vehicles/${row._id}`)} className="text-emerald-200 hover:text-emerald-100"><Eye size={16} /></button>
                     <button onClick={() => openEditModal(row)} className="text-slate-200 hover:text-white"><Edit size={16} /></button>
                     <button onClick={() => handleDelete(row._id)} className="text-rose-300 hover:text-rose-200"><Trash2 size={16} /></button>
                 </div>
@@ -118,7 +135,44 @@ export default function VehiclesPage() {
                     </button>
                 </div>
 
-            <Table columns={columns} data={vehicles} loading={false} variant="dark" />
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-800/80 bg-slate-900/60 p-4">
+                    <div className="flex flex-wrap gap-2">
+                        {(["all", "active", "inactive"] as const).map((status) => (
+                            <button
+                                key={status}
+                                onClick={() => setStatusFilter(status)}
+                                className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-widest transition ${
+                                    statusFilter === status
+                                        ? "border-emerald-500/40 bg-emerald-500/20 text-emerald-200"
+                                        : "border-slate-800/80 bg-slate-950/60 text-slate-400 hover:text-slate-200"
+                                }`}
+                            >
+                                {status}
+                            </button>
+                        ))}
+                        <select
+                            value={typeFilter}
+                            onChange={(event) => setTypeFilter(event.target.value)}
+                            className="rounded-full border border-slate-800/80 bg-slate-950/60 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-slate-300"
+                        >
+                            <option value="all">All Types</option>
+                            <option value="car">Car</option>
+                            <option value="truck">Truck</option>
+                            <option value="bus">Bus</option>
+                            <option value="bike">Bike</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
+                    <input
+                        type="text"
+                        placeholder="Search by vehicle number..."
+                        value={searchTerm}
+                        onChange={(event) => setSearchTerm(event.target.value)}
+                        className="w-full max-w-xs rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2 text-xs font-semibold text-slate-200 outline-none focus:ring-2 focus:ring-emerald-500/30"
+                    />
+                </div>
+
+            <Table columns={columns} data={filteredVehicles} loading={false} variant="dark" />
 
             {isModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
