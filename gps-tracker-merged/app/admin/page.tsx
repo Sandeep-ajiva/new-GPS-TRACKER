@@ -1,7 +1,8 @@
 "use client";
 
 import { Users, Car, Radio, Activity, Plus, ArrowLeft } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import OrganizationCreateModal from "@/components/admin/Modals/OrganizationCreateModal";
 import OrganizationMap from "@/components/admin/Map/OrganizationMap";
 import { VehicleSidebar } from "@/components/dashboard/vehicle-sidebar";
@@ -84,10 +85,42 @@ const demoLiveData = [
 ];
 
 export default function DashboardPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const queryFromSuperadmin = searchParams.get("from") === "superadmin";
+  const queryOrgId = searchParams.get("org");
+  const [fromSuperadmin, setFromSuperadmin] = useState(false);
+  const [targetOrgId, setTargetOrgId] = useState<string | null>(null);
+
   const [isOrgModalOpen, setIsOrgModalOpen] = useState(false);
   const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<"all" | "running" | "idle" | "stopped">("all");
+
+  useEffect(() => {
+    let selectedOrg = queryOrgId;
+    let fromSuper = queryFromSuperadmin;
+
+    if (typeof window !== "undefined") {
+      const storedOrg = sessionStorage.getItem("adminSelectedOrgId");
+      const storedFrom = sessionStorage.getItem("adminFromSuperadmin");
+      if (!selectedOrg && storedOrg) {
+        selectedOrg = storedOrg;
+      }
+      if (!fromSuper && storedFrom === "true") {
+        fromSuper = true;
+      }
+    }
+
+    setTargetOrgId(selectedOrg);
+    setFromSuperadmin(fromSuper);
+  }, [queryOrgId, queryFromSuperadmin]);
+
+  useEffect(() => {
+    if (targetOrgId) {
+      setSelectedOrgId(targetOrgId);
+    }
+  }, [targetOrgId]);
 
   const displayOrgs = demoOrganizations;
   const displayVehicles = demoVehicles;
@@ -231,6 +264,15 @@ export default function DashboardPage() {
           <p className="text-gray-500 font-bold mt-1">Real-time overview of your fleet and devices.</p>
         </div>
         <div className="flex gap-3 items-center">
+          {fromSuperadmin && (
+            <button
+              onClick={() => router.push("/superadmin")}
+              className="px-4 py-2 rounded-xl text-xs font-black flex items-center gap-2 border uppercase tracking-widest bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Back to SuperAdmin
+            </button>
+          )}
           <button
             onClick={() => setIsOrgModalOpen(true)}
             className="px-4 py-2 rounded-xl text-xs font-black flex items-center gap-2 border uppercase tracking-widest bg-blue-600 text-white border-blue-600 hover:bg-blue-700"

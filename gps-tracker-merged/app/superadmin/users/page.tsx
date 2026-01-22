@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Table from "@/components/ui/Table";
 import ApiErrorBoundary from "@/components/admin/ErrorBoundary/ApiErrorBoundary";
 import { Plus, Edit, Trash2 } from "lucide-react";
@@ -19,6 +19,8 @@ const demoUsers = [
 export default function UsersPage() {
     const [users, setUsers] = useState(demoUsers);
     const [organizations] = useState(demoOrganizations);
+    const [roleFilter, setRoleFilter] = useState<"all" | "admin" | "superadmin">("all");
+    const [searchTerm, setSearchTerm] = useState("");
 
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<any>(null);
@@ -81,6 +83,18 @@ export default function UsersPage() {
         }
     }
 
+    const filteredUsers = useMemo(() => {
+        const trimmed = searchTerm.trim().toLowerCase();
+        return users.filter((user) => {
+            const matchesRole = roleFilter === "all" || user.role === roleFilter;
+            const matchesSearch =
+                !trimmed ||
+                user.name.toLowerCase().includes(trimmed) ||
+                user.email.toLowerCase().includes(trimmed);
+            return matchesRole && matchesSearch;
+        });
+    }, [users, roleFilter, searchTerm]);
+
     const columns = [
         { header: "Name", accessor: "name" },
         { header: "Email", accessor: "email" },
@@ -120,7 +134,32 @@ export default function UsersPage() {
                     </button>
                 </div>
 
-            <Table columns={columns} data={users} loading={false} variant="dark" />
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-800/80 bg-slate-900/60 p-4">
+                    <div className="flex flex-wrap gap-2">
+                        {(["all", "admin", "superadmin"] as const).map((role) => (
+                            <button
+                                key={role}
+                                onClick={() => setRoleFilter(role)}
+                                className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-widest transition ${
+                                    roleFilter === role
+                                        ? "border-emerald-500/40 bg-emerald-500/20 text-emerald-200"
+                                        : "border-slate-800/80 bg-slate-950/60 text-slate-400 hover:text-slate-200"
+                                }`}
+                            >
+                                {role}
+                            </button>
+                        ))}
+                    </div>
+                    <input
+                        type="text"
+                        placeholder="Search by name or email..."
+                        value={searchTerm}
+                        onChange={(event) => setSearchTerm(event.target.value)}
+                        className="w-full max-w-xs rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2 text-xs font-semibold text-slate-200 outline-none focus:ring-2 focus:ring-emerald-500/30"
+                    />
+                </div>
+
+            <Table columns={columns} data={filteredUsers} loading={false} variant="dark" />
 
             {isModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">

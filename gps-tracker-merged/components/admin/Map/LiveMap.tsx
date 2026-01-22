@@ -1,17 +1,7 @@
 "use client";
 
-import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
-import "leaflet/dist/leaflet.css";
-import L from "leaflet";
-import { useEffect, useState } from "react";
-
-// Fix for default marker icon in Next.js
-const icon = L.icon({
-    iconUrl: "/images/marker-icon.png",
-    shadowUrl: "/images/marker-shadow.png",
-    iconSize: [25, 41],
-    iconAnchor: [12, 41],
-});
+import { GoogleMap, InfoWindow, Marker, useLoadScript } from "@react-google-maps/api";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 type LiveVehicle = {
     id: string;
@@ -42,38 +32,123 @@ const demoVehicles: LiveVehicle[] = [
 ];
 
 export default function LiveMap({ vehicles = demoVehicles }: { vehicles?: LiveVehicle[] }) {
-    const [isMounted, setIsMounted] = useState(false);
+    const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+    const { isLoaded, loadError } = useLoadScript({
+        googleMapsApiKey: apiKey || "",
+    });
+    const mapRef = useRef<google.maps.Map | null>(null);
+    const [activeVehicleId, setActiveVehicleId] = useState<string | null>(null);
+
+    const vehiclePoints = useMemo(
+        () =>
+            vehicles.filter((vehicle) =>
+                Number.isFinite(vehicle.lat) && Number.isFinite(vehicle.lng)
+            ),
+        [vehicles]
+    );
 
     useEffect(() => {
-        setIsMounted(true);
+        if (!mapRef.current || vehiclePoints.length === 0) return;
+        const bounds = new google.maps.LatLngBounds();
+        vehiclePoints.forEach((vehicle) => bounds.extend({ lat: vehicle.lat, lng: vehicle.lng }));
+        if (!bounds.isEmpty()) {
+            mapRef.current.fitBounds(bounds, 80);
+        }
+    }, [vehiclePoints]);
 
-    }, []);
-
-    if (!isMounted) {
-        return <div className="h-full w-full bg-gray-100 flex items-center justify-center">Loading Map...</div>;
+    if (!apiKey) {
+        return (
+            <div className="flex h-full w-full items-center justify-center bg-slate-950 text-slate-300">
+                Add `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` to load Google Maps.
+            </div>
+        );
     }
 
+    if (loadError) {
+        return (
+            <div className="flex h-full w-full items-center justify-center bg-slate-950 text-slate-300">
+                Unable to load Google Maps. Check the API key and billing settings.
+            </div>
+        );
+    }
+
+    if (!isLoaded) {
+        return (
+            <div className="flex h-full w-full items-center justify-center bg-slate-950 text-slate-300">
+                Loading Google Maps...
+            </div>
+        );
+    }
+
+    const mapStyles: google.maps.MapTypeStyle[] = [
+        { elementType: "geometry", stylers: [{ color: "#0f172a" }] },
+        { elementType: "labels.text.stroke", stylers: [{ color: "#0f172a" }] },
+        { elementType: "labels.text.fill", stylers: [{ color: "#94a3b8" }] },
+        { featureType: "administrative", elementType: "geometry", stylers: [{ color: "#1f2937" }] },
+        { featureType: "poi", elementType: "labels.text.fill", stylers: [{ color: "#64748b" }] },
+        { featureType: "road", elementType: "geometry", stylers: [{ color: "#1e293b" }] },
+        { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#0f172a" }] },
+        { featureType: "water", elementType: "geometry", stylers: [{ color: "#0b1d30" }] },
+        { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#38bdf8" }] },
+    ];
+
+    const createCircleIcon = (color: string, scale: number) => ({
+        path: google.maps.SymbolPath.CIRCLE,
+        fillColor: color,
+        fillOpacity: 1,
+        strokeColor: "#0f172a",
+        strokeOpacity: 0.9,
+        strokeWeight: 2,
+        scale,
+    });
+
+    const getStatusColor = (speed: number) => (speed > 0 ? "#34d399" : "#f59e0b");
+    const activeVehicle = activeVehicleId
+        ? vehiclePoints.find((vehicle) => vehicle.id === activeVehicleId)
+        : null;
+
     return (
-        <MapContainer
-            center={[20.5937, 78.9629]}
-            zoom={5}
-            style={{ height: "100%", width: "100%", borderRadius: "1rem" }}
-        >
-            <TileLayer
-                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            />
-            {vehicles.map((vehicle) => (
-                vehicle.lat && vehicle.lng ? (
-                    <Marker key={vehicle.id} position={[vehicle.lat, vehicle.lng]} icon={icon}>
-                        <Popup>
-                            <div className="text-sm font-bold">{vehicle.vehicleNumber}</div>
-                            <div className="text-xs">Speed: {vehicle.speed} km/h</div>
-                            <div className="text-xs">Last Updated: {new Date(vehicle.lastUpdated).toLocaleTimeString()}</div>
-                        </Popup>
-                    </Marker>
-                ) : null
-            ))}
-        </MapContainer>
+        <div className="relative h-full w-full bg-slate-950">
+            <GoogleMap
+                mapContainerStyle={{ width: "100%", height: "100%" }}
+                zoom={5}
+                center={{ lat: 20.5937, lng: 78.9629 }}
+                onLoad={(map) => {
+                    mapRef.current = map;
+                }}
+                onClick={() => setActiveVehicleId(null)}
+                options={{
+                    styles: mapStyles,
+                    disableDefaultUI: true,
+                    zoomControl: true,
+                    fullscreenControl: false,
+                    streetViewControl: false,
+                    mapTypeControl: false,
+                }}
+            >
+                {vehiclePoints.map((vehicle) => (
+                    <Marker
+                        key={vehicle.id}
+                        position={{ lat: vehicle.lat, lng: vehicle.lng }}
+                        icon={createCircleIcon(getStatusColor(vehicle.speed), vehicle.id === activeVehicleId ? 9 : 7)}
+                        onClick={() => setActiveVehicleId(vehicle.id)}
+                    />
+                ))}
+                {activeVehicle && (
+                    <InfoWindow
+                        position={{ lat: activeVehicle.lat, lng: activeVehicle.lng }}
+                        onCloseClick={() => setActiveVehicleId(null)}
+                    >
+                        <div className="text-slate-900 text-sm font-semibold">
+                            <p className="font-black text-slate-900">{activeVehicle.vehicleNumber}</p>
+                            <p className="text-xs text-slate-600">Speed: {activeVehicle.speed} km/h</p>
+                            <p className="text-xs text-slate-600">
+                                Last Updated: {new Date(activeVehicle.lastUpdated).toLocaleTimeString()}
+                            </p>
+                        </div>
+                    </InfoWindow>
+                )}
+            </GoogleMap>
+        </div>
     );
 }
