@@ -3,6 +3,7 @@ const Validator = require('../../helpers/validators');
 const mongoose = require('mongoose');
 const VehicleModel = require('../vehicle/model');
 const DeviceModel = require('../gpsDevice/model');
+const paginate = require("../../helpers/limitoffset");
 
 const validateVehicleMappingData = async (data) => {
     const rules = {
@@ -132,22 +133,24 @@ exports.assign = async (req, res) => {
 
 exports.getActiveMappings = async (req, res) => {
     try {
+        const { page, limit, search } = req.query;
         const filter = { unassignedAt: null };
 
         if (req.user.role !== "superadmin") {
             filter.organizationId = req.orgId;
         }
 
-        const mappings = await VehicleMapping.find(filter)
-            .populate('organizationId')
-            .populate('vehicleId')
-            .populate('gpsDeviceId');
+        const result = await paginate(
+            VehicleMapping,
+            filter,
+            page,
+            limit,
+            ['organizationId', 'vehicleId', 'gpsDeviceId'],
+            [],
+            search
+        );
         
-        return res.status(200).json({
-            status: true,
-            message: "Active Mappings Fetched Successfully",
-            data: mappings
-        });
+        return res.status(200).json(result);
     } catch (error) {
         console.error("Get Active Mappings Error:", error);
         return res.status(500).json({ 
@@ -160,6 +163,7 @@ exports.getActiveMappings = async (req, res) => {
 exports.getByVehicle = async (req, res) => {
     try {
         const { vehicleId } = req.params;
+        const { page, limit, search } = req.query;
 
         if (!mongoose.isValidObjectId(vehicleId)) {
             return res.status(400).json({
@@ -174,16 +178,17 @@ exports.getByVehicle = async (req, res) => {
             filter.organizationId = req.orgId;
         }
 
-        const mappings = await VehicleMapping.find(filter)
-            .populate('organizationId')
-            .populate('vehicleId')
-            .populate('gpsDeviceId');
+        const result = await paginate(
+            VehicleMapping,
+            filter,
+            page,
+            limit,
+            ['organizationId', 'vehicleId', 'gpsDeviceId'],
+            [],
+            search
+        );
         
-        return res.status(200).json({
-            status: true,
-            message: "Vehicle Mappings Fetched Successfully",
-            data: mappings
-        });
+        return res.status(200).json(result);
     } catch (error) {
         console.error("Get By Vehicle Error:", error);
         return res.status(500).json({ 
@@ -196,6 +201,7 @@ exports.getByVehicle = async (req, res) => {
 exports.getByDevice = async (req, res) => {
     try {
         const { gpsDeviceId } = req.params;
+        const { page, limit, search } = req.query;
 
         if (!mongoose.isValidObjectId(gpsDeviceId)) {
             return res.status(400).json({
@@ -210,16 +216,17 @@ exports.getByDevice = async (req, res) => {
             filter.organizationId = req.orgId;
         }
 
-        const mappings = await VehicleMapping.find(filter)
-            .populate('organizationId')
-            .populate('vehicleId')
-            .populate('gpsDeviceId');
+        const result = await paginate(
+            VehicleMapping,
+            filter,
+            page,
+            limit,
+            ['organizationId', 'vehicleId', 'gpsDeviceId'],
+            [],
+            search
+        );
         
-        return res.status(200).json({
-            status: true,
-            message: "Device Mappings Fetched Successfully",
-            data: mappings
-        });
+        return res.status(200).json(result);
     } catch (error) {
         console.error("Get By Device Error:", error);
         return res.status(500).json({ 

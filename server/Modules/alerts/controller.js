@@ -1,5 +1,6 @@
 const Alert = require('./model');
 const Validator = require('../../helpers/validators');
+const paginate = require("../../helpers/limitoffset");
 
 const validateAlertData = async (data) => {
     const rules = {
@@ -45,15 +46,23 @@ exports.create = async (req, res) => {
 
 exports.getAll = async (req, res) => {
     try {
-        const alerts = await Alert.find()
-            .populate('organizationId')
-            .populate('gpsDeviceId')
-            .populate('vehicleId');
-        return res.status(200).json({
-            status: true,
-            message: "Alerts Fetched Successfully",
-            data: alerts
-        });
+        const { page, limit, search, type, acknowledged } = req.query;
+        
+        const filter = {};
+        if (type) filter.type = type;
+        if (acknowledged !== undefined) filter.acknowledged = acknowledged === 'true';
+
+        const result = await paginate(
+            Alert,
+            filter,
+            page,
+            limit,
+            ['organizationId', 'gpsDeviceId', 'vehicleId'],
+            ['message', 'type'],
+            search
+        );
+
+        return res.status(200).json(result);
     } catch (error) {
         return res.status(500).json({ status: false, message: error.message });
     }
@@ -113,16 +122,23 @@ exports.delete = async (req, res) => {
 
 exports.getByVehicle = async (req, res) => {
     try {
-        const alerts = await Alert.find({ vehicleId: req.params.vehicleId })
-            .populate('organizationId')
-            .populate('gpsDeviceId')
-            .populate('vehicleId')
-            .sort({ createdAt: -1 });
-        return res.status(200).json({
-            status: true,
-            message: "Alerts Fetched Successfully",
-            data: alerts
-        });
+        const { page, limit, search, type, acknowledged } = req.query;
+        
+        const filter = { vehicleId: req.params.vehicleId };
+        if (type) filter.type = type;
+        if (acknowledged !== undefined) filter.acknowledged = acknowledged === 'true';
+
+        const result = await paginate(
+            Alert,
+            filter,
+            page,
+            limit,
+            ['organizationId', 'gpsDeviceId', 'vehicleId'],
+            ['message', 'type'],
+            search
+        );
+
+        return res.status(200).json(result);
     } catch (error) {
         return res.status(500).json({ status: false, message: error.message });
     }
@@ -130,16 +146,22 @@ exports.getByVehicle = async (req, res) => {
 
 exports.getUnacknowledged = async (req, res) => {
     try {
-        const alerts = await Alert.find({ acknowledged: false })
-            .populate('organizationId')
-            .populate('gpsDeviceId')
-            .populate('vehicleId')
-            .sort({ createdAt: -1 });
-        return res.status(200).json({
-            status: true,
-            message: "Unacknowledged Alerts Fetched Successfully",
-            data: alerts
-        });
+        const { page, limit, search, type } = req.query;
+        
+        const filter = { acknowledged: false };
+        if (type) filter.type = type;
+
+        const result = await paginate(
+            Alert,
+            filter,
+            page,
+            limit,
+            ['organizationId', 'gpsDeviceId', 'vehicleId'],
+            ['message', 'type'],
+            search
+        );
+
+        return res.status(200).json(result);
     } catch (error) {
         return res.status(500).json({ status: false, message: error.message });
     }

@@ -1,5 +1,6 @@
 const Geofence = require('./model');
 const Validator = require('../../helpers/validators');
+const paginate = require("../../helpers/limitoffset");
 
 const validateGeofenceData = async (data) => {
     const rules = {
@@ -44,13 +45,22 @@ exports.create = async (req, res) => {
 
 exports.getAll = async (req, res) => {
     try {
-        const geofences = await Geofence.find()
-            .populate('organizationId');
-        return res.status(200).json({
-            status: true,
-            message: "Geofences Fetched Successfully",
-            data: geofences
-        });
+        const { page, limit, search, type } = req.query;
+        
+        const filter = {};
+        if (type) filter.type = type;
+
+        const result = await paginate(
+            Geofence,
+            filter,
+            page,
+            limit,
+            ['organizationId'],
+            ['name', 'type'],
+            search
+        );
+
+        return res.status(200).json(result);
     } catch (error) {
         return res.status(500).json({ status: false, message: error.message });
     }
