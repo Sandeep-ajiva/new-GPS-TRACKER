@@ -7,26 +7,50 @@ import { Plus, Edit, Trash2, Eye } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
-const demoOrganizations = [
-    { _id: "org_ajiva", name: "Ajiva Tracker" },
-    { _id: "org_north", name: "North Branch" },
-];
+import {
+  useGetVehiclesQuery,
+  useCreateVehicleMutation,
+  useUpdateVehicleMutation,
+  useDeleteVehicleMutation,
+} from "@/redux/api/vehicleApi";
+import { useGetOrganizationsQuery } from "@/redux/api/organizationApi";
 
-const demoVehicles = [
-    { _id: "veh_1", organizationId: "org_ajiva", vehicleType: "car", vehicleNumber: "DL 10CK1840", model: "Camry", status: "active" },
-    { _id: "veh_2", organizationId: "org_north", vehicleType: "truck", vehicleNumber: "PB 10AX2234", model: "Tata 407", status: "inactive" },
-    { _id: "veh_3", organizationId: "org_ajiva", vehicleType: "bus", vehicleNumber: "DL 10CK1900", model: "Volvo", status: "active" },
-];
+interface ApiVehicle {
+  _id: string;
+  vehicleNumber: string;
+  vehicleType: string;
+  model?: string;
+  status: string;
+  organizationId: string | { _id: string; name: string };
+}
+
+interface ApiOrg {
+  _id: string;
+  name: string;
+}
+
+interface ApiError {
+  data?: {
+    message?: string;
+  };
+}
 
 export default function VehiclesPage() {
     const router = useRouter();
-    const [vehicles, setVehicles] = useState(demoVehicles);
-    const [organizations] = useState(demoOrganizations);
+    const { data: vehiclesData, isLoading } = useGetVehiclesQuery({});
+    const { data: orgsData } = useGetOrganizationsQuery({});
+    
+    const [createVehicle] = useCreateVehicleMutation();
+    const [updateVehicle] = useUpdateVehicleMutation();
+    const [deleteVehicle] = useDeleteVehicleMutation();
+
+    const vehicles: ApiVehicle[] = useMemo(() => vehiclesData?.docs || [], [vehiclesData]);
+    const organizations = useMemo(() => orgsData?.docs || [], [orgsData]);
     const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
     const [typeFilter, setTypeFilter] = useState("all");
     const [searchTerm, setSearchTerm] = useState("");
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [editingVehicle, setEditingVehicle] = useState<any>(null);
+    const [editingVehicle, setEditingVehicle] = useState<ApiVehicle | null>(null);
     const [formData, setFormData] = useState({
         organizationId: "",
         vehicleType: "car",
@@ -36,21 +60,19 @@ export default function VehiclesPage() {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (editingVehicle) {
-            setVehicles((prev) =>
-                prev.map((vehicle) =>
-                    vehicle._id === editingVehicle._id ? { ...vehicle, ...formData } : vehicle
-                )
-            );
-            toast.success("Vehicle updated successfully");
-        } else {
-            setVehicles((prev) => [
-                ...prev,
-                { _id: `veh_${Date.now()}`, status: "active", ...formData },
-            ]);
-            toast.success("Vehicle created successfully");
+        try {
+            if (editingVehicle) {
+                await updateVehicle({ id: editingVehicle._id, ...formData }).unwrap();
+                toast.success("Vehicle updated successfully");
+            } else {
+                await createVehicle(formData).unwrap();
+                toast.success("Vehicle created successfully");
+            }
+            closeModal();
+        } catch (error) {
+             const err = error as ApiError;
+             toast.error(err.data?.message || "Failed to save vehicle");
         }
-        closeModal();
     };
 
     const openCreateModal = () => {
@@ -59,10 +81,11 @@ export default function VehiclesPage() {
         setIsModalOpen(true);
     };
 
-    const openEditModal = (vehicle: any) => {
+    const openEditModal = (vehicle: ApiVehicle) => {
         setEditingVehicle(vehicle);
+        const orgId = typeof vehicle.organizationId === 'object' ? vehicle.organizationId._id : vehicle.organizationId;
         setFormData({
-            organizationId: vehicle.organizationId?._id || vehicle.organizationId, // Handle populated or id
+            organizationId: orgId,
             vehicleType: vehicle.vehicleType,
             vehicleNumber: vehicle.vehicleNumber,
             model: vehicle.model || ""
@@ -77,8 +100,13 @@ export default function VehiclesPage() {
 
     const handleDelete = async (id: string) => {
         if (confirm("Are you sure you want to delete this vehicle?")) {
-            setVehicles((prev) => prev.filter((vehicle) => vehicle._id !== id));
-            toast.success("Vehicle deleted");
+            try {
+                await deleteVehicle(id).unwrap();
+                toast.success("Vehicle deleted");
+            } catch (error) {
+                const err = error as ApiError;
+                toast.error(err.data?.message || "Failed to delete vehicle");
+            }
         }
     }
 
@@ -94,11 +122,11 @@ export default function VehiclesPage() {
 
     const columns = [
         { header: "Number", accessor: "vehicleNumber" },
-        { header: "Type", accessor: (row: any) => <span className="capitalize">{row.vehicleType}</span> },
+        { header: "Type", accessor: (row: ApiVehicle) => <span className="capitalize">{row.vehicleType}</span> },
         { header: "Model", accessor: "model" },
-        { header: "Organization", accessor: (row: any) => row.organizationId?.name || "N/A" },
+        { header: "Organization", accessor: (row: ApiVehicle) => typeof row.organizationId === 'object' ? row.organizationId.name : "N/A" },
         {
-            header: "Status", accessor: (row: any) => (
+            header: "Status", accessor: (row: ApiVehicle) => (
                 <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-widest ${row.status === 'active'
                     ? 'border-emerald-500/30 bg-emerald-500/20 text-emerald-200'
                     : 'border-rose-500/30 bg-rose-500/20 text-rose-200'
@@ -108,7 +136,7 @@ export default function VehiclesPage() {
             )
         },
         {
-            header: "Actions", accessor: (row: any) => (
+            header: "Actions", accessor: (row: ApiVehicle) => (
                 <div className="flex gap-2">
                     <button onClick={() => router.push(`/superadmin/vehicles/${row._id}`)} className="text-emerald-200 hover:text-emerald-100"><Eye size={16} /></button>
                     <button onClick={() => openEditModal(row)} className="text-slate-200 hover:text-white"><Edit size={16} /></button>
@@ -172,7 +200,7 @@ export default function VehiclesPage() {
                     />
                 </div>
 
-            <Table columns={columns} data={filteredVehicles} loading={false} variant="dark" />
+            <Table columns={columns} data={filteredVehicles} loading={isLoading} variant="dark" />
 
             {isModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
@@ -185,7 +213,7 @@ export default function VehiclesPage() {
                                 <select required className="w-full rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
                                     value={formData.organizationId} onChange={e => setFormData({ ...formData, organizationId: e.target.value })}>
                                     <option value="">Select Organization</option>
-                                    {organizations.map((org: any) => (
+                                    {organizations.map((org: ApiOrg) => (
                                         <option key={org._id} value={org._id}>{org.name}</option>
                                     ))}
                                 </select>

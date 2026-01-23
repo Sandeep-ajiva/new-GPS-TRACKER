@@ -7,55 +7,79 @@ import { Plus, Edit, Trash2, Eye } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
-const demoDevices = [
-    { _id: "gps_1", imei: "86543210001", model: "GT-900", status: "active", currentVehicleId: "veh_1", simNumber: "+91 98989 11111" },
-    { _id: "gps_2", imei: "86543210002", model: "GT-1000", status: "inactive", simNumber: "+91 98989 22222" },
-    { _id: "gps_3", imei: "86543210003", model: "GT-1200", status: "active", simNumber: "+91 98989 33333" },
-];
+import {
+  useGetGpsDevicesQuery,
+  useCreateGpsDeviceMutation,
+  useUpdateGpsDeviceMutation,
+  useDeleteGpsDeviceMutation,
+} from "@/redux/api/gpsDeviceApi";
+import { useGetOrganizationsQuery } from "@/redux/api/organizationApi";
+
+interface ApiGpsDevice {
+  _id: string;
+  imei: string;
+  simNumber?: string;
+  deviceModel?: string;
+  status: string;
+  organizationId: string | { _id: string; name: string };
+  vehicleId?: string; // or object depending on backend
+}
 
 export default function GpsDevicesPage() {
+    const { data: devicesData, isLoading } = useGetGpsDevicesQuery({});
+    const { data: orgsData } = useGetOrganizationsQuery({});
+    const [createDevice] = useCreateGpsDeviceMutation();
+    const [updateDevice] = useUpdateGpsDeviceMutation();
+    const [deleteDevice] = useDeleteGpsDeviceMutation();
+
     const router = useRouter();
-    const [devices, setDevices] = useState(demoDevices);
     const [assignmentFilter, setAssignmentFilter] = useState<"all" | "assigned" | "unassigned">("all");
     const [searchTerm, setSearchTerm] = useState("");
 
+    const devices: ApiGpsDevice[] = useMemo(() => devicesData?.docs || [], [devicesData]);
+    const organizations = useMemo(() => orgsData?.docs || [], [orgsData]);
+
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [editingDevice, setEditingDevice] = useState<any>(null);
+    const [editingDevice, setEditingDevice] = useState<ApiGpsDevice | null>(null);
     const [formData, setFormData] = useState({
         imei: "",
-        simNumber: ""
+        simNumber: "",
+        deviceModel: "",
+        organizationId: "",
+        status: "active"
     });
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (editingDevice) {
-            setDevices((prev) =>
-                prev.map((device) =>
-                    device._id === editingDevice._id ? { ...device, ...formData } : device
-                )
-            );
-            toast.success("Device updated successfully");
-        } else {
-            setDevices((prev) => [
-                ...prev,
-                { _id: `gps_${Date.now()}`, status: "active", ...formData },
-            ]);
-            toast.success("Device created successfully");
+        try {
+            if (editingDevice) {
+                await updateDevice({ id: editingDevice._id, ...formData }).unwrap();
+                toast.success("Device updated successfully");
+            } else {
+                await createDevice(formData).unwrap();
+                toast.success("Device created successfully");
+            }
+            closeModal();
+        } catch (error: any) {
+            toast.error(error.data?.message || "Failed to save device");
         }
-        closeModal();
     };
 
     const openCreateModal = () => {
         setEditingDevice(null);
-        setFormData({ imei: "", simNumber: "" });
+        setFormData({ imei: "", simNumber: "", deviceModel: "", organizationId: "", status: "active" });
         setIsModalOpen(true);
     };
 
-    const openEditModal = (device: any) => {
+    const openEditModal = (device: ApiGpsDevice) => {
         setEditingDevice(device);
+        const orgId = typeof device.organizationId === 'object' ? device.organizationId._id : device.organizationId;
         setFormData({
             imei: device.imei,
-            simNumber: device.simNumber || ""
+            simNumber: device.simNumber || "",
+            deviceModel: device.deviceModel || "",
+            organizationId: orgId,
+            status: device.status
         });
         setIsModalOpen(true);
     };
@@ -67,15 +91,19 @@ export default function GpsDevicesPage() {
 
     const handleDelete = async (id: string) => {
         if (confirm("Are you sure you want to delete this device?")) {
-            setDevices((prev) => prev.filter((device) => device._id !== id));
-            toast.success("Device deleted");
+            try {
+                await deleteDevice(id).unwrap();
+                toast.success("Device deleted");
+            } catch (error: any) {
+                toast.error(error.data?.message || "Failed to delete device");
+            }
         }
     }
 
     const filteredDevices = useMemo(() => {
         const trimmed = searchTerm.trim().toLowerCase();
         return devices.filter((device) => {
-            const isAssigned = Boolean(device.currentVehicleId);
+            const isAssigned = Boolean(device.vehicleId);
             const matchesAssignment =
                 assignmentFilter === "all" ||
                 (assignmentFilter === "assigned" && isAssigned) ||
@@ -89,17 +117,21 @@ export default function GpsDevicesPage() {
         { header: "IMEI", accessor: "imei" },
         { header: "SIM Number", accessor: "simNumber" },
         {
-            header: "Status", accessor: (row: any) => (
-                <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-widest ${row.currentVehicleId
+            header: "Status", accessor: (row: ApiGpsDevice) => (
+                <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-widest ${row.vehicleId
                     ? 'border-amber-500/30 bg-amber-500/20 text-amber-200'
                     : 'border-slate-500/30 bg-slate-500/20 text-slate-200'
                     }`}>
-                    {row.currentVehicleId ? 'Assigned' : 'Unassigned'}
+                    {row.vehicleId ? 'Assigned' : 'Unassigned'}
                 </span>
             )
         },
         {
-            header: "Actions", accessor: (row: any) => (
+          header: "Organization",
+          accessor: (row: ApiGpsDevice) => typeof row.organizationId === 'object' ? row.organizationId.name : "N/A"
+        },
+        {
+            header: "Actions", accessor: (row: ApiGpsDevice) => (
                 <div className="flex gap-2">
                     <button onClick={() => router.push(`/superadmin/gps-devices/${row._id}`)} className="text-emerald-200 hover:text-emerald-100"><Eye size={16} /></button>
                     <button onClick={() => openEditModal(row)} className="text-slate-200 hover:text-white"><Edit size={16} /></button>
@@ -151,7 +183,7 @@ export default function GpsDevicesPage() {
                     />
                 </div>
 
-            <Table columns={columns} data={filteredDevices} loading={false} variant="dark" />
+            <Table columns={columns} data={filteredDevices} loading={isLoading} variant="dark" />
 
             {isModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
@@ -163,6 +195,21 @@ export default function GpsDevicesPage() {
                                 <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">IMEI</label>
                                 <input type="text" required className="w-full rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
                                     value={formData.imei} onChange={e => setFormData({ ...formData, imei: e.target.value })} />
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Organization</label>
+                                <select required className="w-full rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
+                                    value={formData.organizationId} onChange={e => setFormData({ ...formData, organizationId: e.target.value })}>
+                                    <option value="">Select Organization</option>
+                                    {organizations.map((org: any) => (
+                                        <option key={org._id} value={org._id}>{org.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Device Model</label>
+                                <input type="text" required className="w-full rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
+                                    value={formData.deviceModel} onChange={e => setFormData({ ...formData, deviceModel: e.target.value })} />
                             </div>
                             <div>
                                 <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">SIM Number</label>

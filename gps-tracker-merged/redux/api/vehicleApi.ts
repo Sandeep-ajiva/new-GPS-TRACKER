@@ -3,16 +3,16 @@ import { baseApi } from "./baseApi";
 export const vehicleApi = baseApi.injectEndpoints({
     endpoints: (builder) => ({
         getVehicles: builder.query({
-            query: () => "/vehicles",
+            query: () => "/vehicle",
             providesTags: ["Vehicle"],
         }),
         getVehicle: builder.query({
-            query: (id) => `/vehicles/${id}`,
+            query: (id) => `/vehicle/${id}`,
             providesTags: ["Vehicle"],
         }),
         createVehicle: builder.mutation({
             query: (body) => ({
-                url: "/vehicles",
+                url: "/vehicle",
                 method: "POST",
                 body,
             }),
@@ -20,7 +20,7 @@ export const vehicleApi = baseApi.injectEndpoints({
         }),
         updateVehicle: builder.mutation({
             query: ({ id, ...body }) => ({
-                url: `/vehicles/${id}`,
+                url: `/vehicle/${id}`,
                 method: "PUT",
                 body,
             }),
@@ -28,7 +28,7 @@ export const vehicleApi = baseApi.injectEndpoints({
         }),
         deleteVehicle: builder.mutation({
             query: (id) => ({
-                url: `/vehicles/${id}`,
+                url: `/vehicle/${id}`,
                 method: "DELETE",
             }),
             invalidatesTags: ["Vehicle"],

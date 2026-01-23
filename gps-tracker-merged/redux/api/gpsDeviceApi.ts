@@ -3,16 +3,16 @@ import { baseApi } from "./baseApi";
 export const gpsDeviceApi = baseApi.injectEndpoints({
     endpoints: (builder) => ({
         getGpsDevices: builder.query({
-            query: () => "/gps-devices",
+            query: () => "/gpsDevice",
             providesTags: ["GPSDevice"],
         }),
         getGpsDevice: builder.query({
-            query: (id) => `/gps-devices/${id}`,
+            query: (id) => `/gpsDevice/${id}`,
             providesTags: ["GPSDevice"],
         }),
         createGpsDevice: builder.mutation({
             query: (body) => ({
-                url: "/gps-devices",
+                url: "/gpsDevice",
                 method: "POST",
                 body,
             }),
@@ -20,7 +20,7 @@ export const gpsDeviceApi = baseApi.injectEndpoints({
         }),
         updateGpsDevice: builder.mutation({
             query: ({ id, ...body }) => ({
-                url: `/gps-devices/${id}`,
+                url: `/gpsDevice/${id}`,
                 method: "PUT",
                 body,
             }),
@@ -28,7 +28,7 @@ export const gpsDeviceApi = baseApi.injectEndpoints({
         }),
         deleteGpsDevice: builder.mutation({
             query: (id) => ({
-                url: `/gps-devices/${id}`,
+                url: `/gpsDevice/${id}`,
                 method: "DELETE",
             }),
             invalidatesTags: ["GPSDevice"],

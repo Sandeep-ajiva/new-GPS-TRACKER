@@ -6,24 +6,51 @@ import ApiErrorBoundary from "@/components/admin/ErrorBoundary/ApiErrorBoundary"
 import { Plus, Edit, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
-const demoOrganizations = [
-    { _id: "org_ajiva", name: "Ajiva Tracker" },
-    { _id: "org_north", name: "North Branch" },
-];
+import {
+  useGetUsersQuery,
+  useCreateUserMutation,
+  useUpdateUserMutation,
+  useDeleteUserMutation,
+} from "@/redux/api/usersApi";
+import { useGetOrganizationsQuery } from "@/redux/api/organizationApi";
 
-const demoUsers = [
-    { _id: "user_1", name: "Admin User", email: "admin@ajiva.com", role: "admin", organizationId: "org_ajiva" },
-    { _id: "user_2", name: "Super Admin", email: "superadmin@ajiva.com", role: "superadmin", organizationId: null },
-];
+interface ApiUser {
+  _id: string;
+  name?: string;
+  firstName?: string;
+  lastName?: string;
+  email: string;
+  role: string;
+  organizationId?: string | { _id: string; name: string };
+}
 
 export default function UsersPage() {
-    const [users, setUsers] = useState(demoUsers);
-    const [organizations] = useState(demoOrganizations);
+    const { data: usersData, isLoading } = useGetUsersQuery({});
+    const { data: orgsData } = useGetOrganizationsQuery({});
+
+    const [createUser] = useCreateUserMutation();
+    const [updateUser] = useUpdateUserMutation();
+    const [deleteUser] = useDeleteUserMutation();
+
+    const users: ApiUser[] = useMemo(() => {
+        if (!usersData?.docs) return [];
+        return usersData.docs.map((u: Record<string, any>) => ({
+            _id: u._id,
+            name: u.firstName ? `${u.firstName} ${u.lastName}` : (u.name || "Unknown"),
+            firstName: u.firstName,
+            lastName: u.lastName,
+            email: u.email,
+            role: u.role,
+            organizationId: u.organizationId
+        }));
+    }, [usersData]);
+    
+    const organizations = useMemo(() => orgsData?.docs || [], [orgsData]);
     const [roleFilter, setRoleFilter] = useState<"all" | "admin" | "superadmin">("all");
     const [searchTerm, setSearchTerm] = useState("");
 
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [editingUser, setEditingUser] = useState<any>(null);
+    const [editingUser, setEditingUser] = useState<ApiUser | null>(null);
     const [formData, setFormData] = useState({
         name: "",
         email: "",
@@ -34,23 +61,29 @@ export default function UsersPage() {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (editingUser) {
-            setUsers((prev) =>
-                prev.map((user) =>
-                    user._id === editingUser._id
-                        ? { ...user, ...formData }
-                        : user
-                )
-            );
-            toast.success("User updated successfully");
-        } else {
-            setUsers((prev) => [
-                ...prev,
-                { _id: `user_${Date.now()}`, ...formData },
-            ]);
-            toast.success("User created successfully");
+        try {
+            // Split name if needed or backend handles 'name'
+            // Assuming backend wrapper expects firstName/lastName for managers
+            const [firstName, ...rest] = formData.name.split(" ");
+            const lastName = rest.join(" ");
+
+            const payload = {
+                ...formData,
+                firstName: firstName || formData.name,
+                lastName: lastName || "",
+            };
+
+            if (editingUser) {
+                await updateUser({ id: editingUser._id, ...payload }).unwrap();
+                toast.success("User updated successfully");
+            } else {
+                await createUser(payload).unwrap();
+                toast.success("User created successfully");
+            }
+            closeModal();
+        } catch (error: any) {
+             toast.error(error.data?.message || "Failed to save user");
         }
-        closeModal();
     };
 
     const openCreateModal = () => {
@@ -59,14 +92,15 @@ export default function UsersPage() {
         setIsModalOpen(true);
     };
 
-    const openEditModal = (user: any) => {
+    const openEditModal = (user: ApiUser) => {
         setEditingUser(user);
+        const orgId = typeof user.organizationId === 'object' ? user.organizationId?._id : user.organizationId;
         setFormData({
-            name: user.name,
+            name: user.name || "",
             email: user.email,
             password: "", // Don't show password
             role: user.role,
-            organizationId: user.organizationId?._id || user.organizationId || ""
+            organizationId: orgId || ""
         });
         setIsModalOpen(true);
     };
@@ -78,8 +112,12 @@ export default function UsersPage() {
 
     const handleDelete = async (id: string) => {
         if (confirm("Are you sure you want to delete this user?")) {
-            setUsers((prev) => prev.filter((user) => user._id !== id));
-            toast.success("User deleted");
+            try {
+                await deleteUser(id).unwrap();
+                toast.success("User deleted");
+            } catch (error: any) {
+                toast.error(error.data?.message || "Failed to delete user");
+            }
         }
     }
 
@@ -89,7 +127,7 @@ export default function UsersPage() {
             const matchesRole = roleFilter === "all" || user.role === roleFilter;
             const matchesSearch =
                 !trimmed ||
-                user.name.toLowerCase().includes(trimmed) ||
+                user.name?.toLowerCase().includes(trimmed) ||
                 user.email.toLowerCase().includes(trimmed);
             return matchesRole && matchesSearch;
         });
@@ -100,15 +138,15 @@ export default function UsersPage() {
         { header: "Email", accessor: "email" },
         {
             header: "Role",
-            accessor: (row: any) => (
+            accessor: (row: ApiUser) => (
                 <span className="inline-flex items-center rounded-full border border-emerald-500/30 bg-emerald-500/20 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-emerald-200">
                     {row.role}
                 </span>
             )
         },
-        { header: "Organization", accessor: (row: any) => row.organizationId?.name || "Global" },
+        { header: "Organization", accessor: (row: ApiUser) => typeof row.organizationId === 'object' ? row.organizationId?.name : "Global" },
         {
-            header: "Actions", accessor: (row: any) => (
+            header: "Actions", accessor: (row: ApiUser) => (
                 <div className="flex gap-2">
                     <button onClick={() => openEditModal(row)} className="text-slate-200 hover:text-white"><Edit size={16} /></button>
                     <button onClick={() => handleDelete(row._id)} className="text-rose-300 hover:text-rose-200"><Trash2 size={16} /></button>
@@ -159,7 +197,7 @@ export default function UsersPage() {
                     />
                 </div>
 
-            <Table columns={columns} data={filteredUsers} loading={false} variant="dark" />
+            <Table columns={columns} data={filteredUsers} loading={isLoading} variant="dark" />
 
             {isModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">

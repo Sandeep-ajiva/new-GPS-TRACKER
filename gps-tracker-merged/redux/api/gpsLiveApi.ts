@@ -3,7 +3,7 @@ import { baseApi } from "./baseApi";
 export const gpsLiveApi = baseApi.injectEndpoints({
     endpoints: (builder) => ({
         getLiveVehicles: builder.query({
-            query: () => "/gps-live",
+            query: () => "/gpsLiveData",
             providesTags: ["Tracking"],
         }),
     }),
