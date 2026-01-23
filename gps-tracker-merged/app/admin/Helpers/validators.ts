@@ -1,52 +1,66 @@
-/**
- * Simple validation helper for Admin forms
- */
-export const validators = {
-    required: (value: any) => {
-        if (value === null || value === undefined || value === "") {
-            return "This field is required";
-        }
-        if (typeof value === "string" && value.trim() === "") {
-            return "This field is required";
-        }
-        return null;
-    },
-    email: (value: string) => {
-        const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (value && !regex.test(value)) {
-            return "Please enter a valid email address";
-        }
-        return null;
-    },
-    minLength: (min: number) => (value: string) => {
-        if (value && value.length < min) {
-            return `Must be at least ${min} characters long`;
-        }
-        return null;
-    }
-};
+export interface ValidationRule {
+    required?: boolean;
+    type?: "string" | "number" | "boolean" | "array" | "object";
+    errorMessage?: string;
+}
 
-export const validateForm = (data: any, rules: Record<string, any[]>) => {
-    const errors: Record<string, string> = {};
-    let isValid = true;
+export type ValidationRules = Record<string, ValidationRule>;
 
-    for (const field in rules) {
-        const fieldRules = rules[field];
-        for (const rule of fieldRules) {
-            let error = null;
-            if (typeof rule === "function") {
-                error = rule(data[field]);
-            } else if ((rule as any).name === "minLength") {
-                error = validators.minLength((rule as any).min)(data[field]);
-            }
+class Validator {
+    private rules: ValidationRules;
 
-            if (error) {
-                errors[field] = error;
-                isValid = false;
-                break;
-            }
-        }
+    constructor(rules: ValidationRules = {}) {
+        this.rules = rules; // Store the validation rules
     }
 
-    return { isValid, errors };
-};
+    // Validate if the value is not empty
+    isNotEmpty(value: any): boolean {
+        if (typeof value === "string") return value.trim().length > 0;
+        if (value === null || value === undefined) return false;
+        return true;
+    }
+
+    // Validate if the value matches the expected type
+    isValidType(value: any, type: string): boolean {
+        if (type === "string") return typeof value === "string";
+        if (type === "number") return typeof value === "number" || (!isNaN(Number(value)) && value !== "");
+        if (type === "boolean") return typeof value === "boolean";
+        if (type === "array") return Array.isArray(value);
+        if (type === "object") return typeof value === "object" && value !== null;
+        return true;
+    }
+
+    // Validate the entire data object based on rules
+    async validate(data: any): Promise<Record<string, string>> {
+        const errors: Record<string, string> = {};
+
+        for (const [key, rule] of Object.entries(this.rules)) {
+            const value = data[key];
+
+            // Check if the field is required and not empty
+            if (rule.required && !this.isNotEmpty(value)) {
+                errors[key] = rule.errorMessage || `${key} is required.`;
+            }
+
+            // Check if the value matches the required type
+            if (rule.type && !this.isValidType(value, rule.type)) {
+                errors[key] =
+                    rule.errorMessage || `${key} must be of type ${rule.type}.`;
+            }
+        }
+
+        return errors; // Return errors object
+    }
+
+    // Validate a single form field asynchronously
+    async validateFormField(name: string, value: any): Promise<Record<string, string>> {
+        if (!this.rules[name]) {
+            return {}; // No validation rule for the field
+        }
+        const fieldData = { [name]: value };
+        const validationErrors = await this.validate(fieldData);
+        return validationErrors;
+    }
+}
+
+export default Validator;

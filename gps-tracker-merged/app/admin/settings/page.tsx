@@ -9,7 +9,7 @@ import {
     AlertCircle
 } from "lucide-react";
 import { toast } from "sonner";
-import { validators, validateForm } from "../Helpers/validators";
+import Validator from "../Helpers/validators";
 import { capitalizeFirstLetter } from "../Helpers/CapitalizeFirstLetter";
 
 export default function SettingsPage() {
@@ -23,20 +23,30 @@ export default function SettingsPage() {
     const [smsGateway, setSmsGateway] = useState(false);
     const [errors, setErrors] = useState<any>({});
 
-    const handleSave = () => {
+    const Rules = {
+        appName: { required: true, type: "string" as const, errorMessage: "App Name is required." },
+        supportEmail: { required: true, type: "string" as const, errorMessage: "Support Email is required." }
+    };
+
+    const validator = new Validator(Rules);
+
+    const handleBlur = async (name: string, value: any) => {
+        const validationErrors = await validator.validateFormField(name, value);
+        setErrors((prev: any) => ({
+            ...prev,
+            [name]: validationErrors[name]
+        }));
+    };
+
+    const handleSave = async () => {
         const formData = {
             appName,
             supportEmail
         };
 
-        const validationRules = {
-            appName: [validators.required],
-            supportEmail: [validators.required, validators.email]
-        };
+        const validationErrors = await validator.validate(formData);
 
-        const { isValid, errors: validationErrors } = validateForm(formData, validationRules);
-
-        if (!isValid) {
+        if (Object.keys(validationErrors).length > 0) {
             setErrors(validationErrors);
             toast.error("Please fix settings errors");
             return;
@@ -63,8 +73,20 @@ export default function SettingsPage() {
                             <h2 className="text-lg font-black text-gray-900 uppercase tracking-widest">Platform Core</h2>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <SettingInput label="App Name" value={appName} onChange={setAppName} error={errors.appName} />
-                            <SettingInput label="Support Email" value={supportEmail} onChange={setSupportEmail} error={errors.supportEmail} />
+                            <SettingInput
+                                label="App Name"
+                                value={appName}
+                                onChange={setAppName}
+                                onBlur={(val: any) => handleBlur("appName", val)}
+                                error={errors.appName}
+                            />
+                            <SettingInput
+                                label="Support Email"
+                                value={supportEmail}
+                                onChange={setSupportEmail}
+                                onBlur={(val: any) => handleBlur("supportEmail", val)}
+                                error={errors.supportEmail}
+                            />
                             <div className="md:col-span-2">
                                 <SettingInput label="Maintenance Message" value={maintenanceMessage} onChange={setMaintenanceMessage} isTextarea />
                             </div>
@@ -166,7 +188,7 @@ export default function SettingsPage() {
     );
 }
 
-function SettingInput({ label, value, onChange, isTextarea, error }: any) {
+function SettingInput({ label, value, onChange, onBlur, isTextarea, error }: any) {
     return (
         <div className="space-y-2">
             <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{label}</label>
@@ -175,12 +197,14 @@ function SettingInput({ label, value, onChange, isTextarea, error }: any) {
                     className={`w-full px-4 py-3 bg-gray-50 border ${error ? 'border-red-500' : 'border-none'} rounded-xl text-sm font-bold focus:ring-2 focus:ring-blue-100 h-28 pt-4 transition-all`}
                     value={value}
                     onChange={(event) => onChange(event.target.value)}
+                    onBlur={(event) => onBlur && onBlur(event.target.value)}
                 />
             ) : (
                 <input
                     className={`w-full px-4 py-3 bg-gray-50 border ${error ? 'border-red-500' : 'border-none'} rounded-xl text-sm font-bold focus:ring-2 focus:ring-blue-100 transition-all`}
                     value={value}
                     onChange={(event) => onChange(event.target.value)}
+                    onBlur={(event) => onBlur && onBlur(event.target.value)}
                 />
             )}
             {error && <p className="text-red-500 text-[10px] mt-1 font-bold">{error}</p>}

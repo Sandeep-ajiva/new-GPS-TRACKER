@@ -7,7 +7,7 @@ import { Plus, Edit, Trash2, Filter } from "lucide-react";
 import { toast } from "sonner";
 import { getDevices, getVehicles, setDevices, setVehicles, type GPSDevice } from "@/lib/admin-dummy-data";
 
-import { validators, validateForm } from "../Helpers/validators";
+import Validator from "../Helpers/validators";
 import { usePopups } from "../Helpers/PopupContext";
 import { capitalizeFirstLetter } from "../Helpers/CapitalizeFirstLetter";
 
@@ -33,6 +33,22 @@ export default function GpsDevicesPage() {
     });
     const [errors, setErrors] = useState<any>({});
 
+    const Rules = {
+        imei: { required: true, type: "string" as const, errorMessage: "IMEI is required." },
+        simNumber: { required: true, type: "string" as const, errorMessage: "SIM number is required." },
+        model: { required: true, type: "string" as const, errorMessage: "Model is required." }
+    };
+
+    const validator = new Validator(Rules);
+
+    const handleBlur = async (name: string, value: any) => {
+        const validationErrors = await validator.validateFormField(name, value);
+        setErrors((prev: any) => ({
+            ...prev,
+            [name]: validationErrors[name]
+        }));
+    };
+
     const filteredDevices = useMemo(() => {
         let filtered = devices;
         if (filters.assigned === "assigned") {
@@ -50,15 +66,9 @@ export default function GpsDevicesPage() {
         e.preventDefault();
 
         // Use validators
-        const validationRules = {
-            imei: [validators.required],
-            simNumber: [validators.required],
-            model: [validators.required]
-        };
+        const validationErrors = await validator.validate(formData);
 
-        const { isValid, errors: validationErrors } = validateForm(formData, validationRules);
-
-        if (!isValid) {
+        if (Object.keys(validationErrors).length > 0) {
             setErrors(validationErrors);
             toast.error("Please fix form errors");
             return;
@@ -170,8 +180,8 @@ export default function GpsDevicesPage() {
         {
             header: "Status",
             accessor: (row: any) => (
-                <span className={`px-2 py-1 rounded-lg text-xs font-bold uppercase ${row.status === "active" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
-                    }`}>
+                <span className={`px-2 py-1 rounded-lg text-xs font-bold uppercase ${row.status === "active" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}
+                >
                     {capitalizeFirstLetter(row.status)}
                 </span>
             )
@@ -278,20 +288,29 @@ export default function GpsDevicesPage() {
                                 <div>
                                     <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">IMEI</label>
                                     <input type="text" className={`w-full rounded-xl border ${errors.imei ? 'border-red-500' : 'border-slate-200'} p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10`}
-                                        value={formData.imei} onChange={e => setFormData({ ...formData, imei: e.target.value })} />
+                                        value={formData.imei}
+                                        onChange={e => setFormData({ ...formData, imei: e.target.value })}
+                                        onBlur={e => handleBlur("imei", e.target.value)}
+                                    />
                                     {errors.imei && <p className="text-red-500 text-[10px] mt-1 font-bold">{errors.imei}</p>}
                                 </div>
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
                                         <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">SIM Number</label>
                                         <input type="text" className={`w-full rounded-xl border ${errors.simNumber ? 'border-red-500' : 'border-slate-200'} p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10`}
-                                            value={formData.simNumber} onChange={e => setFormData({ ...formData, simNumber: e.target.value })} />
+                                            value={formData.simNumber}
+                                            onChange={e => setFormData({ ...formData, simNumber: e.target.value })}
+                                            onBlur={e => handleBlur("simNumber", e.target.value)}
+                                        />
                                         {errors.simNumber && <p className="text-red-500 text-[10px] mt-1 font-bold">{errors.simNumber}</p>}
                                     </div>
                                     <div>
                                         <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Model</label>
                                         <input type="text" className={`w-full rounded-xl border ${errors.model ? 'border-red-500' : 'border-slate-200'} p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10`}
-                                            value={formData.model} onChange={e => setFormData({ ...formData, model: e.target.value })} />
+                                            value={formData.model}
+                                            onChange={e => setFormData({ ...formData, model: e.target.value })}
+                                            onBlur={e => handleBlur("model", e.target.value)}
+                                        />
                                         {errors.model && <p className="text-red-500 text-[10px] mt-1 font-bold">{errors.model}</p>}
                                     </div>
                                 </div>
@@ -310,37 +329,6 @@ export default function GpsDevicesPage() {
                                         </select>
                                     </div>
                                 </div>
-                                <div>
-                                    <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Assign Vehicle</label>
-                                    <select className="w-full rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
-                                        value={formData.assignedVehicleId || ""}
-                                        onChange={e => {
-                                            const vehicleId = e.target.value || null;
-                                            setFormData({ ...formData, assignedVehicleId: vehicleId });
-
-                                            // Update vehicle bidirectionally
-                                            if (vehicleId) {
-                                                const updatedVehicles = vehicles.map(v =>
-                                                    v._id === vehicleId
-                                                        ? { ...v, assignedDeviceId: editingDevice?._id || null }
-                                                        : v
-                                                );
-                                                setVehicles(updatedVehicles);
-                                            }
-                                        }}
-                                    >
-                                        <option value="">Unassigned</option>
-                                        {availableVehicles.map((vehicle: any) => (
-                                            <option key={vehicle._id} value={vehicle._id}>{vehicle.vehicleNumber} ({vehicle.model})</option>
-                                        ))}
-                                        {editingDevice?.assignedVehicleId && (
-                                            <option value={editingDevice.assignedVehicleId}>
-                                                {vehicles.find(v => v._id === editingDevice.assignedVehicleId)?.vehicleNumber} (Current)
-                                            </option>
-                                        )}
-                                    </select>
-                                </div>
-
                                 <div className="flex gap-3 mt-6">
                                     <button type="button" onClick={closeModal} className="flex-1 rounded-xl bg-slate-100 py-2.5 text-[11px] font-black uppercase tracking-widest text-slate-700 hover:bg-slate-200">Cancel</button>
                                     <button type="submit" className="flex-1 rounded-xl bg-slate-900 py-2.5 text-[11px] font-black uppercase tracking-widest text-white hover:bg-slate-800">Save</button>

@@ -1,5 +1,5 @@
-"use client";
 import React, { useEffect, useMemo, useState } from "react";
+import Validator from "../Helpers/validators";
 
 const defaultActions = ["create", "read", "update", "delete"];
 
@@ -84,6 +84,22 @@ const PermissionsForm = () => {
   >({});
   const [formData, setFormData] = useState({ roleId: "", hierarchy: "" });
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const Rules = {
+    roleId: { required: true, errorMessage: "Please select a role." },
+    hierarchy: { required: true, type: "number" as const, errorMessage: "Please set hierarchy." }
+  };
+
+  const validator = new Validator(Rules);
+
+  const handleBlur = async (e: React.FocusEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    const validationErrors = await validator.validateFormField(name, value);
+    setErrors((prev) => ({
+      ...prev,
+      [name]: validationErrors[name] || ""
+    }));
+  };
   const [loading] = useState(false);
   const [loadError] = useState("");
 
@@ -140,22 +156,6 @@ const PermissionsForm = () => {
     }));
   };
 
-  const handleBlur = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
-  ) => {
-    const { name, value } = e.target;
-    if (!value) {
-      setErrors((prev) => ({
-        ...prev,
-        [name]: "This field is required",
-      }));
-    } else {
-      setErrors((prev) => ({
-        ...prev,
-        [name]: "",
-      }));
-    }
-  };
 
   const togglePermission = (role: string, module: string, action: string) => {
     setPermissions((prev) => {
@@ -248,35 +248,26 @@ const PermissionsForm = () => {
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const selectedRecord = permissionRecords.find(
-      (record) => getRecordId(record) === formData.roleId
-    );
-    if (!selectedRecord) {
-      setErrors((prev) => ({
-        ...prev,
-        roleId: "Please select a role",
-      }));
-      return;
-    }
-    if (!formData.hierarchy) {
-      setErrors((prev) => ({
-        ...prev,
-        hierarchy: "Please set hierarchy",
-      }));
+
+    const validationErrors = await validator.validate(formData);
+
+    if (Object.keys(validationErrors).length > 0) {
+      setErrors(validationErrors);
       return;
     }
 
-    const roleName = selectedRecord.role;
+    const roleName = permissionRecords.find(r => getRecordId(r) === formData.roleId)?.role || "";
+    if (!roleName) return;
     const updatedPermissions = getFilteredPermissions();
     const modules = updatedPermissions[roleName]?.modules || {};
     setPermissionRecords((prev) =>
       prev.map((record) =>
-        getRecordId(record) === getRecordId(selectedRecord)
+        getRecordId(record) === formData.roleId
           ? {
-              ...record,
-              hierarchy: Number(formData.hierarchy),
-              modules,
-            }
+            ...record,
+            hierarchy: Number(formData.hierarchy),
+            modules,
+          }
           : record
       )
     );

@@ -8,7 +8,7 @@ import { Plus, Edit, Trash2, Filter } from "lucide-react";
 import { toast } from "sonner";
 import { getVehicles, getOrganizations, getDevices, setVehicles, setDevices, type Vehicle } from "@/lib/admin-dummy-data";
 
-import { validators, validateForm } from "../Helpers/validators";
+import Validator from "../Helpers/validators";
 import { usePopups } from "../Helpers/PopupContext";
 import { capitalizeFirstLetter } from "../Helpers/CapitalizeFirstLetter";
 
@@ -40,6 +40,22 @@ function VehiclesContent() {
     });
     const [errors, setErrors] = useState<any>({});
 
+    const Rules = {
+        organizationId: { required: true, errorMessage: "Organization is required." },
+        vehicleNumber: { required: true, errorMessage: "Vehicle number is required." },
+        vehicleType: { required: true, errorMessage: "Vehicle type is required." }
+    };
+
+    const validator = new Validator(Rules);
+
+    const handleBlur = async (name: string, value: any) => {
+        const validationErrors = await validator.validateFormField(name, value);
+        setErrors((prev: any) => ({
+            ...prev,
+            [name]: validationErrors[name]
+        }));
+    };
+
     const filteredVehicles = useMemo(() => {
         let filtered = vehicles;
 
@@ -68,15 +84,9 @@ function VehiclesContent() {
         e.preventDefault();
 
         // Use validators
-        const validationRules = {
-            organizationId: [validators.required],
-            vehicleNumber: [validators.required],
-            vehicleType: [validators.required]
-        };
+        const validationErrors = await validator.validate(formData);
 
-        const { isValid, errors: validationErrors } = validateForm(formData, validationRules);
-
-        if (!isValid) {
+        if (Object.keys(validationErrors).length > 0) {
             setErrors(validationErrors);
             toast.error("Please fix form errors");
             return;
@@ -337,7 +347,10 @@ function VehiclesContent() {
                                     <div>
                                         <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Organization</label>
                                         <select className={`w-full border ${errors.organizationId ? 'border-red-500' : 'border-slate-200'} rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-slate-900/10 outline-none`}
-                                            value={formData.organizationId} onChange={e => setFormData({ ...formData, organizationId: e.target.value })}>
+                                            value={formData.organizationId}
+                                            onChange={e => setFormData({ ...formData, organizationId: e.target.value })}
+                                            onBlur={e => handleBlur("organizationId", e.target.value)}
+                                        >
                                             <option value="">Select Organization</option>
                                             {organizations.map((org: any) => (
                                                 <option key={org._id} value={org._id}>{org.name}</option>
@@ -348,7 +361,10 @@ function VehiclesContent() {
                                     <div>
                                         <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Vehicle Type</label>
                                         <select required className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-slate-900/10 outline-none"
-                                            value={formData.vehicleType} onChange={e => setFormData({ ...formData, vehicleType: e.target.value })}>
+                                            value={formData.vehicleType}
+                                            onChange={e => setFormData({ ...formData, vehicleType: e.target.value })}
+                                            onBlur={e => handleBlur("vehicleType", e.target.value)}
+                                        >
                                             <option value="car">Car</option>
                                             <option value="truck">Truck</option>
                                             <option value="bus">Bus</option>
@@ -360,7 +376,10 @@ function VehiclesContent() {
                                 <div>
                                     <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Vehicle Number</label>
                                     <input type="text" className={`w-full border ${errors.vehicleNumber ? 'border-red-500' : 'border-slate-200'} rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-slate-900/10 outline-none`}
-                                        value={formData.vehicleNumber} onChange={e => setFormData({ ...formData, vehicleNumber: e.target.value })} />
+                                        value={formData.vehicleNumber}
+                                        onChange={e => setFormData({ ...formData, vehicleNumber: e.target.value })}
+                                        onBlur={e => handleBlur("vehicleNumber", e.target.value)}
+                                    />
                                     {errors.vehicleNumber && <p className="text-red-500 text-[10px] mt-1 font-bold">{errors.vehicleNumber}</p>}
                                 </div>
                                 <div className="grid grid-cols-2 gap-4">

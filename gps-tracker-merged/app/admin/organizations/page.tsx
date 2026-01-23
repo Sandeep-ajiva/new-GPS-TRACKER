@@ -7,7 +7,7 @@ import { Plus, Edit, Trash2, Filter } from "lucide-react";
 import { toast } from "sonner";
 import { getOrganizations, getRootOrganization, setOrganizations, type Organization } from "@/lib/admin-dummy-data";
 
-import { validators, validateForm } from "../Helpers/validators";
+import Validator from "../Helpers/validators";
 import { usePopups } from "../Helpers/PopupContext";
 import { capitalizeFirstLetter } from "../Helpers/CapitalizeFirstLetter";
 
@@ -31,6 +31,22 @@ export default function OrganizationsPage() {
         status: "active" as "active" | "inactive"
     });
     const [errors, setErrors] = useState<any>({});
+
+    const Rules = {
+        name: { required: true, type: "string" as const, errorMessage: "Name is required." },
+        email: { required: true, type: "string" as const, errorMessage: "Email is required." },
+        phone: { required: true, type: "string" as const, errorMessage: "Phone is required." }
+    };
+
+    const validator = new Validator(Rules);
+
+    const handleBlur = async (name: string, value: any) => {
+        const validationErrors = await validator.validateFormField(name, value);
+        setErrors((prev: any) => ({
+            ...prev,
+            [name]: validationErrors[name]
+        }));
+    };
 
     const filteredOrganizations = useMemo(() => {
         let filtered = organizations;
@@ -58,15 +74,9 @@ export default function OrganizationsPage() {
         e.preventDefault();
 
         // Use validators
-        const validationRules = {
-            name: [validators.required],
-            email: [validators.required, validators.email],
-            phone: [validators.required]
-        };
+        const validationErrors = await validator.validate(formData);
 
-        const { isValid, errors: validationErrors } = validateForm(formData, validationRules);
-
-        if (!isValid) {
+        if (Object.keys(validationErrors).length > 0) {
             setErrors(validationErrors);
             toast.error("Please fix form errors");
             return;
@@ -156,8 +166,8 @@ export default function OrganizationsPage() {
         { header: "Phone", accessor: "phone" },
         {
             header: "Status", accessor: (row: any) => (
-                <span className={`px-2 py-1 rounded-lg text-xs font-bold uppercase ${row.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                    }`}>
+                <span className={`px-2 py-1 rounded-lg text-xs font-bold uppercase ${row.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}
+                >
                     {capitalizeFirstLetter(row.status)}
                 </span>
             )
@@ -255,19 +265,28 @@ export default function OrganizationsPage() {
                                 <div>
                                     <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Name</label>
                                     <input type="text" className={`w-full border ${errors.name ? 'border-red-500' : 'border-slate-200'} rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-slate-900/10 outline-none`}
-                                        value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} />
+                                        value={formData.name}
+                                        onChange={e => setFormData({ ...formData, name: e.target.value })}
+                                        onBlur={e => handleBlur("name", e.target.value)}
+                                    />
                                     {errors.name && <p className="text-red-500 text-[10px] mt-1 font-bold">{errors.name}</p>}
                                 </div>
                                 <div>
                                     <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Email</label>
                                     <input type="email" className={`w-full border ${errors.email ? 'border-red-500' : 'border-slate-200'} rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-slate-900/10 outline-none`}
-                                        value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })} />
+                                        value={formData.email}
+                                        onChange={e => setFormData({ ...formData, email: e.target.value })}
+                                        onBlur={e => handleBlur("email", e.target.value)}
+                                    />
                                     {errors.email && <p className="text-red-500 text-[10px] mt-1 font-bold">{errors.email}</p>}
                                 </div>
                                 <div>
                                     <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Phone</label>
                                     <input type="text" className={`w-full border ${errors.phone ? 'border-red-500' : 'border-slate-200'} rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-slate-900/10 outline-none`}
-                                        value={formData.phone} onChange={e => setFormData({ ...formData, phone: e.target.value })} />
+                                        value={formData.phone}
+                                        onChange={e => setFormData({ ...formData, phone: e.target.value })}
+                                        onBlur={e => handleBlur("phone", e.target.value)}
+                                    />
                                     {errors.phone && <p className="text-red-500 text-[10px] mt-1 font-bold">{errors.phone}</p>}
                                 </div>
                                 <div>

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, Save, Upload, User, Mail, Building2 } from "lucide-react";
 import { toast } from "sonner";
 import { getAdminUser, getRootOrganization, setAdminUser } from "@/lib/admin-dummy-data";
-import { validators, validateForm } from "../Helpers/validators";
+import Validator from "../Helpers/validators";
 import { saveSecureItem, getSecureItem } from "../Helpers/encryptionHelper";
 import { capitalizeFirstLetter } from "../Helpers/CapitalizeFirstLetter";
 
@@ -25,18 +25,28 @@ export default function ProfilePage() {
     const [errors, setErrors] = useState<any>({});
     const [isSaving, setIsSaving] = useState(false);
 
+    const Rules = {
+        name: { required: true, type: "string" as const, errorMessage: "Full Name is required." },
+        email: { required: true, type: "string" as const, errorMessage: "Email Address is required." }
+    };
+
+    const validator = new Validator(Rules);
+
+    const handleBlur = async (name: string, value: any) => {
+        const validationErrors = await validator.validateFormField(name, value);
+        setErrors((prev: any) => ({
+            ...prev,
+            [name]: validationErrors[name]
+        }));
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
         // Use validators
-        const validationRules = {
-            name: [validators.required],
-            email: [validators.required, validators.email]
-        };
+        const validationErrors = await validator.validate(formData);
 
-        const { isValid, errors: validationErrors } = validateForm(formData, validationRules);
-
-        if (!isValid) {
+        if (Object.keys(validationErrors).length > 0) {
             setErrors(validationErrors);
             toast.error("Please fix form errors");
             return;
@@ -111,6 +121,7 @@ export default function ProfilePage() {
                                 type="text"
                                 value={formData.name}
                                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                                onBlur={(e) => handleBlur("name", e.target.value)}
                                 className={`w-full px-4 py-3 bg-gray-50 border ${errors.name ? 'border-red-500' : 'border-none'} rounded-xl text-sm font-bold focus:ring-2 focus:ring-blue-100 transition-all`}
                             />
                             {errors.name && <p className="text-red-500 text-[10px] mt-1 font-bold">{errors.name}</p>}
@@ -125,6 +136,7 @@ export default function ProfilePage() {
                                 type="email"
                                 value={formData.email}
                                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                                onBlur={(e) => handleBlur("email", e.target.value)}
                                 className={`w-full px-4 py-3 bg-gray-50 border ${errors.email ? 'border-red-500' : 'border-none'} rounded-xl text-sm font-bold focus:ring-2 focus:ring-blue-100 transition-all`}
                             />
                             {errors.email && <p className="text-red-500 text-[10px] mt-1 font-bold">{errors.email}</p>}
