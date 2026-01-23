@@ -5,32 +5,19 @@ import Table from "@/components/ui/Table";
 import ApiErrorBoundary from "@/components/admin/ErrorBoundary/ApiErrorBoundary";
 import { Link2, Trash2, Plus } from "lucide-react";
 import { toast } from "sonner";
-
-const demoVehicles = [
-    { _id: "veh_1", vehicleNumber: "DL 10CK1840", model: "Camry" },
-    { _id: "veh_2", vehicleNumber: "PB 10AX2234", model: "Tata 407" },
-];
-
-const demoDevices = [
-    { _id: "gps_1", imei: "86543210001" },
-    { _id: "gps_2", imei: "86543210002" },
-];
-
-const demoMappings = [
-    { _id: "map_1", vehicleId: demoVehicles[0], deviceId: demoDevices[0], createdAt: new Date().toISOString() },
-];
+import { getMappings, getVehicles, getDevices, setMappings, setVehicles, setDevices, type DeviceMapping } from "@/lib/admin-dummy-data";
 
 export default function DeviceMappingPage() {
-    const [mappings, setMappings] = useState(demoMappings);
-    const [vehicles] = useState(demoVehicles);
-    const [devices] = useState(demoDevices);
+    const [mappings, setMappingsState] = useState(getMappings());
+    const [vehicles] = useState(getVehicles());
+    const [devices] = useState(getDevices());
 
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [formData, setFormData] = useState({ vehicleId: "", deviceId: "" });
 
     // Filter available vehicles and devices
-    const assignedVehicleIds = new Set(mappings?.map((m: any) => m.vehicleId?._id));
-    const assignedDeviceIds = new Set(mappings?.map((m: any) => m.deviceId?._id));
+    const assignedVehicleIds = new Set(mappings?.map((m: any) => m.vehicleId?._id || m.vehicleId));
+    const assignedDeviceIds = new Set(mappings?.map((m: any) => m.deviceId?._id || m.deviceId));
 
     const availableVehicles = vehicles?.filter((v: any) => !assignedVehicleIds.has(v._id));
     const availableDevices = devices?.filter((d: any) => !assignedDeviceIds.has(d._id));
@@ -43,22 +30,49 @@ export default function DeviceMappingPage() {
             toast.error("Select both vehicle and device");
             return;
         }
-        setMappings((prev) => [
-            ...prev,
-            {
-                _id: `map_${Date.now()}`,
-                vehicleId: vehicle,
-                deviceId: device,
-                createdAt: new Date().toISOString(),
-            },
-        ]);
+        const newMapping: DeviceMapping = {
+            _id: `map_${Date.now()}`,
+            vehicleId: formData.vehicleId,
+            deviceId: formData.deviceId,
+            createdAt: new Date().toISOString(),
+        };
+        const updatedMappings = [...mappings, newMapping];
+        setMappingsState(updatedMappings);
+        setMappings(updatedMappings);
+        
+        // Update vehicle and device to reflect assignment
+        const updatedVehicles = vehicles.map(v => 
+            v._id === formData.vehicleId ? { ...v, assignedDeviceId: formData.deviceId } : v
+        );
+        setVehicles(updatedVehicles);
+        
+        const updatedDevices = devices.map(d =>
+            d._id === formData.deviceId ? { ...d, assignedVehicleId: formData.vehicleId } : d
+        );
+        setDevices(updatedDevices);
+        
         toast.success("Device assigned successfully");
         closeModal();
     };
 
     const handleUnassign = async (id: string) => {
         if (confirm("Are you sure you want to unassign this device?")) {
-            setMappings((prev) => prev.filter((mapping: any) => mapping._id !== id));
+            const mapping = mappings.find(m => m._id === id);
+            if (mapping) {
+                // Update vehicle and device to remove assignment
+                const updatedVehicles = vehicles.map(v => 
+                    v._id === mapping.vehicleId ? { ...v, assignedDeviceId: null } : v
+                );
+                setVehicles(updatedVehicles);
+                
+                const updatedDevices = devices.map(d =>
+                    d._id === mapping.deviceId ? { ...d, assignedVehicleId: null } : d
+                );
+                setDevices(updatedDevices);
+            }
+            const updated = mappings.filter((mapping: any) => mapping._id !== id);
+            setMappingsState(updated);
+            setMappings(updated);
             toast.success("Device unassigned");
         }
     }
@@ -73,9 +87,29 @@ export default function DeviceMappingPage() {
     };
 
     const columns = [
-        { header: "Vehicle", accessor: (row: any) => row.vehicleId?.vehicleNumber || "Unknown" },
-        { header: "Organization", accessor: (row: any) => row.vehicleId?.organizationId?.name || "N/A" },
-        { header: "Device IMEI", accessor: (row: any) => row.deviceId?.imei || "Unknown" },
+        { 
+            header: "Vehicle", 
+            accessor: (row: any) => {
+                const vehicle = vehicles.find(v => v._id === (row.vehicleId?._id || row.vehicleId));
+                return vehicle?.vehicleNumber || "Unknown";
+            }
+        },
+        { 
+            header: "Organization", 
+            accessor: (row: any) => {
+                const vehicle = vehicles.find(v => v._id === (row.vehicleId?._id || row.vehicleId));
+                const orgId = vehicle?.organizationId;
+                // Would need to get org name from organizations list
+                return orgId || "N/A";
+            }
+        },
+        { 
+            header: "Device IMEI", 
+            accessor: (row: any) => {
+                const device = devices.find(d => d._id === (row.deviceId?._id || row.deviceId));
+                return device?.imei || "Unknown";
+            }
+        },
         { header: "Assigned Date", accessor: (row: any) => new Date(row.createdAt).toLocaleDateString() },
         {
             header: "Actions", accessor: (row: any) => (
@@ -117,7 +151,7 @@ export default function DeviceMappingPage() {
                                     value={formData.vehicleId} onChange={e => setFormData({ ...formData, vehicleId: e.target.value })}>
                                     <option value="">Select available vehicle...</option>
                                     {availableVehicles?.map((v: any) => (
-                                        <option key={v._id} value={v._id}>{v.vehicleNumber} ({v.model})</option>
+                                        <option key={v._id} value={v._id}>{v.vehicleNumber} {v.model ? `(${v.model})` : ""}</option>
                                     ))}
                                 </select>
                                 {availableVehicles?.length === 0 && <p className="mt-1 text-xs font-semibold text-rose-600">No available vehicles found</p>}

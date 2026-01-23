@@ -1,0 +1,271 @@
+{
+  "info": {
+    "name": "GPS Tracker - Organization & Admin Setup",
+    "description": "Single endpoint to create organization and admin user together",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Setup",
+      "item": [
+        {
+          "name": "Create Organization with Admin (New Way)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {\n    var jsonData = pm.response.json();\n    pm.environment.set('organizationId', jsonData.data.organization._id);\n    pm.environment.set('adminUserId', jsonData.data.admin._id);\n    console.log('Organization ID: ' + jsonData.data.organization._id);\n    console.log('Admin User ID: ' + jsonData.data.admin._id);\n}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{superadmin_token}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "name",
+                  "value": "Rajesh Transport Company",
+                  "type": "text"
+                },
+                {
+                  "key": "organizationType",
+                  "value": "transport",
+                  "type": "text"
+                },
+                {
+                  "key": "email",
+                  "value": "rajesh.transport@example.com",
+                  "type": "text"
+                },
+                {
+                  "key": "phone",
+                  "value": "+91-9876543210",
+                  "type": "text"
+                },
+                {
+                  "key": "firstName",
+                  "value": "Rajesh",
+                  "type": "text"
+                },
+                {
+                  "key": "lastName",
+                  "value": "Kumar",
+                  "type": "text"
+                },
+                {
+                  "key": "password",
+                  "value": "Admin@123456",
+                  "type": "text"
+                },
+                {
+                  "key": "address",
+                  "value": "{\"addressLine\":\"123 Transport Road\",\"city\":\"Mumbai\",\"state\":\"Maharashtra\",\"country\":\"India\",\"pincode\":\"400001\"}",
+                  "type": "text"
+                },
+                {
+                  "key": "geo",
+                  "value": "{\"lat\":19.0760,\"lng\":72.8777,\"timezone\":\"Asia/Kolkata\"}",
+                  "type": "text"
+                },
+                {
+                  "key": "settings",
+                  "value": "{\"speedAlert\":true,\"speedLimit\":100,\"idleTimeThreshold\":5}",
+                  "type": "text"
+                },
+                {
+                  "key": "logo",
+                  "type": "file",
+                  "disabled": true
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/organization-admin",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "organization-admin"
+              ]
+            },
+            "description": "CREATE ORGANIZATION AND ADMIN IN ONE CALL\n\nSingle endpoint that creates:\n1. Organization with email/phone\n2. Admin User with same email/phone\n\nBoth use the same email and phone - ensuring they're a single entity.\n\nAutomatically saves organizationId and adminUserId to environment."
+          },
+          "response": []
+        },
+        {
+          "name": "Admin Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {\n    var jsonData = pm.response.json();\n    pm.environment.set('admin_token', jsonData.token);\n    console.log('Admin logged in successfully');\n}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"rajesh.transport@example.com\",\n  \"password\": \"Admin@123456\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "login"
+              ]
+            },
+            "description": "Admin logs in with their credentials from Step 1"
+          },
+          "response": []
+        }
+      ],
+      "description": "Minimal setup: Just 2 requests to get organization and admin ready to use"
+    },
+    {
+      "name": "OLD WAY (For Reference)",
+      "item": [
+        {
+          "name": "Old: Create Organization First",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{superadmin_token}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "name",
+                  "value": "Old Transport Ltd",
+                  "type": "text"
+                },
+                {
+                  "key": "organizationType",
+                  "value": "transport",
+                  "type": "text"
+                },
+                {
+                  "key": "email",
+                  "value": "old.transport@example.com",
+                  "type": "text"
+                },
+                {
+                  "key": "phone",
+                  "value": "+91-9876543211",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/organizations",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "organizations"
+              ]
+            },
+            "description": "OLD WAY: Step 1 - Create organization (returns organizationId)"
+          },
+          "response": []
+        },
+        {
+          "name": "Old: Create Admin User Second",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{superadmin_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"organizationId\": \"{{organizationId}}\",\n  \"firstName\": \"Old\",\n  \"lastName\": \"Admin\",\n  \"email\": \"old.admin@example.com\",\n  \"mobile\": \"+91-9876543211\",\n  \"passwordHash\": \"Admin@123456\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/orgadmin",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "orgadmin"
+              ]
+            },
+            "description": "OLD WAY: Step 2 - Create admin user after organization"
+          },
+          "response": []
+        }
+      ],
+      "description": "These endpoints still work but use the new way instead"
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5000",
+      "type": "string"
+    },
+    {
+      "key": "superadmin_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "admin_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "organizationId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "adminUserId",
+      "value": "",
+      "type": "string"
+    }
+  ]
+}

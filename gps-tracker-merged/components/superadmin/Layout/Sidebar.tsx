@@ -13,6 +13,9 @@ import {
   Building2,
   Settings,
   LogOut,
+  Briefcase,
+  CreditCard,
+  Warehouse,
 } from "lucide-react";
 
 const menuGroups = [
@@ -37,6 +40,14 @@ const menuGroups = [
     items: [
       { name: "Device Mapping", icon: LinkIcon, href: "/superadmin/device-mapping" },
       { name: "History Playback", icon: History, href: "/superadmin/history" },
+      { name: "Depots", icon: Warehouse, href: "/superadmin/depots" },
+    ],
+  },
+  {
+    title: "Business",
+    items: [
+      { name: "Services", icon: Briefcase, href: "/superadmin/services" },
+      { name: "Billing", icon: CreditCard, href: "/superadmin/billing" },
     ],
   },
   {
@@ -51,16 +62,20 @@ const menuGroups = [
 export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
+  const normalizedPath = pathname?.endsWith("/") && pathname !== "/" ? pathname.slice(0, -1) : pathname;
 
   return (
     <aside className="w-64 bg-slate-950 border-r border-slate-900 h-screen fixed left-0 top-0 flex flex-col z-50 text-slate-200">
       <div className="h-16 flex items-center px-6 border-b border-slate-900">
-        <span className="text-xl font-black text-white tracking-tight">
-          GPS
-          <span className="text-emerald-400 text-xs font-semibold ml-2 uppercase tracking-[0.35em]">
-            Root
-          </span>
-        </span>
+        <div className="flex items-center gap-3">
+          <div className="h-10 w-10 rounded-2xl bg-emerald-500/20 border border-emerald-400/30 flex items-center justify-center text-emerald-200 font-black">
+            GT
+          </div>
+          <div className="leading-tight">
+            <img src="/ajiva-logo.svg" alt="Ajiva logo" className="h-5 w-auto" />
+            <p className="text-[10px] uppercase tracking-[0.35em] text-emerald-400">Core</p>
+          </div>
+        </div>
       </div>
 
       <nav className="flex-1 overflow-y-auto py-6">
@@ -72,9 +87,10 @@ export default function Sidebar() {
               </h3>
               <ul className="space-y-1">
                 {group.items.map((item) => {
-                  const isActive =
-                    pathname === item.href ||
-                    pathname.startsWith(`${item.href}/`);
+                  const isDashboard = item.href === "/superadmin";
+                  const isActive = isDashboard
+                    ? normalizedPath === item.href
+                    : normalizedPath === item.href || normalizedPath?.startsWith(`${item.href}/`);
                   return (
                     <li key={item.name}>
                       <button

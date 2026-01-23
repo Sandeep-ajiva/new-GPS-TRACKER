@@ -1,0 +1,37 @@
+const express = require("express");
+const router = express.Router();
+
+const verifyToken = require("../../middleware/verifyToken");
+const checkOrganization = require("../../middleware/checkOrganization");
+const checkAuthorization = require("../../middleware/checkAuthorization");
+
+const Controller = require("./controller");
+
+// Assign driver to vehicle
+router.post(
+    "/assign",
+    verifyToken,
+    checkAuthorization(["admin", "superadmin", "manager"], "vehicleDriverMapping", "create"),
+    checkOrganization,
+    Controller.assignDriverToVehicle
+);
+
+// Unassign driver from vehicle
+router.post(
+    "/unassign",
+    verifyToken,
+    checkAuthorization(["admin", "superadmin", "manager"], "vehicleDriverMapping", "update"),
+    checkOrganization,
+    Controller.unassignDriverFromVehicle
+);
+
+// Get current driver for a vehicle
+router.get(
+    "/:vehicleId/current",
+    verifyToken,
+    checkAuthorization(["admin", "superadmin", "manager", "driver"], "vehicleDriverMapping", "read"),
+    checkOrganization,
+    Controller.getCurrentDriverByVehicle
+);
+
+module.exports = router;

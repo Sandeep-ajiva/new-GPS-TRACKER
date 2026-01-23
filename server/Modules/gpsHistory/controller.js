@@ -1,5 +1,6 @@
 const GpsHistory = require('./model');
 const Validator = require('../../helpers/validators');
+const paginate = require("../../helpers/limitoffset");
 
 const validateGpsHistoryData = async (data) => {
     const rules = {
@@ -49,17 +50,22 @@ exports.create = async (req, res) => {
 
 exports.getAll = async (req, res) => {
     try {
-        const gpsHistories = await GpsHistory.find()
-            .populate('organizationId')
-            .populate('vehicleId')
-            .populate('gpsDeviceId')
-            .populate('driverId')
-            .populate('tripId');
-        return res.status(200).json({
-            status: true,
-            message: "GPS Histories Fetched Successfully",
-            data: gpsHistories
-        });
+        const { page, limit, search, tripId } = req.query;
+        
+        const filter = {};
+        if (tripId) filter.tripId = tripId;
+
+        const result = await paginate(
+            GpsHistory,
+            filter,
+            page,
+            limit,
+            ['organizationId', 'vehicleId', 'gpsDeviceId', 'driverId', 'tripId'],
+            [],
+            search
+        );
+
+        return res.status(200).json(result);
     } catch (error) {
         return res.status(500).json({ status: false, message: error.message });
     }
@@ -67,18 +73,22 @@ exports.getAll = async (req, res) => {
 
 exports.getByVehicle = async (req, res) => {
     try {
-        const gpsHistories = await GpsHistory.find({ vehicleId: req.params.vehicleId })
-            .populate('organizationId')
-            .populate('vehicleId')
-            .populate('gpsDeviceId')
-            .populate('driverId')
-            .populate('tripId')
-            .sort({ timestamp: -1 });
-        return res.status(200).json({
-            status: true,
-            message: "GPS Histories Fetched Successfully",
-            data: gpsHistories
-        });
+        const { page, limit, search, tripId } = req.query;
+        
+        const filter = { vehicleId: req.params.vehicleId };
+        if (tripId) filter.tripId = tripId;
+
+        const result = await paginate(
+            GpsHistory,
+            filter,
+            page,
+            limit,
+            ['organizationId', 'vehicleId', 'gpsDeviceId', 'driverId', 'tripId'],
+            [],
+            search
+        );
+
+        return res.status(200).json(result);
     } catch (error) {
         return res.status(500).json({ status: false, message: error.message });
     }
@@ -86,18 +96,22 @@ exports.getByVehicle = async (req, res) => {
 
 exports.getByDevice = async (req, res) => {
     try {
-        const gpsHistories = await GpsHistory.find({ gpsDeviceId: req.params.gpsDeviceId })
-            .populate('organizationId')
-            .populate('vehicleId')
-            .populate('gpsDeviceId')
-            .populate('driverId')
-            .populate('tripId')
-            .sort({ timestamp: -1 });
-        return res.status(200).json({
-            status: true,
-            message: "GPS Histories Fetched Successfully",
-            data: gpsHistories
-        });
+        const { page, limit, search, tripId } = req.query;
+        
+        const filter = { gpsDeviceId: req.params.gpsDeviceId };
+        if (tripId) filter.tripId = tripId;
+
+        const result = await paginate(
+            GpsHistory,
+            filter,
+            page,
+            limit,
+            ['organizationId', 'vehicleId', 'gpsDeviceId', 'driverId', 'tripId'],
+            [],
+            search
+        );
+
+        return res.status(200).json(result);
     } catch (error) {
         return res.status(500).json({ status: false, message: error.message });
     }

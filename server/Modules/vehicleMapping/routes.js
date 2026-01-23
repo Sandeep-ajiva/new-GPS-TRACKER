@@ -1,43 +1,49 @@
 const express = require("express");
 const router = express.Router();
 
-const requireAuth = require("../../middleware/verifyToken");
+const verifyToken = require("../../middleware/verifyToken");
+const checkOrganization = require("../../middleware/checkOrganization");
 const checkAuthorization = require("../../middleware/checkAuthorization");
 
 const Controller = require("./controller");
 
 router.post(
   "/assign",
-  requireAuth,
-  checkAuthorization(["admin", "manager"], "vehicleMapping", "create"),
+  verifyToken,
+  checkAuthorization(["admin", "superadmin", "manager"], "vehicleMapping", "create"),
+  checkOrganization,
   Controller.assign
 );
 
 router.post(
   "/unassign",
-  requireAuth,
-  checkAuthorization(["admin", "manager"], "vehicleMapping", "update"),
+  verifyToken,
+  checkAuthorization(["admin", "superadmin", "manager"], "vehicleMapping", "update"),
+  checkOrganization,
   Controller.unassign
 );
 
 router.get(
   "/active",
-  requireAuth,
-  checkAuthorization(["admin", "manager", "viewer"], "vehicleMapping", "read"),
+  verifyToken,
+  checkAuthorization(["admin", "superadmin", "manager", "driver"], "vehicleMapping", "read"),
+  checkOrganization,
   Controller.getActiveMappings
 );
 
 router.get(
   "/vehicle/:vehicleId",
-  requireAuth,
-  checkAuthorization(["admin", "manager", "viewer"], "vehicleMapping", "read"),
+  verifyToken,
+  checkAuthorization(["admin", "superadmin", "manager", "driver"], "vehicleMapping", "read"),
+  checkOrganization,
   Controller.getByVehicle
 );
 
 router.get(
   "/device/:gpsDeviceId",
-  requireAuth,
-  checkAuthorization(["admin", "manager", "viewer"], "vehicleMapping", "read"),
+  verifyToken,
+  checkAuthorization(["admin", "superadmin", "manager", "driver"], "vehicleMapping", "read"),
+  checkOrganization,
   Controller.getByDevice
 );
 

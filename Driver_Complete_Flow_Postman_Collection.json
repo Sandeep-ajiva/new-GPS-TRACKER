@@ -1,0 +1,337 @@
+{
+  "info": {
+    "name": "GPS Tracker - Complete Driver Flow",
+    "description": "Complete workflow for creating drivers and driver user accounts with login",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. Driver Setup",
+      "item": [
+        {
+          "name": "Step 1: Create Driver Profile",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Rajesh\",\n  \"lastName\": \"Kumar\",\n  \"phone\": \"+91-9876543210\",\n  \"email\": \"rajesh.kumar@example.com\",\n  \"licenseNumber\": \"DL-RJ-2023-001\",\n  \"licenseExpiry\": \"2026-12-31\",\n  \"photo\": \"https://example.com/drivers/rajesh.jpg\",\n  \"address\": \"456 Transport Road, Mumbai, MH 400001\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/drivers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "drivers"
+              ]
+            },
+            "description": "CREATE A DRIVER PROFILE\n\n1. Admin/Manager creates a driver with basic information\n2. Save the returned driver _id for next step\n3. This creates the Driver record in database"
+          },
+          "response": []
+        },
+        {
+          "name": "Step 2: Create Driver User Account",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Rajesh\",\n  \"lastName\": \"Kumar\",\n  \"email\": \"rajesh.kumar@example.com\",\n  \"mobile\": \"+91-9876543210\",\n  \"password\": \"Driver@123\",\n  \"organizationId\": \"{{organizationId}}\",\n  \"driverId\": \"{{driver_id}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/driver",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "driver"
+              ]
+            },
+            "description": "CREATE DRIVER USER ACCOUNT FOR LOGIN\n\n1. After creating driver profile, create their user account\n2. Use the driver_id from Step 1 to link the user to driver\n3. This creates authentication credentials for the driver\n4. Save the returned user _id\n\nNOTE: Email and mobile must match what was used in Step 1"
+          },
+          "response": []
+        }
+      ],
+      "description": "Setup flow: Create driver profile first, then create user account"
+    },
+    {
+      "name": "2. Driver Login",
+      "item": [
+        {
+          "name": "Driver Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {\n    var jsonData = pm.response.json();\n    pm.environment.set('driver_token', jsonData.token);\n    console.log('Driver token set successfully');\n}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"rajesh.kumar@example.com\",\n  \"password\": \"Driver@123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "login"
+              ]
+            },
+            "description": "DRIVER LOGIN\n\n1. Use the email and password from Step 2\n2. Returns JWT token\n3. Token is automatically saved to {{driver_token}} environment variable\n4. Use this token for all subsequent driver requests"
+          },
+          "response": []
+        }
+      ],
+      "description": "Driver logs in using their user credentials"
+    },
+    {
+      "name": "3. Driver Operations (Authenticated)",
+      "item": [
+        {
+          "name": "Get My Driver Profile",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{driver_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/drivers/{{driver_id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "drivers",
+                "{{driver_id}}"
+              ]
+            },
+            "description": "Get the logged-in driver's profile details"
+          },
+          "response": []
+        },
+        {
+          "name": "Get All Drivers (Org)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{driver_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/drivers?page=1&limit=10",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "drivers"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "Get all drivers in the same organization"
+          },
+          "response": []
+        }
+      ],
+      "description": "Operations that authenticated driver can perform"
+    },
+    {
+      "name": "4. Admin Driver Management",
+      "item": [
+        {
+          "name": "Get All Drivers (Admin View)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/drivers?page=1&limit=10&status=active&search=rajesh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "drivers"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                },
+                {
+                  "key": "status",
+                  "value": "active",
+                  "disabled": true
+                },
+                {
+                  "key": "search",
+                  "value": "rajesh",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Admin view with filtering and pagination"
+          },
+          "response": []
+        },
+        {
+          "name": "Update Driver",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Rajesh Kumar\",\n  \"status\": \"active\",\n  \"availability\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/drivers/{{driver_id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "drivers",
+                "{{driver_id}}"
+              ]
+            },
+            "description": "Admin updates driver information"
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Driver",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/drivers/{{driver_id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "drivers",
+                "{{driver_id}}"
+              ]
+            },
+            "description": "Only superadmin can delete drivers"
+          },
+          "response": []
+        }
+      ],
+      "description": "Admin operations for managing drivers"
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5000",
+      "type": "string"
+    },
+    {
+      "key": "admin_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "driver_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "organizationId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "driver_id",
+      "value": "",
+      "type": "string"
+    }
+  ]
+}

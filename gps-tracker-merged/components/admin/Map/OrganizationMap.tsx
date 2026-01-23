@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef } from "react";
-import { GoogleMap, Marker, useLoadScript } from "@react-google-maps/api";
+import { GoogleMap, Marker, InfoWindow, useLoadScript } from "@react-google-maps/api";
 
 type MapPoint = {
   id: string;
@@ -11,16 +11,23 @@ type MapPoint = {
 
 type VehiclePoint = {
   id: string;
+  label?: string;
   status: "running" | "idle" | "stopped";
   position: { lat: number; lng: number };
+  driverName?: string;
+  speed?: number;
+  lastUpdated?: string;
+  location?: string;
 };
 
 type OrganizationMapProps = {
   organizations: MapPoint[];
+  secondaryOrganizations?: MapPoint[];
   vehicles: VehiclePoint[];
   selectedOrgId?: string | null;
   selectedVehicleId?: string | null;
   onOrgSelect?: (orgId: string) => void;
+  onVehicleSelect?: (vehicleId: string) => void;
 };
 
 const mapStyles: google.maps.MapTypeStyle[] = [
@@ -56,10 +63,12 @@ const statusColor = (status: VehiclePoint["status"]) => {
 
 export default function OrganizationMap({
   organizations,
+  secondaryOrganizations = [],
   vehicles,
   selectedOrgId,
   selectedVehicleId,
   onOrgSelect,
+  onVehicleSelect,
 }: OrganizationMapProps) {
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
   const { isLoaded, loadError } = useLoadScript({
@@ -73,6 +82,11 @@ export default function OrganizationMap({
     }
     return organizations;
   }, [organizations, selectedOrgId]);
+
+  const extraOrgPoints = useMemo(
+    () => secondaryOrganizations.filter((org) => org.id !== selectedOrgId),
+    [secondaryOrganizations, selectedOrgId]
+  );
 
   const visibleVehicles = useMemo(() => {
     if (!selectedOrgId) return [];
@@ -89,10 +103,22 @@ export default function OrganizationMap({
     if (!mapRef.current) return;
     const bounds = new google.maps.LatLngBounds();
     const points = selectedOrgId ? visibleVehicles : visibleOrgPoints;
-    if (points.length === 0) return;
+    const hasPoints = points.length > 0;
+
     points.forEach((point) => bounds.extend(point.position));
-    mapRef.current.fitBounds(bounds, 80);
-  }, [visibleOrgPoints, visibleVehicles, selectedOrgId]);
+    if (selectedOrgId) {
+      const orgPoint = organizations.find((org) => org.id === selectedOrgId);
+      if (orgPoint) {
+        bounds.extend(orgPoint.position);
+      }
+      extraOrgPoints.forEach((org) => bounds.extend(org.position));
+    }
+
+    if (!hasPoints && !selectedOrgId) return;
+    if (!bounds.isEmpty()) {
+      mapRef.current.fitBounds(bounds, 80);
+    }
+  }, [organizations, extraOrgPoints, visibleOrgPoints, visibleVehicles, selectedOrgId]);
 
   if (!apiKey) {
     return (
@@ -119,6 +145,12 @@ export default function OrganizationMap({
   }
 
   const center = visibleOrgPoints[0]?.position || { lat: 28.6139, lng: 77.209 };
+  const selectedVehicle = selectedVehicleId
+    ? visibleVehicles.find((vehicle) => vehicle.id === selectedVehicleId)
+    : null;
+  const activeOrg = selectedOrgId
+    ? organizations.find((org) => org.id === selectedOrgId)
+    : null;
 
   return (
     <div className="relative h-full w-full bg-slate-950">
@@ -138,12 +170,40 @@ export default function OrganizationMap({
           mapTypeControl: false,
         }}
       >
+        {activeOrg && (
+          <Marker
+            key={activeOrg.id}
+            position={activeOrg.position}
+            label={{
+              text: activeOrg.name,
+              color: "white",
+              fontSize: "12px",
+              fontWeight: "700",
+            }}
+            icon={createCircleIcon("#38bdf8", 8)}
+          />
+        )}
+        {extraOrgPoints.map((org) => (
+          <Marker
+            key={org.id}
+            position={org.position}
+            label={{
+              text: org.name,
+              color: "white",
+              fontSize: "11px",
+              fontWeight: "600",
+            }}
+            icon={createCircleIcon("#22d3ee", 6)}
+            onClick={() => onOrgSelect?.(org.id)}
+          />
+        ))}
         {selectedOrgId
           ? visibleVehicles.map((vehicle) => (
               <Marker
                 key={vehicle.id}
                 position={vehicle.position}
                 icon={createCircleIcon(statusColor(vehicle.status), selectedVehicleId ? 9 : 7)}
+                onClick={() => onVehicleSelect?.(vehicle.id)}
               />
             ))
           : visibleOrgPoints.map((org) => (
@@ -160,6 +220,20 @@ export default function OrganizationMap({
                 onClick={() => onOrgSelect?.(org.id)}
               />
             ))}
+        {selectedVehicle && (
+          <InfoWindow
+            position={selectedVehicle.position}
+            onCloseClick={() => onVehicleSelect?.("")}
+          >
+            <div className="text-slate-900 text-sm font-semibold">
+              <p className="font-black text-slate-900">{selectedVehicle.label || "Vehicle"}</p>
+              <p className="text-xs text-slate-600">Driver: {selectedVehicle.driverName || "Unassigned"}</p>
+              <p className="text-xs text-slate-600">Speed: {selectedVehicle.speed ?? 0} km/h</p>
+              <p className="text-xs text-slate-600">Last: {selectedVehicle.lastUpdated || "Just now"}</p>
+              <p className="text-xs text-slate-600">Location: {selectedVehicle.location || "Unknown"}</p>
+            </div>
+          </InfoWindow>
+        )}
       </GoogleMap>
     </div>
   );

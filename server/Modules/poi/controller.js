@@ -1,5 +1,6 @@
 const POI = require('./model');
 const Validator = require('../../helpers/validators');
+const paginate = require("../../helpers/limitoffset");
 
 const validatePOIData = async (data) => {
     const rules = {
@@ -43,13 +44,22 @@ exports.create = async (req, res) => {
 
 exports.getAll = async (req, res) => {
     try {
-        const pois = await POI.find()
-            .populate('organizationId');
-        return res.status(200).json({
-            status: true,
-            message: "POIs Fetched Successfully",
-            data: pois
-        });
+        const { page, limit, search, type } = req.query;
+        
+        const filter = {};
+        if (type) filter.type = type;
+
+        const result = await paginate(
+            POI,
+            filter,
+            page,
+            limit,
+            ['organizationId'],
+            ['name', 'type', 'description'],
+            search
+        );
+
+        return res.status(200).json(result);
     } catch (error) {
         return res.status(500).json({ status: false, message: error.message });
     }

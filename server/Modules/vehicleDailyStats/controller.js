@@ -1,5 +1,6 @@
 const VehicleDailyStats = require('./model');
 const Validator = require('../../helpers/validators');
+const paginate = require("../../helpers/limitoffset");
 
 const validateVehicleDailyStatsData = async (data) => {
     const rules = {
@@ -47,15 +48,19 @@ exports.create = async (req, res) => {
 
 exports.getAll = async (req, res) => {
     try {
-        const stats = await VehicleDailyStats.find()
-            .populate('organizationId')
-            .populate('vehicleId')
-            .populate('gpsDeviceId');
-        return res.status(200).json({
-            status: true,
-            message: "Vehicle Daily Stats Fetched Successfully",
-            data: stats
-        });
+        const { page, limit, search } = req.query;
+        
+        const result = await paginate(
+            VehicleDailyStats,
+            {},
+            page,
+            limit,
+            ['organizationId', 'vehicleId', 'gpsDeviceId'],
+            [],
+            search
+        );
+
+        return res.status(200).json(result);
     } catch (error) {
         return res.status(500).json({ status: false, message: error.message });
     }
@@ -63,16 +68,21 @@ exports.getAll = async (req, res) => {
 
 exports.getByVehicle = async (req, res) => {
     try {
-        const stats = await VehicleDailyStats.find({ vehicleId: req.params.vehicleId })
-            .populate('organizationId')
-            .populate('vehicleId')
-            .populate('gpsDeviceId')
-            .sort({ date: -1 });
-        return res.status(200).json({
-            status: true,
-            message: "Vehicle Daily Stats Fetched Successfully",
-            data: stats
-        });
+        const { page, limit, search } = req.query;
+        
+        const filter = { vehicleId: req.params.vehicleId };
+
+        const result = await paginate(
+            VehicleDailyStats,
+            filter,
+            page,
+            limit,
+            ['organizationId', 'vehicleId', 'gpsDeviceId'],
+            [],
+            search
+        );
+
+        return res.status(200).json(result);
     } catch (error) {
         return res.status(500).json({ status: false, message: error.message });
     }
