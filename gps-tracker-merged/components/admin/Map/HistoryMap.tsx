@@ -1,69 +1,112 @@
 "use client";
 
-import { MapContainer, TileLayer, Marker, Popup, Polyline } from "react-leaflet";
-import "leaflet/dist/leaflet.css";
-import L from "leaflet";
-import { useEffect, useState } from "react";
-
-// Fix for default marker icon in Next.js
-const icon = L.icon({
-    iconUrl: "/images/marker-icon.png",
-    shadowUrl: "/images/marker-shadow.png",
-    iconSize: [25, 41],
-    iconAnchor: [12, 41],
-});
+import { GoogleMap, Marker, Polyline, useLoadScript } from "@react-google-maps/api";
+import { useEffect, useMemo, useRef } from "react";
 
 interface HistoryMapProps {
     pathData: any[];
 }
 
 export default function HistoryMap({ pathData }: HistoryMapProps) {
-    const [isMounted, setIsMounted] = useState(false);
+    const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+    const { isLoaded, loadError } = useLoadScript({
+        googleMapsApiKey: apiKey || "",
+    });
+    const mapRef = useRef<google.maps.Map | null>(null);
+
+    const pathPoints = useMemo(
+        () =>
+            pathData
+                .map((p) => ({ lat: p.latitude ?? p.lat, lng: p.longitude ?? p.lng }))
+                .filter((point) => Number.isFinite(point.lat) && Number.isFinite(point.lng)),
+        [pathData]
+    );
 
     useEffect(() => {
-        setIsMounted(true);
-    }, []);
+        if (!mapRef.current || pathPoints.length === 0) return;
+        const bounds = new google.maps.LatLngBounds();
+        pathPoints.forEach((point) => bounds.extend(point));
+        if (!bounds.isEmpty()) {
+            mapRef.current.fitBounds(bounds, 80);
+        }
+    }, [pathPoints]);
 
-    if (!isMounted) {
-        return <div className="h-full w-full bg-gray-100 flex items-center justify-center">Loading Map...</div>;
+    if (!apiKey) {
+        return (
+            <div className="flex h-full w-full items-center justify-center bg-slate-950 text-slate-300">
+                Add `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` to load Google Maps.
+            </div>
+        );
     }
 
-    const polylinePositions = pathData
-        .map((p) => [p.latitude ?? p.lat, p.longitude ?? p.lng])
-        .filter((point) => Number.isFinite(point[0]) && Number.isFinite(point[1]));
-    const center =
-        polylinePositions.length > 0 ? polylinePositions[0] : [20.5937, 78.9629];
+    if (loadError) {
+        return (
+            <div className="flex h-full w-full items-center justify-center bg-slate-950 text-slate-300">
+                Unable to load Google Maps. Check the API key and billing settings.
+            </div>
+        );
+    }
+
+    if (!isLoaded) {
+        return (
+            <div className="flex h-full w-full items-center justify-center bg-slate-950 text-slate-300">
+                Loading Google Maps...
+            </div>
+        );
+    }
+
+    const mapStyles: google.maps.MapTypeStyle[] = [
+        { elementType: "geometry", stylers: [{ color: "#0f172a" }] },
+        { elementType: "labels.text.stroke", stylers: [{ color: "#0f172a" }] },
+        { elementType: "labels.text.fill", stylers: [{ color: "#94a3b8" }] },
+        { featureType: "administrative", elementType: "geometry", stylers: [{ color: "#1f2937" }] },
+        { featureType: "poi", elementType: "labels.text.fill", stylers: [{ color: "#64748b" }] },
+        { featureType: "road", elementType: "geometry", stylers: [{ color: "#1e293b" }] },
+        { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#0f172a" }] },
+        { featureType: "water", elementType: "geometry", stylers: [{ color: "#0b1d30" }] },
+        { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#38bdf8" }] },
+    ];
+
+    const startPoint = pathPoints[0];
+    const endPoint = pathPoints[pathPoints.length - 1];
 
     return (
-        <MapContainer
-            center={center as L.LatLngExpression}
-            zoom={13}
-            style={{ height: "100%", width: "100%", borderRadius: "1rem" }}
-        >
-            <TileLayer
-                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            />
-            {polylinePositions.length > 0 && (
-                <Polyline positions={polylinePositions as L.LatLngExpression[]} color="blue" />
-            )}
-
-            {/* Start Marker */}
-            {polylinePositions.length > 0 && (
-                <Marker position={polylinePositions[0] as L.LatLngExpression} icon={icon}>
-                    <Popup>Start Point</Popup>
-                </Marker>
-            )}
-
-            {/* End Marker */}
-            {polylinePositions.length > 1 && (
-                <Marker
-                    position={polylinePositions[polylinePositions.length - 1] as L.LatLngExpression}
-                    icon={icon}
-                >
-                    <Popup>End Point</Popup>
-                </Marker>
-            )}
-        </MapContainer>
+        <div className="relative h-full w-full bg-slate-950">
+            <GoogleMap
+                mapContainerStyle={{ width: "100%", height: "100%" }}
+                zoom={12}
+                center={startPoint || { lat: 20.5937, lng: 78.9629 }}
+                onLoad={(map) => {
+                    mapRef.current = map;
+                }}
+                options={{
+                    styles: mapStyles,
+                    disableDefaultUI: true,
+                    zoomControl: true,
+                    fullscreenControl: false,
+                    streetViewControl: false,
+                    mapTypeControl: false,
+                }}
+            >
+                {pathPoints.length > 0 && (
+                    <Polyline
+                        path={pathPoints}
+                        options={{ strokeColor: "#38bdf8", strokeOpacity: 0.9, strokeWeight: 3 }}
+                    />
+                )}
+                {startPoint && (
+                    <Marker
+                        position={startPoint}
+                        label={{ text: "Start", color: "white", fontSize: "12px", fontWeight: "700" }}
+                    />
+                )}
+                {endPoint && (
+                    <Marker
+                        position={endPoint}
+                        label={{ text: "End", color: "white", fontSize: "12px", fontWeight: "700" }}
+                    />
+                )}
+            </GoogleMap>
+        </div>
     );
 }

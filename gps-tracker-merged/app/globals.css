@@ -1,34 +1,62 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Dark Theme Color System */
+  --bg-main: #0B1220;
+  --bg-card: #111827;
+  --bg-sidebar: #0F172A;
+  --bg-input: #020617;
+  --bg-hover: #020617;
+  
+  /* Primary Colors */
+  --primary: #2563EB;
+  --primary-hover: #1D4ED8;
+  --success: #22C55E;
+  --danger: #EF4444;
+  
+  /* Text Colors */
+  --text-primary: #E5E7EB;
+  --text-secondary: #9CA3AF;
+  --text-muted: #6B7280;
+  
+  /* Border Colors */
+  --border-primary: #1E293B;
+  --border-focus: #2563EB;
+  
+  /* Shadows */
+  --shadow-card: 0 8px 24px rgba(0, 0, 0, 0.4);
+  --shadow-button: 0 4px 12px rgba(37, 99, 235, 0.3);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
 }
 
 html,
 body {
   min-height: 100%;
-  background: #0f172a;
+  background: var(--bg-main);
+  color: var(--text-primary);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* CRITICAL: Fix placeholder colors for readability */
+::placeholder {
+  color: var(--text-secondary) !important;
+  opacity: 1 !important;
+}
+
+input::placeholder,
+textarea::placeholder,
+select::placeholder {
+  color: var(--text-secondary) !important;
+  opacity: 1 !important;
+}
+
+/* Smooth transitions globally */
+* {
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
 }
 
 /* Hide scrollbars but keep content scrollable */
@@ -41,3 +69,24 @@ body {
   width: 0;
   height: 0;
 }
+
+/* Custom scrollbar for specific elements */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: var(--bg-input);
+  border-radius: 3px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--border-primary);
+  border-radius: 3px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+

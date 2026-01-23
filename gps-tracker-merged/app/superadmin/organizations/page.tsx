@@ -1,25 +1,31 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Table from "@/components/ui/Table";
 import ApiErrorBoundary from "@/components/admin/ErrorBoundary/ApiErrorBoundary";
-import { Plus, Edit, Trash2 } from "lucide-react";
+import { ExternalLink, Plus, Edit, Trash2, Eye } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import OrganizationCreateModal from "@/components/admin/Modals/OrganizationCreateModal";
 
 const demoOrganizations = [
-    { _id: "org_ajiva", name: "Ajiva Tracker", email: "admin@ajiva.com", phone: "+91 98765 43210", address: "Delhi HQ", status: "active" },
-    { _id: "org_north", name: "North Branch", email: "north@ajiva.com", phone: "+91 98765 43211", address: "Chandigarh", status: "active" },
-    { _id: "org_west", name: "West Branch", email: "west@ajiva.com", phone: "+91 98765 43212", address: "Jaipur", status: "inactive" },
+    { _id: "org_ajiva", name: "Ajiva Tracker", adminName: "Diana Kapoor", email: "admin@ajiva.com", phone: "+91 98765 43210", address: "Delhi HQ", status: "active" },
+    { _id: "org_north", name: "North Branch", adminName: "Rohan Singh", email: "north@ajiva.com", phone: "+91 98765 43211", address: "Chandigarh", status: "active" },
+    { _id: "org_west", name: "West Branch", adminName: "Aanya Mehta", email: "west@ajiva.com", phone: "+91 98765 43212", address: "Jaipur", status: "inactive" },
 ];
 
 export default function OrganizationsPage() {
+    const router = useRouter();
     const [organizations, setOrganizations] = useState(demoOrganizations);
+    const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
+    const [searchTerm, setSearchTerm] = useState("");
 
-    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [editingOrg, setEditingOrg] = useState<any>(null);
     const [formData, setFormData] = useState({ name: "", email: "", phone: "", address: "" });
 
-    const handleSubmit = async (e: React.FormEvent) => {
+    const handleEditSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (editingOrg) {
             setOrganizations((prev) =>
@@ -28,24 +34,12 @@ export default function OrganizationsPage() {
                 )
             );
             toast.success("Organization updated successfully");
-        } else {
-            setOrganizations((prev) => [
-                ...prev,
-                {
-                    _id: `org_${Date.now()}`,
-                    status: "active",
-                    ...formData,
-                },
-            ]);
-            toast.success("Organization created successfully");
         }
-        closeModal();
+        closeEditModal();
     };
 
     const openCreateModal = () => {
-        setEditingOrg(null);
-        setFormData({ name: "", email: "", phone: "", address: "" });
-        setIsModalOpen(true);
+        setIsCreateModalOpen(true);
     };
 
     const openEditModal = (org: any) => {
@@ -56,11 +50,11 @@ export default function OrganizationsPage() {
             phone: org.phone,
             address: org.address || ""
         });
-        setIsModalOpen(true);
+        setIsEditModalOpen(true);
     };
 
-    const closeModal = () => {
-        setIsModalOpen(false);
+    const closeEditModal = () => {
+        setIsEditModalOpen(false);
         setEditingOrg(null);
     };
 
@@ -71,8 +65,22 @@ export default function OrganizationsPage() {
         }
     }
 
+    const filteredOrganizations = useMemo(() => {
+        const trimmed = searchTerm.trim().toLowerCase();
+        return organizations.filter((org) => {
+            const matchesStatus = statusFilter === "all" || org.status === statusFilter;
+            const matchesSearch =
+                !trimmed ||
+                org.name.toLowerCase().includes(trimmed) ||
+                org.email.toLowerCase().includes(trimmed) ||
+                org.adminName.toLowerCase().includes(trimmed);
+            return matchesStatus && matchesSearch;
+        });
+    }, [organizations, searchTerm, statusFilter]);
+
     const columns = [
         { header: "Name", accessor: "name" },
+        { header: "Admin", accessor: "adminName" },
         { header: "Email", accessor: "email" },
         { header: "Phone", accessor: "phone" },
         {
@@ -88,6 +96,19 @@ export default function OrganizationsPage() {
         {
             header: "Actions", accessor: (row: any) => (
                 <div className="flex gap-2">
+                    <button onClick={() => router.push(`/superadmin/organizations/${row._id}`)} className="text-emerald-200 hover:text-emerald-100"><Eye size={16} /></button>
+                    <button
+                        onClick={() => {
+                            if (typeof window !== "undefined") {
+                                sessionStorage.setItem("adminSelectedOrgId", row._id);
+                                sessionStorage.setItem("adminFromSuperadmin", "true");
+                            }
+                            router.push("/admin");
+                        }}
+                        className="text-sky-200 hover:text-sky-100"
+                    >
+                        <ExternalLink size={16} />
+                    </button>
                     <button onClick={() => openEditModal(row)} className="text-slate-200 hover:text-white"><Edit size={16} /></button>
                     <button onClick={() => handleDelete(row._id)} className="text-rose-300 hover:text-rose-200"><Trash2 size={16} /></button>
                 </div>
@@ -112,14 +133,60 @@ export default function OrganizationsPage() {
                     </button>
                 </div>
 
-            <Table columns={columns} data={organizations} loading={false} variant="dark" />
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-800/80 bg-slate-900/60 p-4">
+                    <div className="flex flex-wrap gap-2">
+                        {(["all", "active", "inactive"] as const).map((status) => (
+                            <button
+                                key={status}
+                                onClick={() => setStatusFilter(status)}
+                                className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-widest transition ${
+                                    statusFilter === status
+                                        ? "border-emerald-500/40 bg-emerald-500/20 text-emerald-200"
+                                        : "border-slate-800/80 bg-slate-950/60 text-slate-400 hover:text-slate-200"
+                                }`}
+                            >
+                                {status}
+                            </button>
+                        ))}
+                    </div>
+                    <input
+                        type="text"
+                        placeholder="Search by org name or email..."
+                        value={searchTerm}
+                        onChange={(event) => setSearchTerm(event.target.value)}
+                        className="w-full max-w-xs rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2 text-xs font-semibold text-slate-200 outline-none focus:ring-2 focus:ring-emerald-500/30"
+                    />
+                </div>
 
-            {isModalOpen && (
+            <Table columns={columns} data={filteredOrganizations} loading={false} variant="dark" />
+
+            <OrganizationCreateModal
+                isOpen={isCreateModalOpen}
+                onClose={() => setIsCreateModalOpen(false)}
+                variant="dark"
+                onCreate={(payload) => {
+                    setOrganizations((prev) => [
+                        ...prev,
+                        {
+                            _id: `org_${Date.now()}`,
+                            status: "active",
+                            name: payload.name,
+                            email: payload.email,
+                            phone: payload.phone,
+                            address: payload.address,
+                            adminName: "New Admin",
+                        },
+                    ]);
+                    toast.success("Organization created successfully");
+                }}
+            />
+
+            {isEditModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
                     <div className="w-full max-w-md rounded-2xl border border-slate-800/80 bg-slate-900/90 p-6 shadow-[0_30px_80px_-40px_rgba(15,23,42,0.9)]">
                         <h2 className="text-xl font-black text-slate-100">{editingOrg ? "Edit Organization" : "New Organization"}</h2>
                         <p className="text-xs text-slate-400">Keep branches aligned with admin access.</p>
-                        <form onSubmit={handleSubmit} className="space-y-4">
+                        <form onSubmit={handleEditSubmit} className="space-y-4">
                             <div>
                                 <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Name</label>
                                 <input type="text" required className="w-full rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
@@ -141,7 +208,7 @@ export default function OrganizationsPage() {
                                     value={formData.address} onChange={e => setFormData({ ...formData, address: e.target.value })} />
                             </div>
                             <div className="flex gap-3 mt-6">
-                                <button type="button" onClick={closeModal} className="flex-1 rounded-xl border border-slate-800 bg-slate-950/70 py-2.5 text-[11px] font-black uppercase tracking-widest text-slate-200 hover:bg-slate-900">Cancel</button>
+                                <button type="button" onClick={closeEditModal} className="flex-1 rounded-xl border border-slate-800 bg-slate-950/70 py-2.5 text-[11px] font-black uppercase tracking-widest text-slate-200 hover:bg-slate-900">Cancel</button>
                                 <button type="submit" className="flex-1 rounded-xl bg-emerald-500/30 py-2.5 text-[11px] font-black uppercase tracking-widest text-emerald-100 hover:bg-emerald-500/40">Save</button>
                             </div>
                         </form>

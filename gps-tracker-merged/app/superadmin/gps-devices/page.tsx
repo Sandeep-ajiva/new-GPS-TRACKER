@@ -1,18 +1,23 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Table from "@/components/ui/Table";
 import ApiErrorBoundary from "@/components/admin/ErrorBoundary/ApiErrorBoundary";
-import { Plus, Edit, Trash2 } from "lucide-react";
+import { Plus, Edit, Trash2, Eye } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
 const demoDevices = [
-    { _id: "gps_1", imei: "86543210001", model: "GT-900", status: "active" },
-    { _id: "gps_2", imei: "86543210002", model: "GT-1000", status: "inactive" },
+    { _id: "gps_1", imei: "86543210001", model: "GT-900", status: "active", currentVehicleId: "veh_1", simNumber: "+91 98989 11111" },
+    { _id: "gps_2", imei: "86543210002", model: "GT-1000", status: "inactive", simNumber: "+91 98989 22222" },
+    { _id: "gps_3", imei: "86543210003", model: "GT-1200", status: "active", simNumber: "+91 98989 33333" },
 ];
 
 export default function GpsDevicesPage() {
+    const router = useRouter();
     const [devices, setDevices] = useState(demoDevices);
+    const [assignmentFilter, setAssignmentFilter] = useState<"all" | "assigned" | "unassigned">("all");
+    const [searchTerm, setSearchTerm] = useState("");
 
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingDevice, setEditingDevice] = useState<any>(null);
@@ -67,6 +72,19 @@ export default function GpsDevicesPage() {
         }
     }
 
+    const filteredDevices = useMemo(() => {
+        const trimmed = searchTerm.trim().toLowerCase();
+        return devices.filter((device) => {
+            const isAssigned = Boolean(device.currentVehicleId);
+            const matchesAssignment =
+                assignmentFilter === "all" ||
+                (assignmentFilter === "assigned" && isAssigned) ||
+                (assignmentFilter === "unassigned" && !isAssigned);
+            const matchesSearch = !trimmed || device.imei.toLowerCase().includes(trimmed);
+            return matchesAssignment && matchesSearch;
+        });
+    }, [devices, assignmentFilter, searchTerm]);
+
     const columns = [
         { header: "IMEI", accessor: "imei" },
         { header: "SIM Number", accessor: "simNumber" },
@@ -83,6 +101,7 @@ export default function GpsDevicesPage() {
         {
             header: "Actions", accessor: (row: any) => (
                 <div className="flex gap-2">
+                    <button onClick={() => router.push(`/superadmin/gps-devices/${row._id}`)} className="text-emerald-200 hover:text-emerald-100"><Eye size={16} /></button>
                     <button onClick={() => openEditModal(row)} className="text-slate-200 hover:text-white"><Edit size={16} /></button>
                     <button onClick={() => handleDelete(row._id)} className="text-rose-300 hover:text-rose-200"><Trash2 size={16} /></button>
                 </div>
@@ -107,7 +126,32 @@ export default function GpsDevicesPage() {
                     </button>
                 </div>
 
-            <Table columns={columns} data={devices} loading={false} variant="dark" />
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-800/80 bg-slate-900/60 p-4">
+                    <div className="flex flex-wrap gap-2">
+                        {(["all", "assigned", "unassigned"] as const).map((status) => (
+                            <button
+                                key={status}
+                                onClick={() => setAssignmentFilter(status)}
+                                className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-widest transition ${
+                                    assignmentFilter === status
+                                        ? "border-emerald-500/40 bg-emerald-500/20 text-emerald-200"
+                                        : "border-slate-800/80 bg-slate-950/60 text-slate-400 hover:text-slate-200"
+                                }`}
+                            >
+                                {status}
+                            </button>
+                        ))}
+                    </div>
+                    <input
+                        type="text"
+                        placeholder="Search by IMEI..."
+                        value={searchTerm}
+                        onChange={(event) => setSearchTerm(event.target.value)}
+                        className="w-full max-w-xs rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2 text-xs font-semibold text-slate-200 outline-none focus:ring-2 focus:ring-emerald-500/30"
+                    />
+                </div>
+
+            <Table columns={columns} data={filteredDevices} loading={false} variant="dark" />
 
             {isModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
