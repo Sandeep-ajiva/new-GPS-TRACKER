@@ -68,7 +68,7 @@ router.patch(
 router.delete(
   "/:id",
   verifyToken,
-  checkAuthorization(["superadmin"], "vehicle", "delete"),
+  checkAuthorization(["superadmin", "admin"], "vehicle", "delete"),
   checkOrganization,
   Controller.remove,
 );
