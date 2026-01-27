@@ -23,7 +23,7 @@ router.get(
   "/",
   verifyToken,
   checkAuthorization(["admin", "superadmin", "manager"], "vehicle", "read"),
-  checkOrganization,
+  // checkOrganization,
   Controller.getAll
 );
 

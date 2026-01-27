@@ -3,42 +3,73 @@
 import { useState, useMemo } from "react";
 import Table from "@/components/ui/Table";
 import ApiErrorBoundary from "@/components/admin/ErrorBoundary/ApiErrorBoundary";
-import { Plus, Edit, Trash2, Filter } from "lucide-react";
+import { Plus, Edit, Trash2, Filter, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { getUsers, getOrganizations, setUsers, type User } from "@/lib/admin-dummy-data";
+import {
+    useGetUsersQuery,
+    useCreateUserMutation,
+    useUpdateUserMutation,
+    useDeleteUserMutation
+} from "@/redux/api/usersApi";
+import { useGetOrganizationsQuery } from "@/redux/api/organizationApi";
 
 import Validator from "../Helpers/validators";
 import { usePopups } from "../Helpers/PopupContext";
 import { capitalizeFirstLetter } from "../Helpers/CapitalizeFirstLetter";
 
+export interface User {
+    _id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    mobile: string;
+    role: "admin" | "manager" | "superadmin" | "driver";
+    organizationId: any;
+    status: "active" | "inactive";
+}
+
 export default function UsersPage() {
     const { openPopup, closePopup, isPopupOpen } = usePopups();
-    const [users, setUsersState] = useState(getUsers());
-    const [organizations] = useState(getOrganizations());
+
+    // API Hooks
+    const { data: usersData, isLoading: isUsersLoading } = useGetUsersQuery(undefined);
+    const { data: orgData, isLoading: isOrgLoading } = useGetOrganizationsQuery(undefined);
+
+    const [createUser, { isLoading: isCreating }] = useCreateUserMutation();
+    const [updateUser, { isLoading: isUpdating }] = useUpdateUserMutation();
+    const [deleteUser, { isLoading: isDeleting }] = useDeleteUserMutation();
+
+    const users = (usersData?.data as User[]) || [];
+    const organizations = (orgData?.data as any[]) || [];
+
     const [showFilters, setShowFilters] = useState(false);
     const [filters, setFilters] = useState({
         role: "",
         organizationId: ""
     });
 
-    const [editingUser, setEditingUser] = useState<any>(null);
+    const [editingUser, setEditingUser] = useState<User | null>(null);
     const [formData, setFormData] = useState({
-        name: "",
+        firstName: "",
+        lastName: "",
         email: "",
-        password: "",
-        role: "admin" as "admin" | "manager" | "driver" | "superadmin",
+        mobile: "",
+        passwordHash: "",
+        role: "admin" as "admin" | "manager",
         organizationId: "",
         status: "active" as "active" | "inactive"
     });
     const [errors, setErrors] = useState<any>({});
 
     const Rules = useMemo(() => ({
-        name: { required: true, type: "string" as const, errorMessage: "Name is required." },
-        email: { required: true, type: "string" as const, errorMessage: "Email is required." },
-        password: { required: !editingUser, type: "string" as const, errorMessage: "Password is required." }
-    }), [editingUser]);
+        firstName: { required: true, errorMessage: "First Name is required." },
+        lastName: { required: true, errorMessage: "Last Name is required." },
+        email: { required: true, type: "email" as const, errorMessage: "Valid Email is required." },
+        mobile: { required: true, errorMessage: "Mobile is required." },
+        // passwordHash is required only for creation
+    }), []);
 
-    const validator = useMemo(() => new Validator(Rules), [Rules]);
+    const validator = new Validator(Rules);
 
     const handleBlur = async (name: string, value: any) => {
         const validationErrors = await validator.validateFormField(name, value);
@@ -54,7 +85,7 @@ export default function UsersPage() {
             filtered = filtered.filter(u => u.role === filters.role);
         }
         if (filters.organizationId) {
-            filtered = filtered.filter(u => u.organizationId === filters.organizationId);
+            filtered = filtered.filter(u => (u.organizationId?._id || u.organizationId) === filters.organizationId);
         }
         return filtered;
     }, [users, filters]);
@@ -62,7 +93,13 @@ export default function UsersPage() {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
-        // Use validators
+        // Manual check for password on creation
+        if (!editingUser && !formData.passwordHash) {
+            setErrors((prev: any) => ({ ...prev, passwordHash: "Password is required" }));
+            toast.error("Password is required for new users");
+            return;
+        }
+
         const validationErrors = await validator.validate(formData);
 
         if (Object.keys(validationErrors).length > 0) {
@@ -71,53 +108,50 @@ export default function UsersPage() {
             return;
         }
 
-        // Prevent SuperAdmin from being added
-        if (formData.role === "superadmin") {
-            toast.error("SuperAdmin role cannot be added");
-            return;
+        try {
+            if (editingUser) {
+                // Remove passwordHash if empty to avoid overwriting
+                const { passwordHash, ...updateData } = formData;
+                // Backend might not support password update via this endpoint based on controller?
+                // Controller 'updateUser' allows: firstName, lastName, email, mobile, status.
+                // It does NOT update password. Good.
+                await updateUser({ id: editingUser._id, ...updateData }).unwrap();
+                toast.success("User updated successfully");
+            } else {
+                await createUser({ ...formData }).unwrap();
+                toast.success("User created successfully");
+            }
+            closeModal();
+        } catch (err: any) {
+            toast.error(err?.data?.message || "Operation failed");
         }
-
-        if (editingUser) {
-            const updated = users.map((user) =>
-                user._id === editingUser._id
-                    ? { ...user, ...formData, password: formData.password || user.password }
-                    : user
-            );
-            setUsersState(updated);
-            setUsers(updated);
-            toast.success("User updated successfully");
-        } else {
-            const newUser: User = {
-                _id: `user_${Date.now()}`,
-                name: formData.name,
-                email: formData.email,
-                password: formData.password,
-                role: formData.role,
-                organizationId: formData.organizationId || null,
-                status: formData.status,
-            };
-            const updated = [...users, newUser];
-            setUsersState(updated);
-            setUsers(updated);
-            toast.success("User created successfully");
-        }
-        closeModal();
     };
 
     const openCreateModal = () => {
         setEditingUser(null);
-        setFormData({ name: "", email: "", password: "", role: "admin", organizationId: "", status: "active" });
+        setFormData({
+            firstName: "",
+            lastName: "",
+            email: "",
+            mobile: "",
+            passwordHash: "",
+            role: "admin",
+            organizationId: "",
+            status: "active"
+        });
         setErrors({});
         openPopup("userModal");
     };
 
-    const openEditModal = (user: any) => {
+    const openEditModal = (user: User) => {
         setEditingUser(user);
         setFormData({
-            name: user.name,
-            email: user.email,
-            password: "", // Don't show password
-            role: user.role,
+            firstName: user.firstName || "",
+            lastName: user.lastName || "",
+            email: user.email || "",
+            mobile: user.mobile || "",
+            passwordHash: "", // Don't show password
+            role: user.role === "superadmin" || user.role === "driver" ? "admin" : user.role, // Fallback if viewing weird role
             organizationId: user.organizationId?._id || user.organizationId || "",
             status: user.status || "active"
         });
@@ -137,10 +171,12 @@ export default function UsersPage() {
             return;
         }
         if (confirm("Are you sure you want to delete this user?")) {
-            const updated = users.filter((user) => user._id !== id);
-            setUsersState(updated);
-            setUsers(updated);
-            toast.success("User deleted");
+            try {
+                await deleteUser(id).unwrap();
+                toast.success("User deleted");
+            } catch (err: any) {
+                toast.error(err?.data?.message || "Delete failed");
+            }
         }
     }
 
@@ -149,8 +185,9 @@ export default function UsersPage() {
     };
 
     const columns = [
-        { header: "Name", accessor: "name" },
+        { header: "Name", accessor: (row: any) => `${row.firstName} ${row.lastName}` },
         { header: "Email", accessor: "email" },
+        { header: "Mobile", accessor: "mobile" },
         {
             header: "Role",
             accessor: (row: any) => (
@@ -163,6 +200,7 @@ export default function UsersPage() {
             header: "Organization",
             accessor: (row: any) => {
                 if (!row.organizationId) return "Global";
+                if (typeof row.organizationId === 'object') return row.organizationId.name;
                 const org = organizations.find(o => o._id === row.organizationId);
                 return org?.name || "Unknown";
             }
@@ -179,11 +217,23 @@ export default function UsersPage() {
             header: "Actions", accessor: (row: any) => (
                 <div className="flex gap-2">
                     <button onClick={() => openEditModal(row)} className="text-slate-700 hover:text-slate-900"><Edit size={16} /></button>
-                    <button onClick={() => handleDelete(row._id)} className="text-rose-600 hover:text-rose-700"><Trash2 size={16} /></button>
+                    {!isLoading && row.role !== 'superadmin' && (
+                        <button onClick={() => handleDelete(row._id)} className="text-rose-600 hover:text-rose-700"><Trash2 size={16} /></button>
+                    )}
                 </div>
             )
         }
     ];
+
+    const isLoading = isUsersLoading || isOrgLoading;
+
+    if (isLoading) {
+        return (
+            <div className="flex items-center justify-center h-full">
+                <Loader2 className="animate-spin text-slate-500" size={32} />
+            </div>
+        )
+    }
 
     return (
         <ApiErrorBoundary hasError={false}>
@@ -223,7 +273,6 @@ export default function UsersPage() {
                                     <option value="">All Roles</option>
                                     <option value="admin">Admin</option>
                                     <option value="manager">Manager</option>
-                                    <option value="driver">Driver</option>
                                 </select>
                             </div>
                             <div>
@@ -251,22 +300,33 @@ export default function UsersPage() {
                     </div>
                 )}
 
-                <Table columns={columns} data={filteredUsers} loading={false} />
+                <Table columns={columns} data={filteredUsers} loading={isLoading} />
 
                 {isPopupOpen("userModal") && (
                     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm">
                         <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
                             <h2 className="text-xl font-black text-slate-900">{editingUser ? "Edit User" : "New User"}</h2>
                             <p className="text-xs text-slate-500">Define roles and assign organization scope.</p>
-                            <form onSubmit={handleSubmit} className="space-y-4">
-                                <div>
-                                    <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Name</label>
-                                    <input type="text" className={`w-full rounded-xl border ${errors.name ? 'border-red-500' : 'border-slate-200'} p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10`}
-                                        value={formData.name}
-                                        onChange={e => setFormData({ ...formData, name: e.target.value })}
-                                        onBlur={e => handleBlur("name", e.target.value)}
-                                    />
-                                    {errors.name && <p className="text-red-500 text-[10px] mt-1 font-bold">{errors.name}</p>}
+                            <form onSubmit={handleSubmit} className="space-y-4 max-h-[70vh] overflow-y-auto pr-2">
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">First Name</label>
+                                        <input type="text" className={`w-full rounded-xl border ${errors.firstName ? 'border-red-500' : 'border-slate-200'} p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10`}
+                                            value={formData.firstName}
+                                            onChange={e => setFormData({ ...formData, firstName: e.target.value })}
+                                            onBlur={e => handleBlur("firstName", e.target.value)}
+                                        />
+                                        {errors.firstName && <p className="text-red-500 text-[10px] mt-1 font-bold">{errors.firstName}</p>}
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Last Name</label>
+                                        <input type="text" className={`w-full rounded-xl border ${errors.lastName ? 'border-red-500' : 'border-slate-200'} p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10`}
+                                            value={formData.lastName}
+                                            onChange={e => setFormData({ ...formData, lastName: e.target.value })}
+                                            onBlur={e => handleBlur("lastName", e.target.value)}
+                                        />
+                                        {errors.lastName && <p className="text-red-500 text-[10px] mt-1 font-bold">{errors.lastName}</p>}
+                                    </div>
                                 </div>
                                 <div>
                                     <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Email</label>
@@ -278,31 +338,42 @@ export default function UsersPage() {
                                     {errors.email && <p className="text-red-500 text-[10px] mt-1 font-bold">{errors.email}</p>}
                                 </div>
                                 <div>
-                                    <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Password</label>
-                                    <input type="password" className={`w-full rounded-xl border ${errors.password ? 'border-red-500' : 'border-slate-200'} p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10`}
-                                        placeholder={editingUser ? "Leave blank to keep current" : ""}
-                                        value={formData.password}
-                                        onChange={e => setFormData({ ...formData, password: e.target.value })}
-                                        onBlur={e => handleBlur("password", e.target.value)}
+                                    <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Mobile</label>
+                                    <input type="text" className={`w-full rounded-xl border ${errors.mobile ? 'border-red-500' : 'border-slate-200'} p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10`}
+                                        value={formData.mobile}
+                                        onChange={e => setFormData({ ...formData, mobile: e.target.value })}
+                                        onBlur={e => handleBlur("mobile", e.target.value)}
                                     />
-                                    {errors.password && <p className="text-red-500 text-[10px] mt-1 font-bold">{errors.password}</p>}
+                                    {errors.mobile && <p className="text-red-500 text-[10px] mt-1 font-bold">{errors.mobile}</p>}
                                 </div>
-                                <div>
-                                    <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Role</label>
-                                    <select required className="w-full rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
-                                        value={formData.role} onChange={e => setFormData({ ...formData, role: e.target.value as any })}>
-                                        <option value="admin">Admin</option>
-                                        <option value="manager">Manager</option>
-                                        <option value="driver">Driver</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Status</label>
-                                    <select className="w-full rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
-                                        value={formData.status} onChange={e => setFormData({ ...formData, status: e.target.value as "active" | "inactive" })}>
-                                        <option value="active">Active</option>
-                                        <option value="inactive">Inactive</option>
-                                    </select>
+                                {!editingUser && (
+                                    <div>
+                                        <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Password</label>
+                                        <input type="password" className={`w-full rounded-xl border ${errors.passwordHash ? 'border-red-500' : 'border-slate-200'} p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10`}
+                                            value={formData.passwordHash}
+                                            onChange={e => setFormData({ ...formData, passwordHash: e.target.value })}
+                                            onBlur={e => handleBlur("passwordHash", e.target.value)}
+                                        />
+                                        {errors.passwordHash && <p className="text-red-500 text-[10px] mt-1 font-bold">{errors.passwordHash}</p>}
+                                    </div>
+                                )}
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Role</label>
+                                        <select required className="w-full rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
+                                            value={formData.role} onChange={e => setFormData({ ...formData, role: e.target.value as any })}>
+                                            <option value="admin">Admin</option>
+                                            <option value="manager">Manager</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Status</label>
+                                        <select className="w-full rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
+                                            value={formData.status} onChange={e => setFormData({ ...formData, status: e.target.value as "active" | "inactive" })}>
+                                            <option value="active">Active</option>
+                                            <option value="inactive">Inactive</option>
+                                        </select>
+                                    </div>
                                 </div>
                                 <div>
                                     <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Organization</label>
@@ -317,7 +388,9 @@ export default function UsersPage() {
 
                                 <div className="flex gap-3 mt-6">
                                     <button type="button" onClick={closeModal} className="flex-1 rounded-xl bg-slate-100 py-2.5 text-[11px] font-black uppercase tracking-widest text-slate-700 hover:bg-slate-200">Cancel</button>
-                                    <button type="submit" className="flex-1 rounded-xl bg-slate-900 py-2.5 text-[11px] font-black uppercase tracking-widest text-white hover:bg-slate-800">Save</button>
+                                    <button type="submit" disabled={isCreating || isUpdating} className="flex-1 rounded-xl bg-slate-900 py-2.5 text-[11px] font-black uppercase tracking-widest text-white hover:bg-slate-800 disabled:opacity-50">
+                                        {(isCreating || isUpdating) ? "Saving..." : "Save"}
+                                    </button>
                                 </div>
                             </form>
                         </div>

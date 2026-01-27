@@ -6,6 +6,10 @@ export const organizationApi = baseApi.injectEndpoints({
             query: () => "/organizations",
             providesTags: ["Organization"],
         }),
+        getSubOrganizations: builder.query({
+            query: (parentId) => `/organizations/sub${parentId ? `?parentId=${parentId}` : ''}`,
+            providesTags: ["Organization"],
+        }),
         getOrganization: builder.query({
             query: (id) => `/organizations/${id}`,
             providesTags: ["Organization"],
@@ -13,6 +17,14 @@ export const organizationApi = baseApi.injectEndpoints({
         createOrganization: builder.mutation({
             query: (body) => ({
                 url: "/organizations",
+                method: "POST",
+                body,
+            }),
+            invalidatesTags: ["Organization"],
+        }),
+        createSubOrganization: builder.mutation({
+            query: (body) => ({
+                url: "/organizations/sub-organization",
                 method: "POST",
                 body,
             }),
@@ -38,8 +50,10 @@ export const organizationApi = baseApi.injectEndpoints({
 
 export const {
     useGetOrganizationsQuery,
+    useGetSubOrganizationsQuery,
     useGetOrganizationQuery,
     useCreateOrganizationMutation,
+    useCreateSubOrganizationMutation,
     useUpdateOrganizationMutation,
     useDeleteOrganizationMutation,
 } = organizationApi;

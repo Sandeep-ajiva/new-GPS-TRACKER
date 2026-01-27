@@ -4,6 +4,7 @@ import { baseQuery } from "./commonApi";
 export const baseApi = createApi({
   reducerPath: "api",
   baseQuery,
-  tagTypes: ["Organization", "Vehicle", "GPSDevice", "DeviceMapping", "Tracking", "History", "User"],
+  tagTypes: ["Organization", "Vehicle", "GPSDevice", "DeviceMapping", "Tracking", "History", "User", "Permission", "Notification"],
   endpoints: () => ({}),
 });
+

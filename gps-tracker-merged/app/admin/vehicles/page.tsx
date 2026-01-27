@@ -1,42 +1,76 @@
 "use client";
 
-import { useState, useMemo, Suspense } from "react";
+import { useState, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 import Table from "@/components/ui/Table";
 import ApiErrorBoundary from "@/components/admin/ErrorBoundary/ApiErrorBoundary";
-import { Plus, Edit, Trash2, Filter } from "lucide-react";
+import { Plus, Edit, Trash2, Filter, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { getVehicles, getOrganizations, getDevices, setVehicles, setDevices, type Vehicle } from "@/lib/admin-dummy-data";
+import {
+    useGetVehiclesQuery,
+    useCreateVehicleMutation,
+    useUpdateVehicleMutation,
+    useDeleteVehicleMutation
+} from "@/redux/api/vehicleApi";
+import { useGetOrganizationsQuery } from "@/redux/api/organizationApi";
+import { useGetGpsDevicesQuery } from "@/redux/api/gpsDeviceApi";
 
 import Validator from "../Helpers/validators";
 import { usePopups } from "../Helpers/PopupContext";
 import { capitalizeFirstLetter } from "../Helpers/CapitalizeFirstLetter";
 
-function VehiclesContent() {
+export interface Vehicle {
+    _id: string;
+    organizationId: any;
+    vehicleType: string;
+    vehicleNumber: string;
+    make?: string;
+    model?: string;
+    year?: string;
+    color?: string;
+    status: "active" | "inactive";
+    runningStatus?: "running" | "idle" | "stopped" | "inactive";
+    deviceId?: string;
+    driverId?: string; // Backend uses driverId
+    driverName?: string; // Frontend form uses this, might need mapping if backend supports it or ignored
+}
+
+export default function VehiclesPage() {
     const { openPopup, closePopup, isPopupOpen } = usePopups();
     const searchParams = useSearchParams();
     const filterParam = searchParams.get("filter");
-    const [vehicles, setVehiclesState] = useState(getVehicles());
-    const [organizations] = useState(getOrganizations());
-    const [devices] = useState(getDevices());
+
+    // API Hooks
+    const { data: vehData, isLoading: isVehLoading } = useGetVehiclesQuery(undefined);
+    const { data: orgData, isLoading: isOrgLoading } = useGetOrganizationsQuery(undefined);
+    const { data: devData, isLoading: isDevLoading } = useGetGpsDevicesQuery(undefined);
+
+    const [createVehicle, { isLoading: isCreating }] = useCreateVehicleMutation();
+    const [updateVehicle, { isLoading: isUpdating }] = useUpdateVehicleMutation();
+    const [deleteVehicle, { isLoading: isDeleting }] = useDeleteVehicleMutation();
+
+    const vehicles = (vehData?.data as Vehicle[]) || [];
+    const organizations = (orgData?.data as any[]) || [];
+    const devices = (devData?.data as any[]) || [];
+
     const [showFilters, setShowFilters] = useState(false);
-    const [selectedVehicleForAssignment, setSelectedVehicleForAssignment] = useState<any>(null);
+    const [selectedVehicleForAssignment, setSelectedVehicleForAssignment] = useState<Vehicle | null>(null);
     const [filters, setFilters] = useState({
         organizationId: "",
         status: "",
         deviceAssigned: ""
     });
-    const [editingVehicle, setEditingVehicle] = useState<any>(null);
+
+    const [editingVehicle, setEditingVehicle] = useState<Vehicle | null>(null);
     const [formData, setFormData] = useState({
         organizationId: "",
         vehicleType: "car",
         vehicleNumber: "",
         model: "",
-        driverName: "",
         year: "",
         color: "",
-        status: "active" as "active" | "inactive" | "online" | "offline",
-        assignedDeviceId: "" as string | null
+        status: "active" as "active" | "inactive",
+        deviceId: "" as string | null
     });
     const [errors, setErrors] = useState<any>({});
 
@@ -59,31 +93,44 @@ function VehiclesContent() {
     const filteredVehicles = useMemo(() => {
         let filtered = vehicles;
 
-        // Apply URL filter (for dashboard card click)
         if (filterParam === "online") {
-            filtered = filtered.filter(v => v.status === "online");
+            // Logic needs connection status check from device. 
+            // We can map deviceId -> device -> connectionStatus
+            filtered = filtered.filter(v => {
+                const dev = devices.find(d => d._id === v.deviceId);
+                return dev?.connectionStatus === 'online';
+            });
         }
 
-        // Apply manual filters
         if (filters.organizationId) {
-            filtered = filtered.filter(v => v.organizationId === filters.organizationId);
+            filtered = filtered.filter(v => (v.organizationId?._id || v.organizationId) === filters.organizationId);
         }
         if (filters.status) {
             filtered = filtered.filter(v => v.status === filters.status);
         }
         if (filters.deviceAssigned === "assigned") {
-            filtered = filtered.filter(v => v.assignedDeviceId);
+            filtered = filtered.filter(v => v.deviceId);
         } else if (filters.deviceAssigned === "unassigned") {
-            filtered = filtered.filter(v => !v.assignedDeviceId);
+            filtered = filtered.filter(v => !v.deviceId);
         }
 
         return filtered;
-    }, [vehicles, filters, filterParam]);
+    }, [vehicles, devices, filters, filterParam]);
+
+    // Calculate available devices
+    // Device is available if NOT used by ANY vehicle, OR if it is used by CURRENT editing vehicle
+    const getAvailableDevices = (currentVehicleId?: string) => {
+        const assignedDeviceIds = new Set(
+            vehicles
+                .filter(v => v._id !== currentVehicleId) // Exclude current vehicle's assignment
+                .map(v => v.deviceId)
+                .filter(Boolean)
+        );
+        return devices.filter(d => !assignedDeviceIds.has(d._id));
+    };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-
-        // Use validators
         const validationErrors = await validator.validate(formData);
 
         if (Object.keys(validationErrors).length > 0) {
@@ -92,32 +139,37 @@ function VehiclesContent() {
             return;
         }
 
-        if (editingVehicle) {
-            const updated = vehicles.map((vehicle) =>
-                vehicle._id === editingVehicle._id ? { ...vehicle, ...formData } : vehicle
-            );
-            setVehiclesState(updated);
-            setVehicles(updated);
-            toast.success("Vehicle updated successfully");
-        } else {
-            const newVehicle: Vehicle = {
-                _id: `veh_${Date.now()}`,
-                organizationId: formData.organizationId,
-                vehicleType: formData.vehicleType,
-                vehicleNumber: formData.vehicleNumber,
-                model: formData.model,
-                driverName: formData.driverName,
-                year: formData.year,
-                color: formData.color,
-                status: formData.status,
-                assignedDeviceId: null,
-            };
-            const updated = [...vehicles, newVehicle];
-            setVehiclesState(updated);
-            setVehicles(updated);
-            toast.success("Vehicle created successfully");
+        const { deviceId, ...rest } = formData;
+        // Only include deviceId if it has a value
+        const payload = { ...rest, ...(deviceId ? { deviceId } : {}) };
+
+        try {
+            if (editingVehicle) {
+                await updateVehicle({ id: editingVehicle._id, ...payload }).unwrap();
+                toast.success("Vehicle updated successfully");
+            } else {
+                await createVehicle(payload).unwrap();
+                toast.success("Vehicle created successfully");
+            }
+            closeModal();
+        } catch (err: any) {
+            toast.error(err?.data?.message || "Operation failed");
         }
-        closeModal();
+    };
+
+    const handleAssignDevice = async (deviceId: string) => {
+        if (!selectedVehicleForAssignment) return;
+        try {
+            await updateVehicle({
+                id: selectedVehicleForAssignment._id,
+                deviceId: deviceId
+            }).unwrap();
+            toast.success("Device assigned successfully");
+            closePopup("assignDeviceModal");
+            setSelectedVehicleForAssignment(null);
+        } catch (err: any) {
+            toast.error(err?.data?.message || "Assignment failed");
+        }
     };
 
     const openCreateModal = () => {
@@ -127,28 +179,26 @@ function VehiclesContent() {
             vehicleType: "car",
             vehicleNumber: "",
             model: "",
-            driverName: "",
             year: "",
             color: "",
             status: "active",
-            assignedDeviceId: null
+            deviceId: null
         });
         setErrors({});
         openPopup("vehicleModal");
     };
 
-    const openEditModal = (vehicle: any) => {
+    const openEditModal = (vehicle: Vehicle) => {
         setEditingVehicle(vehicle);
         setFormData({
             organizationId: vehicle.organizationId?._id || vehicle.organizationId,
             vehicleType: vehicle.vehicleType || "car",
             vehicleNumber: vehicle.vehicleNumber || "",
             model: vehicle.model || "",
-            driverName: vehicle.driverName || "",
             year: vehicle.year || "",
             color: vehicle.color || "",
             status: vehicle.status || "active",
-            assignedDeviceId: vehicle.assignedDeviceId || null
+            deviceId: vehicle.deviceId || null
         });
         setErrors({});
         openPopup("vehicleModal");
@@ -161,10 +211,12 @@ function VehiclesContent() {
 
     const handleDelete = async (id: string) => {
         if (confirm("Are you sure you want to delete this vehicle?")) {
-            const updated = vehicles.filter((vehicle) => vehicle._id !== id);
-            setVehiclesState(updated);
-            setVehicles(updated);
-            toast.success("Vehicle deleted");
+            try {
+                await deleteVehicle(id).unwrap();
+                toast.success("Vehicle deleted");
+            } catch (err: any) {
+                toast.error(err?.data?.message || "Delete failed");
+            }
         }
     }
 
@@ -172,69 +224,34 @@ function VehiclesContent() {
         setFilters({ organizationId: "", status: "", deviceAssigned: "" });
     };
 
-    const openAssignDeviceModal = (vehicle: any) => {
+    const openAssignDeviceModal = (vehicle: Vehicle) => {
         setSelectedVehicleForAssignment(vehicle);
         openPopup("assignDeviceModal");
     };
-
-    const handleAssignDevice = (deviceId: string) => {
-        if (!selectedVehicleForAssignment) return;
-
-        // Update vehicle with assigned device
-        const updatedVehicles = vehicles.map(v =>
-            v._id === selectedVehicleForAssignment._id
-                ? { ...v, assignedDeviceId: deviceId }
-                : v
-        );
-
-        // Update device with assigned vehicle (bidirectional)
-        const updatedDevices = devices.map(d =>
-            d._id === deviceId
-                ? { ...d, assignedVehicleId: selectedVehicleForAssignment._id }
-                : d
-        );
-
-        setVehiclesState(updatedVehicles);
-        setVehicles(updatedVehicles);
-        setDevices(updatedDevices);
-
-        closePopup("assignDeviceModal");
-        setSelectedVehicleForAssignment(null);
-        toast.success("Device assigned successfully");
-    };
-
-    const availableDevices = devices.filter(d => !d.assignedVehicleId);
 
     const columns = [
         { header: "Number", accessor: "vehicleNumber" },
         { header: "Type", accessor: (row: any) => <span className="capitalize">{capitalizeFirstLetter(row.vehicleType)}</span> },
         { header: "Model", accessor: "model" },
-        { header: "Driver", accessor: (row: any) => row.driverName || "Unassigned" },
         {
             header: "Organization",
             accessor: (row: any) => {
+                // If populated, use name. If Id, find in list.
+                if (row.organizationId && typeof row.organizationId === 'object') return row.organizationId.name;
                 const org = organizations.find(o => o._id === row.organizationId);
                 return org?.name || "N/A";
             }
         },
         {
-            header: "Status", accessor: (row: any) => {
-                const statusColors: Record<string, string> = {
-                    online: "bg-green-100 text-green-700",
-                    offline: "bg-red-100 text-red-700",
-                    active: "bg-blue-100 text-blue-700",
-                    inactive: "bg-gray-100 text-gray-700"
-                };
-                return (
-                    <span className={`px-2 py-1 rounded-lg text-xs font-bold uppercase ${statusColors[row.status] || "bg-gray-100 text-gray-700"}`}>
-                        {capitalizeFirstLetter(row.status || "active")}
-                    </span>
-                );
-            }
+            header: "Status", accessor: (row: any) => (
+                <span className={`px-2 py-1 rounded-lg text-xs font-bold uppercase ${row.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                    {capitalizeFirstLetter(row.status || "active")}
+                </span>
+            )
         },
         {
             header: "Device", accessor: (row: any) => {
-                if (!row.assignedDeviceId) {
+                if (!row.deviceId) {
                     return (
                         <button
                             onClick={() => openAssignDeviceModal(row)}
@@ -244,7 +261,7 @@ function VehiclesContent() {
                         </button>
                     );
                 }
-                const device = devices.find(d => d._id === row.assignedDeviceId);
+                const device = devices.find(d => d._id === row.deviceId);
                 return device ? device.imei : "Unknown";
             }
         },
@@ -252,11 +269,23 @@ function VehiclesContent() {
             header: "Actions", accessor: (row: any) => (
                 <div className="flex gap-2">
                     <button onClick={() => openEditModal(row)} className="text-blue-600 hover:text-blue-800"><Edit size={16} /></button>
-                    <button onClick={() => handleDelete(row._id)} className="text-red-500 hover:text-red-700"><Trash2 size={16} /></button>
+                    {!isLoading && (
+                        <button onClick={() => handleDelete(row._id)} className="text-red-500 hover:text-red-700"><Trash2 size={16} /></button>
+                    )}
                 </div>
             )
         }
     ];
+
+    const isLoading = isVehLoading || isOrgLoading || isDevLoading;
+
+    if (isLoading) {
+        return (
+            <div className="flex items-center justify-center h-full">
+                <Loader2 className="animate-spin text-slate-500" size={32} />
+            </div>
+        )
+    }
 
     return (
         <ApiErrorBoundary hasError={false}>
@@ -306,8 +335,6 @@ function VehiclesContent() {
                                     onChange={e => setFilters({ ...filters, status: e.target.value })}
                                 >
                                     <option value="">All Status</option>
-                                    <option value="online">Online</option>
-                                    <option value="offline">Offline</option>
                                     <option value="active">Active</option>
                                     <option value="inactive">Inactive</option>
                                 </select>
@@ -336,7 +363,7 @@ function VehiclesContent() {
                     </div>
                 )}
 
-                <Table columns={columns} data={filteredVehicles} loading={false} />
+                <Table columns={columns} data={filteredVehicles} loading={isLoading} />
 
                 {isPopupOpen("vehicleModal") && (
                     <div className="fixed inset-0 bg-slate-950/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
@@ -350,6 +377,7 @@ function VehiclesContent() {
                                             value={formData.organizationId}
                                             onChange={e => setFormData({ ...formData, organizationId: e.target.value })}
                                             onBlur={e => handleBlur("organizationId", e.target.value)}
+                                            disabled={!!editingVehicle} // Usually org shouldn't change easily for vehicle, or check backend logic
                                         >
                                             <option value="">Select Organization</option>
                                             {organizations.map((org: any) => (
@@ -406,50 +434,31 @@ function VehiclesContent() {
                                             value={formData.status} onChange={e => setFormData({ ...formData, status: e.target.value as any })}>
                                             <option value="active">Active</option>
                                             <option value="inactive">Inactive</option>
-                                            <option value="online">Online</option>
-                                            <option value="offline">Offline</option>
                                         </select>
                                     </div>
                                 </div>
                                 <div>
                                     <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Assign GPS Device</label>
                                     <select className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-slate-900/10 outline-none"
-                                        value={formData.assignedDeviceId || ""}
+                                        value={formData.deviceId || ""}
                                         onChange={e => {
-                                            const deviceId = e.target.value || null;
-                                            setFormData({ ...formData, assignedDeviceId: deviceId });
-
-                                            // Update device bidirectionally
-                                            if (deviceId) {
-                                                const updatedDevices = devices.map(d =>
-                                                    d._id === deviceId
-                                                        ? { ...d, assignedVehicleId: editingVehicle?._id || null }
-                                                        : d
-                                                );
-                                                setDevices(updatedDevices);
-                                            }
+                                            const val = e.target.value || null;
+                                            setFormData({ ...formData, deviceId: val });
                                         }}
                                     >
                                         <option value="">Unassigned</option>
-                                        {availableDevices.map((device: any) => (
-                                            <option key={device._id} value={device._id}>{device.imei} ({device.model})</option>
+                                        {getAvailableDevices(editingVehicle?._id).map((device: any) => (
+                                            <option key={device._id} value={device._id}>{device.imei} ({device.deviceModel})</option>
                                         ))}
-                                        {editingVehicle?.assignedDeviceId && (
-                                            <option value={editingVehicle.assignedDeviceId}>
-                                                {devices.find(d => d._id === editingVehicle.assignedDeviceId)?.imei} (Current)
-                                            </option>
-                                        )}
+                                        {/* If currently assigned device is present, it is covered by getAvailableDevices logic passing editingVehicle._id */}
                                     </select>
-                                </div>
-                                <div>
-                                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Driver Name</label>
-                                    <input type="text" className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-slate-900/10 outline-none"
-                                        value={formData.driverName} onChange={e => setFormData({ ...formData, driverName: e.target.value })} />
                                 </div>
 
                                 <div className="flex gap-3 mt-6">
                                     <button type="button" onClick={closeModal} className="flex-1 py-2.5 bg-slate-100 text-slate-700 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-slate-200">Cancel</button>
-                                    <button type="submit" className="flex-1 py-2.5 bg-slate-900 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-slate-800">Save</button>
+                                    <button type="submit" disabled={isCreating || isUpdating} className="flex-1 py-2.5 bg-slate-900 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-slate-800 disabled:opacity-50">
+                                        {(isCreating || isUpdating) ? "Saving..." : "Save"}
+                                    </button>
                                 </div>
                             </form>
                         </div>
@@ -463,21 +472,21 @@ function VehiclesContent() {
                             <p className="text-sm text-slate-500 mb-4">
                                 Assign a GPS device to <strong>{selectedVehicleForAssignment?.vehicleNumber}</strong>
                             </p>
-                            {availableDevices.length === 0 ? (
+                            {getAvailableDevices().length === 0 ? (
                                 <div className="p-4 bg-slate-50 rounded-xl text-center">
                                     <p className="text-sm font-semibold text-slate-600">No device available</p>
                                     <p className="text-xs text-slate-500 mt-1">All devices are currently assigned</p>
                                 </div>
                             ) : (
                                 <div className="space-y-2 max-h-64 overflow-y-auto">
-                                    {availableDevices.map((device: any) => (
+                                    {getAvailableDevices().map((device: any) => (
                                         <button
                                             key={device._id}
                                             onClick={() => handleAssignDevice(device._id)}
                                             className="w-full p-3 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors text-left"
                                         >
                                             <div className="font-semibold text-sm">{device.imei}</div>
-                                            <div className="text-xs text-slate-500">{device.model} • {device.simNumber}</div>
+                                            <div className="text-xs text-slate-500">{device.deviceModel} • {device.simNumber}</div>
                                         </button>
                                     ))}
                                 </div>
@@ -499,13 +508,5 @@ function VehiclesContent() {
                 )}
             </div>
         </ApiErrorBoundary>
-    );
-}
-
-export default function VehiclesPage() {
-    return (
-        <Suspense fallback={<div className="p-6">Loading...</div>}>
-            <VehiclesContent />
-        </Suspense>
     );
 }

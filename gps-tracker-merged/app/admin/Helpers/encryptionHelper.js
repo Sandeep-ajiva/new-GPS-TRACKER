@@ -20,11 +20,23 @@ export const encryptData = (data) => {
  */
 export const decryptData = (ciphertext) => {
     try {
+        if (!ciphertext) return null;
         const bytes = CryptoJS.AES.decrypt(ciphertext, SECRET_KEY);
-        const decryptedData = JSON.parse(bytes.toString(CryptoJS.enc.Utf8));
-        return decryptedData;
+        const decryptedStr = bytes.toString(CryptoJS.enc.Utf8);
+        
+        if (!decryptedStr) {
+            return null;
+        }
+
+        try {
+            return JSON.parse(decryptedStr);
+        } catch (parseError) {
+            // If it's not valid JSON, it might be a raw string from a previous version
+            // though encryptData uses JSON.stringify.
+            return decryptedStr;
+        }
     } catch (e) {
-        console.error("Decryption failed", e);
+        // This is where "Malformed UTF-8 data" usually happens
         return null;
     }
 };
@@ -45,7 +57,14 @@ export const saveSecureItem = (key, data) => {
 export const getSecureItem = (key) => {
     const data = localStorage.getItem(key);
     if (data) {
-        return decryptData(data);
+        const decrypted = decryptData(data);
+        if (decrypted === null) {
+            // If decryption failed, the data is likely corrupted or from an older version
+            // Clear it to prevent further errors and force a clean state
+            localStorage.removeItem(key);
+            return null;
+        }
+        return decrypted;
     }
     return null;
 };

@@ -1,6 +1,6 @@
 "use client";
 
-import { Users, Car, Radio, Activity, Plus, ArrowLeft } from "lucide-react";
+import { Users, Car, Radio, Activity, Plus, ArrowLeft, Loader2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import OrganizationCreateModal from "@/components/admin/Modals/OrganizationCreateModal";
@@ -8,7 +8,10 @@ import OrganizationMap from "@/components/admin/Map/OrganizationMap";
 import { VehicleSidebar } from "@/components/dashboard/vehicle-sidebar";
 import { MapWrapper } from "@/components/dashboard/map-wrapper";
 import { useVehiclePositions } from "@/lib/use-vehicle-positions";
-import { getOrganizations, getVehicles, getDevices } from "@/lib/admin-dummy-data";
+import { useGetOrganizationsQuery } from "@/redux/api/organizationApi";
+import { useGetVehiclesQuery } from "@/redux/api/vehicleApi";
+import { useGetGpsDevicesQuery } from "@/redux/api/gpsDeviceApi";
+import { useGetLiveVehiclesQuery } from "@/redux/api/gpsLiveApi";
 
 type DashboardVehicle = {
   id: string;
@@ -27,47 +30,6 @@ type DashboardVehicle = {
 
 const defaultCenter = { lat: 28.6139, lng: 77.209 };
 
-// Using dummy data from shared store
-
-const demoLiveData = [
-  {
-    _id: "live_1",
-    organizationId: "org_ajiva",
-    vehicleId: "veh_1",
-    latitude: 28.6139,
-    longitude: 77.209,
-    movementStatus: "running",
-    currentSpeed: 42,
-    ignitionStatus: true,
-    acStatus: true,
-    currentLocation: "Connaught Place",
-  },
-  {
-    _id: "live_2",
-    organizationId: "org_north",
-    vehicleId: "veh_2",
-    latitude: 28.7041,
-    longitude: 77.1025,
-    movementStatus: "idle",
-    currentSpeed: 0,
-    ignitionStatus: true,
-    acStatus: false,
-    currentLocation: "Rohini",
-  },
-  {
-    _id: "live_3",
-    organizationId: "org_west",
-    vehicleId: "veh_3",
-    latitude: 28.5355,
-    longitude: 77.391,
-    movementStatus: "stopped",
-    currentSpeed: 0,
-    ignitionStatus: false,
-    acStatus: false,
-    currentLocation: "Noida Sector 62",
-  },
-];
-
 export default function DashboardPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -80,6 +42,22 @@ export default function DashboardPage() {
   const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<"all" | "running" | "idle" | "stopped">("all");
+
+  // Redux Data Fetching
+  const { data: orgData, isLoading: isLoadingOrgs } = useGetOrganizationsQuery(undefined);
+  const { data: vehData, isLoading: isLoadingVehicles } = useGetVehiclesQuery(undefined);
+  const { data: devData, isLoading: isLoadingDevices } = useGetGpsDevicesQuery(undefined);
+  const { data: liveData, isLoading: isLoadingLive } = useGetLiveVehiclesQuery(undefined, {
+    pollingInterval: 5000 // Poll every 5 seconds for live updates
+  });
+
+  const displayOrgs = orgData?.data || [];
+  const displayVehicles = vehData?.data || [];
+  const displayDevices = devData?.data || [];
+  const displayLiveData = liveData?.data || []; // Note: Ensure backend returns array or adapt
+
+  const isLoading = isLoadingOrgs || isLoadingVehicles || isLoadingDevices || isLoadingLive;
+
 
   useEffect(() => {
     let selectedOrg = queryOrgId;
@@ -106,15 +84,12 @@ export default function DashboardPage() {
     }
   }, [targetOrgId]);
 
-  const displayOrgs = getOrganizations();
-  const displayVehicles = getVehicles();
-  const displayDevices = getDevices();
-  const displayLiveData = demoLiveData;
-  const hasApiError = false;
+  const onlineVehicles = useMemo(() => {
+    if (!displayVehicles.length || !displayLiveData.length) return 0;
+    const onlineIds = new Set(displayLiveData.map((d: any) => d.vehicleId?._id || d.vehicleId));
+    return displayVehicles.filter((v: any) => onlineIds.has(v._id)).length;
+  }, [displayVehicles, displayLiveData]);
 
-  const onlineVehicles = displayVehicles.filter(
-    (v: any) => v.status === "online"
-  ).length;
   const offlineVehicles = displayVehicles.length - onlineVehicles;
 
   type OrgPoint = {
@@ -124,18 +99,28 @@ export default function DashboardPage() {
   };
 
   const orgPositions = useMemo<OrgPoint[]>(() => {
+    if (!displayOrgs.length) return [];
+
     return displayOrgs
       .map((org: any) => {
         const orgId = org._id;
+
+        // Find live data for this org directly if possible, or filter
         const orgLive = displayLiveData.filter((entry: any) => {
-          const entryOrgId =
-            typeof entry.organizationId === "string"
-              ? entry.organizationId
-              : entry.organizationId?._id;
+          // Handle both populated and unpopulated organizationId
+          const entryOrgId = entry.organizationId?._id || entry.organizationId;
           return entryOrgId === orgId && entry.latitude && entry.longitude;
         });
 
         if (orgLive.length === 0) {
+          // Use org address/geo if no live vehicles, or default to center if absolutely nothing
+          if (org.geo?.lat && org.geo?.lng) {
+            return {
+              id: orgId,
+              name: org.name || "Organization",
+              position: { lat: org.geo.lat, lng: org.geo.lng }
+            }
+          }
           return null;
         }
 
@@ -171,39 +156,43 @@ export default function DashboardPage() {
   }, [orgPositions]);
 
   const uiVehicles: DashboardVehicle[] = useMemo(() => {
-    return displayVehicles.map((vehicle: any, index: number) => {
+    return displayVehicles.map((vehicle: any) => {
       const orgId = typeof vehicle.organizationId === "string"
         ? vehicle.organizationId
         : vehicle.organizationId?._id;
+
       const liveEntry = displayLiveData.find((entry: any) => {
-        const entryVehicleId =
-          typeof entry.vehicleId === "string"
-            ? entry.vehicleId
-            : entry.vehicleId?._id;
+        const entryVehicleId = entry.vehicleId?._id || entry.vehicleId;
         return entryVehicleId === vehicle._id;
       });
+
       const fallbackPosition = orgPositionMap[orgId] || defaultCenter;
+
       const position = liveEntry?.latitude && liveEntry?.longitude
         ? { lat: liveEntry.latitude, lng: liveEntry.longitude }
         : fallbackPosition;
+
       const route = [position];
-      const status: DashboardVehicle["status"] =
-        liveEntry?.movementStatus === "running"
-          ? "running"
-          : liveEntry?.movementStatus === "idle"
-            ? "idle"
-            : "stopped";
+
+      // Determine status from live data if available, otherwise default
+      let status: DashboardVehicle["status"] = "stopped";
+      if (liveEntry) {
+        if (liveEntry.speed > 0) status = "running";
+        else if (liveEntry.ignition) status = "idle";
+        else status = "stopped";
+      }
+
       return {
         id: vehicle.vehicleNumber || vehicle.registrationNumber || vehicle._id,
-        driver: vehicle.driverName || "Unassigned",
-        date: new Date().toLocaleString("en-GB").replace(",", ""),
-        speed: liveEntry?.currentSpeed || 0,
+        driver: vehicle.driverName || "Unassigned", // Ensure backend populates or sends this
+        date: liveEntry?.lastUpdated ? new Date(liveEntry.lastUpdated).toLocaleString("en-GB") : new Date().toLocaleString("en-GB"),
+        speed: liveEntry?.speed || 0,
         status,
-        ign: liveEntry?.ignitionStatus ?? false,
-        ac: liveEntry?.acStatus ?? false,
-        pw: liveEntry?.ignitionStatus ?? false,
-        gps: !!liveEntry?.latitude,
-        location: liveEntry?.currentLocation || vehicle.lastLocation || "Unknown",
+        ign: liveEntry?.ignition ?? false,
+        ac: liveEntry?.ac ?? false, // Check backend key
+        pw: true, // Power usually true if sending data
+        gps: !!(liveEntry?.latitude && liveEntry?.longitude),
+        location: liveEntry?.address || "Unknown", // Backend needs to reverse geocode or send address
         poi: "-",
         route,
       };
@@ -218,13 +207,12 @@ export default function DashboardPage() {
   const filteredVehicles = useMemo(() => {
     if (!selectedOrgId) return [];
     return uiVehicles.filter((vehicle) => {
+      // Find original vehicle to check org ID
       const raw: any = displayVehicles.find((item: any) =>
         (item.vehicleNumber || item.registrationNumber || item._id) === vehicle.id
       );
       if (!raw) return false;
-      const orgId = typeof raw.organizationId === "string"
-        ? raw.organizationId
-        : raw.organizationId?._id;
+      const orgId = raw.organizationId?._id || raw.organizationId;
       return orgId === selectedOrgId;
     });
   }, [displayVehicles, uiVehicles, selectedOrgId]);
@@ -240,6 +228,10 @@ export default function DashboardPage() {
     status: vehicle.status,
     position: positions[vehicle.id] || vehicle.route[0],
   }));
+
+  if (isLoading) {
+    return <div className="flex h-screen items-center justify-center"><Loader2 className="animate-spin text-blue-500" size={48} /></div>
+  }
 
   return (
     <div className="space-y-8 pb-10">
@@ -265,12 +257,9 @@ export default function DashboardPage() {
             <Plus className="h-4 w-4" />
             Add Sub-Organization
           </button>
-          <div className={`px-4 py-2 rounded-xl text-xs font-black flex items-center gap-2 border uppercase tracking-widest ${hasApiError
-              ? "bg-yellow-100 text-yellow-700 border-yellow-200"
-              : "bg-green-100 text-green-700 border-green-200"
-            }`}>
-            <span className={`w-2 h-2 rounded-full ${hasApiError ? "bg-yellow-500" : "bg-green-500 animate-pulse"}`}></span>
-            {hasApiError ? "API Unavailable - Demo Mode" : "System Live"}
+          <div className="px-4 py-2 rounded-xl text-xs font-black flex items-center gap-2 border uppercase tracking-widest bg-green-100 text-green-700 border-green-200">
+            <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+            System Live
           </div>
         </div>
       </div>
@@ -337,8 +326,8 @@ export default function DashboardPage() {
                 key={filter}
                 onClick={() => setStatusFilter(filter as typeof statusFilter)}
                 className={`px-4 py-2 rounded-full text-xs font-black uppercase tracking-widest border ${statusFilter === filter
-                    ? "bg-emerald-500 text-white border-emerald-500"
-                    : "bg-white text-gray-500 border-gray-200 hover:border-emerald-400"
+                  ? "bg-emerald-500 text-white border-emerald-500"
+                  : "bg-white text-gray-500 border-gray-200 hover:border-emerald-400"
                   }`}
               >
                 {filter}
@@ -372,9 +361,7 @@ export default function DashboardPage() {
               <div className="space-y-3">
                 {orgPositions.map((org) => {
                   const orgVehicleCount = displayVehicles.filter((vehicle: any) => {
-                    const orgId = typeof vehicle.organizationId === "string"
-                      ? vehicle.organizationId
-                      : vehicle.organizationId?._id;
+                    const orgId = vehicle.organizationId?._id || vehicle.organizationId;
                     return orgId === org.id;
                   }).length;
                   return (
@@ -390,6 +377,10 @@ export default function DashboardPage() {
                     </button>
                   );
                 })}
+                {/* Empty State */}
+                {orgPositions.length === 0 && (
+                  <div className="text-center py-4 text-gray-500 text-xs">No organizations found with GPS data.</div>
+                )}
               </div>
             </div>
 
@@ -399,7 +390,7 @@ export default function DashboardPage() {
                 <StatusItem label="Total Fleet" value={displayVehicles.length} color="bg-gray-200" />
                 <StatusItem label="Online" value={onlineVehicles} color="bg-green-500" />
                 <StatusItem label="Offline" value={offlineVehicles} color="bg-red-500" />
-                <StatusItem label="Unassigned Devices" value={Math.max(0, displayDevices.length - displayVehicles.length)} color="bg-yellow-500" />
+                <StatusItem label="Unassigned Devices" value={Math.max(0, displayDevices.length - displayVehicles.filter((v: any) => v.assignedDeviceId).length)} color="bg-yellow-500" />
               </div>
             </div>
           </div>

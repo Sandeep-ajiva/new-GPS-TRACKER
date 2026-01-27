@@ -3,12 +3,16 @@ import { baseApi } from "./baseApi";
 export const usersApi = baseApi.injectEndpoints({
     endpoints: (builder) => ({
         getUsers: builder.query({
-            query: () => "/users/admins",
+            query: () => "/users",
+            providesTags: ["User"],
+        }),
+        getMe: builder.query({
+            query: () => "/users/me",
             providesTags: ["User"],
         }),
         createUser: builder.mutation({
             query: (body) => ({
-                url: "/users/orgadmin",
+                url: "/users",
                 method: "POST",
                 body,
             }),
@@ -34,6 +38,7 @@ export const usersApi = baseApi.injectEndpoints({
 
 export const {
     useGetUsersQuery,
+    useGetMeQuery,
     useCreateUserMutation,
     useUpdateUserMutation,
     useDeleteUserMutation,

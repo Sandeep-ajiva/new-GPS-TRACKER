@@ -1,12 +1,12 @@
 "use client"
-
 import { useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
+import { getSecureItem } from "@/app/admin/Helpers/encryptionHelper"
 
-export function AuthGuard({ 
-  children, 
-  requiredRoles = ["admin", "manager", "superadmin"] 
-}: { 
+export function AuthGuard({
+  children,
+  requiredRoles = ["admin", "manager", "superadmin"]
+}: {
   children: React.ReactNode,
   requiredRoles?: string[]
 }) {
@@ -15,8 +15,8 @@ export function AuthGuard({
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    const token = localStorage.getItem("token")
-    const userRole = localStorage.getItem("userRole")
+    const token = getSecureItem("token")
+    const userRole = getSecureItem("userRole") as string | null
 
     if (!token || !userRole) {
       router.push("/")

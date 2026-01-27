@@ -10,19 +10,21 @@ import { MapWrapper } from "@/components/dashboard/map-wrapper"
 import { ActivityStats } from "@/components/dashboard/activity-stats"
 import { VehicleDetails } from "@/components/dashboard/vehicle-details"
 import { useVehiclePositions } from "@/lib/use-vehicle-positions"
-import { vehicles as seedVehicles, type Vehicle } from "@/lib/vehicles"
+import { type Vehicle } from "@/lib/vehicles"
+
+import { getSecureItem } from "@/app/admin/Helpers/encryptionHelper"
 
 export default function DashboardPage() {
   const router = useRouter()
-  const [uiVehicles, setUiVehicles] = useState<Vehicle[]>(seedVehicles)
+  const [uiVehicles, setUiVehicles] = useState<Vehicle[]>([])
   const positions = useVehiclePositions(uiVehicles)
   const [isAuthed, setIsAuthed] = useState(false)
   const [selectedVehicle, setSelectedVehicle] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<VehicleStatusFilter>("total")
 
   useEffect(() => {
-    const token = localStorage.getItem("token")
-    const userRole = localStorage.getItem("userRole")
+    const token = getSecureItem("token")
+    const userRole = getSecureItem("userRole")
 
     if (!token) {
       router.replace("/")
@@ -46,7 +48,7 @@ export default function DashboardPage() {
   }
 
   const handleVehicleCreated = (created: any) => {
-    const basePoint = seedVehicles[0]?.route?.[0] || { lat: 28.62, lng: 76.93 }
+    const basePoint = { lat: 28.62, lng: 76.93 }
     const vehicleNumber =
       created?.vehicleNumber || created?.registrationNumber || `VEH-${Date.now()}`
     const driverName = created?.driverName || "Unassigned"
@@ -95,9 +97,8 @@ export default function DashboardPage() {
       <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row">
           <div
-            className={`h-full min-h-0 shrink-0 transition-all duration-300 ease-in-out ${
-              selectedVehicle ? "lg:w-1/2 w-full" : "lg:w-3/5 w-full"
-            }`}
+            className={`h-full min-h-0 shrink-0 transition-all duration-300 ease-in-out ${selectedVehicle ? "lg:w-1/2 w-full" : "lg:w-3/5 w-full"
+              }`}
           >
             <VehicleSidebar
               vehicles={uiVehicles}

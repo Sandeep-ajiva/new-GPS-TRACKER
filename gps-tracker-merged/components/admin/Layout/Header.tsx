@@ -3,7 +3,14 @@ import React, { useState, useEffect, useRef } from "react";
 import { Bell, Search, X, Building2, Car, Radio, User, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { getNotifications, getAdminUser, getRootOrganization, searchAll, setNotifications } from "@/lib/admin-dummy-data";
+import { useGetMeQuery } from "@/redux/api/usersApi";
+import {
+    useGetNotificationsQuery,
+    useMarkAsReadMutation,
+    useDeleteNotificationMutation,
+    useClearAllNotificationsMutation
+} from "@/redux/api/notificationsApi";
+import { useGetOrganizationsQuery } from "@/redux/api/organizationApi";
 
 export default function Header() {
     const router = useRouter();
@@ -11,23 +18,25 @@ export default function Header() {
     const [searchResults, setSearchResults] = useState<Array<{ type: string; id: string; name: string; details: string }>>([]);
     const [showSearchResults, setShowSearchResults] = useState(false);
     const [showNotifications, setShowNotifications] = useState(false);
-    const [notifications, setNotificationsState] = useState(getNotifications());
-    const [adminUser, setAdminUserState] = useState(getAdminUser());
-    const [rootOrg, setRootOrgState] = useState(getRootOrganization());
+
+    // Redux Hooks
+    const { data: userData } = useGetMeQuery(undefined);
+    const { data: notifData } = useGetNotificationsQuery(undefined, { pollingInterval: 15000 });
+    const { data: orgData } = useGetOrganizationsQuery(undefined);
+
+    const [markAsRead] = useMarkAsReadMutation();
+    const [deleteNotification] = useDeleteNotificationMutation();
+    const [clearAllNotifications] = useClearAllNotificationsMutation();
+
+    const notifications = notifData?.data || [];
+    const adminUser = userData?.data || {};
+    const organizations = orgData?.data || [];
+
+    // Derived state
+    const rootOrg = organizations.find((o: any) => !o.parentOrganizationId) || {};
+
     const searchRef = useRef<HTMLDivElement>(null);
     const notifRef = useRef<HTMLDivElement>(null);
-
-    // Refresh admin user and org data on mount and periodically
-    useEffect(() => {
-        const refreshData = () => {
-            setAdminUserState(getAdminUser());
-            setRootOrgState(getRootOrganization());
-        };
-
-        // Refresh every 500ms to catch updates
-        const interval = setInterval(refreshData, 500);
-        return () => clearInterval(interval);
-    }, []);
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -42,11 +51,15 @@ export default function Header() {
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
 
+    // Placeholder Search Effect - requires a real search API
     useEffect(() => {
         if (searchQuery.trim()) {
-            const results = searchAll(searchQuery);
-            setSearchResults(results);
-            setShowSearchResults(true);
+            // TODO: Implement real global search API. 
+            // Current approach: clear results to avoid dummy data.
+            setSearchResults([]);
+            // Optionally could prompt user to go to specific pages
+            // or implement client-side search if data is available in cache, 
+            // but that's complex to wire up here without direct access to all cached lists.
         } else {
             setSearchResults([]);
             setShowSearchResults(false);
@@ -54,44 +67,44 @@ export default function Header() {
     }, [searchQuery]);
 
     const handleSearchResultClick = (result: { type: string; id: string }) => {
-        if (result.type === "Organization") {
-            router.push("/admin/organizations");
-        } else if (result.type === "Vehicle") {
-            router.push("/admin/vehicles");
-        } else if (result.type === "GPS Device") {
-            router.push("/admin/gps-devices");
-        } else if (result.type === "User") {
-            router.push("/admin/users");
-        }
-        setSearchQuery("");
+        // Search disabled for now
         setShowSearchResults(false);
     };
 
-    const handleNotificationClick = (notif: any) => {
-        const updated = notifications.map(n => n._id === notif._id ? { ...n, read: true } : n);
-        setNotificationsState(updated);
-        setNotifications(updated);
+    const handleNotificationClick = async (notif: any) => {
+        if (!notif.read) {
+            try {
+                await markAsRead(notif._id).unwrap();
+            } catch (error) {
+                console.error("Failed to mark read", error);
+            }
+        }
         setShowNotifications(false);
+        // Navigate if notification has link (logic not yet in backend data, assuming plain notification for now)
     };
 
-    const handleDeleteNotification = (e: React.MouseEvent, notifId: string) => {
+    const handleDeleteNotification = async (e: React.MouseEvent, notifId: string) => {
         e.stopPropagation();
-        const updated = notifications.filter(n => n._id !== notifId);
-        setNotificationsState(updated);
-        setNotifications(updated);
-        toast.success("Notification deleted");
-    };
-
-    const handleClearAllNotifications = () => {
-        if (confirm("Are you sure you want to clear all notifications?")) {
-            setNotificationsState([]);
-            setNotifications([]);
-            toast.success("All notifications cleared");
+        try {
+            await deleteNotification(notifId).unwrap();
+            toast.success("Notification deleted");
+        } catch (error) {
+            toast.error("Failed to delete notification");
         }
     };
 
-    const unreadCount = notifications.filter(n => !n.read).length;
-    const orgName = rootOrg?.name || "GPS Admin";
+    const handleClearAllNotifications = async () => {
+        if (confirm("Are you sure you want to clear all notifications?")) {
+            try {
+                await clearAllNotifications(undefined).unwrap();
+                toast.success("All notifications cleared");
+            } catch (error) {
+                toast.error("Failed to clear notifications");
+            }
+        }
+    };
+
+    const unreadCount = notifications.filter((n: any) => !n.read).length;
 
     const getIcon = (type: string) => {
         switch (type) {
@@ -103,49 +116,24 @@ export default function Header() {
         }
     };
 
+    // User Avatar Initials
+    const userInitials = adminUser.name
+        ? adminUser.name.split(" ").map((n: string) => n[0]).join("").substring(0, 2).toUpperCase()
+        : "AD";
+
     return (
         <header className="h-16 bg-[#111827] border-b border-[#1E293B] fixed top-0 right-0 left-64 z-40 px-6 flex items-center justify-between">
             <div className="w-[420px] relative" ref={searchRef}>
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#9CA3AF] w-4 h-4" />
-                <input
-                    type="text"
-                    placeholder="Search everywhere..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    onFocus={() => searchQuery && setShowSearchResults(true)}
-                    className="w-full pl-10 pr-4 py-2 border border-[#1E293B] rounded-xl text-sm font-semibold text-[#E5E7EB] bg-[#020617] focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:border-[#2563EB] placeholder-[#9CA3AF] transition"
-                />
-                {searchQuery && (
-                    <button
-                        onClick={() => { setSearchQuery(""); setShowSearchResults(false); }}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-[#9CA3AF] hover:text-[#E5E7EB]"
-                    >
-                        <X size={16} />
-                    </button>
-                )}
-
-                {showSearchResults && searchResults.length > 0 && (
-                    <div className="absolute top-full mt-2 w-full bg-[#020617] border border-[#1E293B] rounded-xl shadow-lg max-h-96 overflow-y-auto z-50">
-                        {searchResults.map((result) => (
-                            <button
-                                key={`${result.type}-${result.id}`}
-                                onClick={() => handleSearchResultClick(result)}
-                                className="w-full px-4 py-3 text-left hover:bg-[#111827] border-b border-[#1E293B] last:border-b-0 flex items-center gap-3 transition-colors"
-                            >
-                                <div className="text-[#9CA3AF]">{getIcon(result.type)}</div>
-                                <div className="flex-1">
-                                    <div className="text-sm font-semibold text-[#E5E7EB]">{result.name}</div>
-                                    <div className="text-xs text-[#9CA3AF]">{result.type} • {result.details}</div>
-                                </div>
-                            </button>
-                        ))}
-                    </div>
-                )}
-                {showSearchResults && searchQuery && searchResults.length === 0 && (
-                    <div className="absolute top-full mt-2 w-full bg-[#020617] border border-[#1E293B] rounded-xl shadow-lg p-4 text-sm text-[#9CA3AF] z-50">
-                        No results found
-                    </div>
-                )}
+                {/* Search disabled temporarily as per refactor plan */}
+                <div className="relative opacity-50 cursor-not-allowed">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#9CA3AF] w-4 h-4" />
+                    <input
+                        type="text"
+                        placeholder="Search unavailable (Backend pending)..."
+                        disabled
+                        className="w-full pl-10 pr-4 py-2 border border-[#1E293B] rounded-xl text-sm font-semibold text-[#E5E7EB] bg-[#020617] focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:border-[#2563EB] placeholder-[#9CA3AF] transition cursor-not-allowed"
+                    />
+                </div>
             </div>
 
             <div className="flex items-center gap-4">
@@ -182,7 +170,7 @@ export default function Header() {
                                 {notifications.length === 0 ? (
                                     <div className="p-4 text-sm text-[#9CA3AF] text-center">No notifications</div>
                                 ) : (
-                                    notifications.map((notif) => (
+                                    notifications.map((notif: any) => (
                                         <div
                                             key={notif._id}
                                             className={`relative group px-4 py-3 border-b border-[#1E293B] last:border-b-0 transition-colors ${!notif.read ? "bg-[#111827]" : ""
@@ -195,7 +183,7 @@ export default function Header() {
                                                 <div className="text-sm font-semibold text-[#E5E7EB] pr-8">{notif.title}</div>
                                                 <div className="text-xs text-[#9CA3AF] mt-1">{notif.message}</div>
                                                 <div className="text-[10px] text-[#6B7280] mt-1">
-                                                    {new Date(notif.timestamp).toLocaleString()}
+                                                    {new Date(notif.createdAt || notif.timestamp).toLocaleString()}
                                                 </div>
                                             </button>
                                             <button
@@ -220,18 +208,17 @@ export default function Header() {
                     className="flex items-center gap-3 hover:bg-[#020617] rounded-lg px-2 py-1 transition-colors cursor-pointer"
                 >
                     <div className="text-right hidden sm:block">
-                        <p className="text-sm font-semibold text-[#E5E7EB]">{adminUser.name}</p>
-                        <p className="text-xs text-[#9CA3AF]">{adminUser.email}</p>
+                        <p className="text-sm font-semibold text-[#E5E7EB]">{adminUser.name || "Admin User"}</p>
+                        <p className="text-xs text-[#9CA3AF]">{adminUser.email || "admin@example.com"}</p>
                     </div>
-                    {adminUser.organizationLogo ? (
-                        <img
-                            src={adminUser.organizationLogo}
-                            alt="Profile"
-                            className="w-10 h-10 rounded-full object-cover border-2 border-[#2563EB]"
-                        />
+                    {adminUser.avatar ? (
+                        <div className="w-10 h-10 bg-[#2563EB] rounded-full flex items-center justify-center text-white font-bold border-2 border-[#2563EB]">
+                            {/* If avatar is URL, use img, else initials */}
+                            {adminUser.avatar.startsWith("http") ? <img src={adminUser.avatar} className="w-full h-full rounded-full object-cover" /> : adminUser.avatar}
+                        </div>
                     ) : (
                         <div className="w-10 h-10 bg-[#2563EB] rounded-full flex items-center justify-center text-white font-bold border-2 border-[#2563EB]">
-                            {adminUser.avatar}
+                            {userInitials}
                         </div>
                     )}
                 </button>

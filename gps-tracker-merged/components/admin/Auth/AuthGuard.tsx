@@ -1,6 +1,6 @@
-"use client";
 import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
+import { getSecureItem } from "@/app/admin/Helpers/encryptionHelper";
 import { Loader2 } from "lucide-react";
 
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
@@ -10,8 +10,8 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
 
     useEffect(() => {
         // Check for token and role in localStorage
-        const token = localStorage.getItem("token");
-        const role = localStorage.getItem("userRole");
+        const token = getSecureItem("token");
+        const role = getSecureItem("userRole");
 
         if (!token || (role !== "admin" && role !== "superadmin")) {
             // If no token or admin role, redirect to login

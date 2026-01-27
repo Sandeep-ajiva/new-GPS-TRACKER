@@ -1,6 +1,6 @@
 export interface ValidationRule {
     required?: boolean;
-    type?: "string" | "number" | "boolean" | "array" | "object";
+    type?: "string" | "number" | "boolean" | "array" | "object" | "email";
     errorMessage?: string;
 }
 
@@ -23,6 +23,10 @@ class Validator {
     // Validate if the value matches the expected type
     isValidType(value: any, type: string): boolean {
         if (type === "string") return typeof value === "string";
+        if (type === "email") {
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            return typeof value === "string" && emailRegex.test(value);
+        }
         if (type === "number") return typeof value === "number" || (!isNaN(Number(value)) && value !== "");
         if (type === "boolean") return typeof value === "boolean";
         if (type === "array") return Array.isArray(value);

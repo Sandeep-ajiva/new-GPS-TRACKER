@@ -4,6 +4,8 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { Lock, Mail, Loader2 } from "lucide-react"
 
+import { saveSecureItem } from "@/app/admin/Helpers/encryptionHelper"
+
 // Dummy accounts for testing
 const DUMMY_ACCOUNTS = [
   { email: "admin1@gmail.com", password: "Admin@123", role: "admin", name: "Admin User" },
@@ -44,8 +46,8 @@ export default function LoginPage() {
 
       if (res.ok && data?.token) {
         const role = data?.user?.role || "admin"
-        localStorage.setItem("token", data.token)
-        localStorage.setItem("userRole", role)
+        saveSecureItem("token", data.token)
+        saveSecureItem("userRole", role)
         localStorage.setItem("userId", data?.user?._id || "")
         localStorage.setItem("userEmail", email)
         localStorage.setItem("userName", data?.user?.firstName || "")
@@ -76,8 +78,8 @@ export default function LoginPage() {
 
       const dummyToken = `dummy_token_${Date.now()}_${Math.random().toString(36).substring(7)}`
 
-      localStorage.setItem("token", dummyToken)
-      localStorage.setItem("userRole", account.role)
+      saveSecureItem("token", dummyToken)
+      saveSecureItem("userRole", account.role)
       localStorage.setItem("userId", `user_${account.email}`)
       localStorage.setItem("userEmail", account.email)
       localStorage.setItem("userName", account.name)

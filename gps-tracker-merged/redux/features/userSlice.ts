@@ -1,4 +1,5 @@
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
+import { getSecureItem, saveSecureItem } from "@/app/admin/Helpers/encryptionHelper";
 
 type UserRole = "superadmin" | "admin" | "seller" | "client" | null;
 
@@ -11,13 +12,13 @@ interface UserState {
 
 const initialState: UserState = {
   user: null,
-  token: typeof window !== "undefined" ? localStorage.getItem("token") : null,
+  token: typeof window !== "undefined" ? getSecureItem("token") : null,
   role:
     typeof window !== "undefined"
-      ? (localStorage.getItem("userRole") as UserRole)
+      ? (getSecureItem("userRole") as UserRole)
       : null,
   isAuthenticated:
-    typeof window !== "undefined" ? !!localStorage.getItem("token") : false,
+    typeof window !== "undefined" ? !!getSecureItem("token") : false,
 };
 
 const userSlice = createSlice({
@@ -38,9 +39,9 @@ const userSlice = createSlice({
       state.isAuthenticated = true;
 
       if (typeof window !== "undefined") {
-        localStorage.setItem("token", action.payload.token);
+        saveSecureItem("token", action.payload.token);
         if (action.payload.role) {
-          localStorage.setItem("userRole", action.payload.role);
+          saveSecureItem("userRole", action.payload.role);
         }
       }
     },

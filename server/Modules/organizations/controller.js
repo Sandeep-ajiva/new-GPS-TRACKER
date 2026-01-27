@@ -170,7 +170,22 @@ exports.createOrganization = async (req, res) => {
 
 exports.getAll = async (req, res) => {
     try {
-        const organizations = await Organization.find();
+        let query = {};
+        if (req.user.role !== "superadmin") {
+            // admins/managers can only see their own organization
+            if (req.user.organizationId) {
+                query._id = req.user.organizationId;
+            } else {
+                 // Should not happen for valid admin/manager tokens, but handle gracefully
+                 return res.status(200).json({
+                    status: true,
+                    message: "No organization assigned",
+                    data: []
+                });
+            }
+        }
+
+        const organizations = await Organization.find(query);
         return res.status(200).json({
             status: true,
             message: "Organizations Fetched Successfully",

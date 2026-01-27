@@ -3,19 +3,53 @@
 import { useState, useMemo } from "react";
 import Table from "@/components/ui/Table";
 import ApiErrorBoundary from "@/components/admin/ErrorBoundary/ApiErrorBoundary";
-import { Plus, Edit, Trash2, Filter } from "lucide-react";
+import { Plus, Edit, Trash2, Filter, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { getOrganizations, getRootOrganization, setOrganizations, type Organization } from "@/lib/admin-dummy-data";
+import {
+    useGetOrganizationsQuery,
+    useCreateOrganizationMutation,
+    useCreateSubOrganizationMutation,
+    useUpdateOrganizationMutation,
+    useDeleteOrganizationMutation
+} from "@/redux/api/organizationApi";
 
 import Validator from "../Helpers/validators";
 import { usePopups } from "../Helpers/PopupContext";
 import { capitalizeFirstLetter } from "../Helpers/CapitalizeFirstLetter";
 
+export interface Organization {
+    _id: string;
+    name: string;
+    organizationType: "logistics" | "transport" | "school" | "taxi" | "fleet";
+    email: string;
+    phone: string;
+    logo?: string;
+    address?: {
+        addressLine?: string;
+        city?: string;
+        state?: string;
+        country?: string;
+        pincode?: string;
+    };
+    parentOrganizationId: string | null;
+    status: "active" | "inactive";
+    createdAt: string;
+}
+
 export default function OrganizationsPage() {
     const { openPopup, closePopup, isPopupOpen } = usePopups();
-    const [organizations, setOrganizationsState] = useState(getOrganizations());
-    const rootOrg = getRootOrganization();
+
+    // API Hooks
+    const { data: apiResponse, isLoading, error: apiError } = useGetOrganizationsQuery(undefined);
+    const [createOrganization, { isLoading: isCreating }] = useCreateOrganizationMutation();
+    const [createSubOrganization, { isLoading: isCreatingSub }] = useCreateSubOrganizationMutation();
+    const [updateOrganization, { isLoading: isUpdating }] = useUpdateOrganizationMutation();
+    const [deleteOrganization, { isLoading: isDeleting }] = useDeleteOrganizationMutation();
+
+    const organizations = (apiResponse?.data as Organization[]) || [];
+    const rootOrg = organizations.find(o => !o.parentOrganizationId);
     const hasRootOrg = !!rootOrg;
+
     const [showFilters, setShowFilters] = useState(false);
     const [filters, setFilters] = useState({
         name: "",
@@ -25,6 +59,7 @@ export default function OrganizationsPage() {
     const [editingOrg, setEditingOrg] = useState<Organization | null>(null);
     const [formData, setFormData] = useState({
         name: "",
+        organizationType: "logistics",
         email: "",
         phone: "",
         address: "",
@@ -62,9 +97,9 @@ export default function OrganizationsPage() {
         }
 
         if (filters.type === "main") {
-            filtered = filtered.filter(org => !org.parentId);
+            filtered = filtered.filter(org => !org.parentOrganizationId);
         } else if (filters.type === "sub") {
-            filtered = filtered.filter(org => org.parentId);
+            filtered = filtered.filter(org => org.parentOrganizationId);
         }
 
         return filtered;
@@ -73,7 +108,6 @@ export default function OrganizationsPage() {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
-        // Use validators
         const validationErrors = await validator.validate(formData);
 
         if (Object.keys(validationErrors).length > 0) {
@@ -82,56 +116,51 @@ export default function OrganizationsPage() {
             return;
         }
 
-        if (editingOrg) {
-            const updated = organizations.map((org) =>
-                org._id === editingOrg._id ? { ...org, ...formData } : org
-            );
-            setOrganizationsState(updated);
-            setOrganizations(updated);
-            toast.success("Organization updated successfully");
-        } else {
-            // Only allow sub-organizations if root org exists
-            if (!hasRootOrg) {
-                toast.error("Please create the main organization first");
-                return;
+        // Map address string to object as expected by backend
+        const payload = {
+            ...formData,
+            address: { addressLine: formData.address },
+        };
+
+        try {
+            if (editingOrg) {
+                await updateOrganization({ id: editingOrg._id, ...payload }).unwrap();
+                toast.success("Organization updated successfully");
+            } else {
+                if (hasRootOrg) {
+                    await createSubOrganization({
+                        ...payload,
+                        parentOrganizationId: rootOrg._id
+                    }).unwrap();
+                    toast.success("Sub-organization created successfully");
+                } else {
+                    await createOrganization(payload).unwrap();
+                    toast.success("Main organization created successfully");
+                }
             }
-            const newOrg: Organization = {
-                _id: `org_${Date.now()}`,
-                status: formData.status,
-                name: formData.name,
-                email: formData.email,
-                phone: formData.phone,
-                address: formData.address,
-                parentId: rootOrg?._id || null,
-                createdAt: new Date().toISOString(),
-            };
-            const updated = [...organizations, newOrg];
-            setOrganizationsState(updated);
-            setOrganizations(updated);
-            toast.success("Sub-organization created successfully");
+            closeModal();
+        } catch (err: any) {
+            console.error(err);
+            toast.error(err?.data?.message || "Operation failed");
         }
-        closeModal();
     };
 
     const openCreateModal = () => {
-        if (!hasRootOrg) {
-            toast.error("Main organization must be created first");
-            return;
-        }
         setEditingOrg(null);
-        setFormData({ name: "", email: "", phone: "", address: "", status: "active" });
+        setFormData({ name: "", organizationType: "logistics", email: "", phone: "", address: "", status: "active" });
         setErrors({});
         openPopup("orgModal");
     };
 
-    const openEditModal = (org: any) => {
+    const openEditModal = (org: Organization) => {
         setEditingOrg(org);
         setFormData({
             name: org.name,
+            organizationType: (org.organizationType as any) || "logistics",
             email: org.email,
             phone: org.phone,
-            address: org.address || "",
-            status: org.status || "active"
+            address: org.address?.addressLine || "",
+            status: org.status
         });
         setErrors({});
         openPopup("orgModal");
@@ -144,15 +173,17 @@ export default function OrganizationsPage() {
 
     const handleDelete = async (id: string) => {
         const org = organizations.find(o => o._id === id);
-        if (org && !org.parentId) {
+        if (org && !org.parentOrganizationId) {
             toast.error("Cannot delete the main organization");
             return;
         }
         if (confirm("Are you sure you want to delete this organization?")) {
-            const updated = organizations.filter((org) => org._id !== id);
-            setOrganizationsState(updated);
-            setOrganizations(updated);
-            toast.success("Organization deleted");
+            try {
+                await deleteOrganization(id).unwrap();
+                toast.success("Organization deleted");
+            } catch (err: any) {
+                toast.error(err?.data?.message || "Delete failed");
+            }
         }
     }
 
@@ -162,6 +193,7 @@ export default function OrganizationsPage() {
 
     const columns = [
         { header: "Name", accessor: "name" },
+        { header: "Type", accessor: "organizationType", render: (value: string) => capitalizeFirstLetter(value) },
         { header: "Email", accessor: "email" },
         { header: "Phone", accessor: "phone" },
         {
@@ -176,11 +208,29 @@ export default function OrganizationsPage() {
             header: "Actions", accessor: (row: any) => (
                 <div className="flex gap-2">
                     <button onClick={() => openEditModal(row)} className="text-blue-600 hover:text-blue-800"><Edit size={16} /></button>
-                    <button onClick={() => handleDelete(row._id)} className="text-red-500 hover:text-red-700"><Trash2 size={16} /></button>
+                    {!isLoading && !isDeleting && (
+                        <button onClick={() => handleDelete(row._id)} className="text-red-500 hover:text-red-700"><Trash2 size={16} /></button>
+                    )}
                 </div>
             )
         }
     ];
+
+    if (isLoading) {
+        return (
+            <div className="flex items-center justify-center h-full">
+                <Loader2 className="animate-spin text-slate-500" size={32} />
+            </div>
+        )
+    }
+
+    if (apiError) {
+        return (
+            <div className="p-4 text-red-500">
+                Error loading organizations.
+            </div>
+        )
+    }
 
     return (
         <ApiErrorBoundary hasError={false}>
@@ -201,7 +251,7 @@ export default function OrganizationsPage() {
                             onClick={openCreateModal}
                             className="bg-slate-900 text-white px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 hover:bg-slate-800 transition-colors"
                         >
-                            <Plus size={16} /> Add Sub-Organization
+                            <Plus size={16} /> {hasRootOrg ? "Add Sub-Organization" : "Add Main Organization"}
                         </button>
                     </div>
                 </div>
@@ -255,12 +305,12 @@ export default function OrganizationsPage() {
                     </div>
                 )}
 
-                <Table columns={columns} data={filteredOrganizations} loading={false} />
+                <Table columns={columns} data={filteredOrganizations} loading={isLoading} />
 
                 {isPopupOpen("orgModal") && (
                     <div className="fixed inset-0 bg-slate-950/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
                         <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl border border-slate-200">
-                            <h2 className="text-xl font-bold mb-4">{editingOrg ? "Edit Sub-Organization" : "New Sub-Organization"}</h2>
+                            <h2 className="text-xl font-bold mb-4">{editingOrg ? "Edit Organization" : (hasRootOrg ? "New Sub-Organization" : "New Main Organization")}</h2>
                             <form onSubmit={handleSubmit} className="space-y-4">
                                 <div>
                                     <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Name</label>
@@ -271,6 +321,22 @@ export default function OrganizationsPage() {
                                     />
                                     {errors.name && <p className="text-red-500 text-[10px] mt-1 font-bold">{errors.name}</p>}
                                 </div>
+
+                                <div>
+                                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Type</label>
+                                    <select
+                                        className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-slate-900/10 outline-none"
+                                        value={formData.organizationType}
+                                        onChange={e => setFormData({ ...formData, organizationType: e.target.value })}
+                                    >
+                                        <option value="logistics">Logistics</option>
+                                        <option value="transport">Transport</option>
+                                        <option value="school">School</option>
+                                        <option value="taxi">Taxi</option>
+                                        <option value="fleet">Fleet</option>
+                                    </select>
+                                </div>
+
                                 <div>
                                     <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Email</label>
                                     <input type="email" className={`w-full border ${errors.email ? 'border-red-500' : 'border-slate-200'} rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-slate-900/10 outline-none`}
@@ -304,7 +370,9 @@ export default function OrganizationsPage() {
                                 </div>
                                 <div className="flex gap-3 mt-6">
                                     <button type="button" onClick={closeModal} className="flex-1 py-2.5 bg-slate-100 text-slate-700 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-slate-200">Cancel</button>
-                                    <button type="submit" className="flex-1 py-2.5 bg-slate-900 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-slate-800">Save</button>
+                                    <button type="submit" disabled={isCreating || isCreatingSub || isUpdating} className="flex-1 py-2.5 bg-slate-900 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-slate-800 disabled:opacity-50">
+                                        {(isCreating || isCreatingSub || isUpdating) ? "Saving..." : "Save"}
+                                    </button>
                                 </div>
                             </form>
                         </div>

@@ -6,6 +6,8 @@ import { useCreateVehicleMutation, useUpdateVehicleMutation } from "@/redux/api/
 import { useGetOrganizationsQuery } from "@/redux/api/organizationApi";
 import { toast } from "sonner";
 
+import { getSecureItem } from "@/app/admin/Helpers/encryptionHelper";
+
 interface VehicleModalProps {
     isOpen: boolean;
     onClose: () => void;
@@ -17,7 +19,7 @@ export default function VehicleModal({ isOpen, onClose, vehicle, onCreated }: Ve
     const [createVehicle, { isLoading: isCreating }] = useCreateVehicleMutation();
     const [updateVehicle, { isLoading: isUpdating }] = useUpdateVehicleMutation();
     const [userRole, setUserRole] = useState<string | null>(() =>
-        typeof window !== "undefined" ? localStorage.getItem("userRole") : null
+        typeof window !== "undefined" ? getSecureItem("userRole") : null
     );
     const isManager = userRole === "manager";
     const { data: orgsResponse } = useGetOrganizationsQuery(undefined, {
@@ -47,7 +49,7 @@ export default function VehicleModal({ isOpen, onClose, vehicle, onCreated }: Ve
         selectedOrg?.name || storedOrgName || "Assigned Organization";
 
     React.useEffect(() => {
-        setUserRole(localStorage.getItem("userRole"));
+        setUserRole(getSecureItem("userRole"));
         setStoredOrgId(localStorage.getItem("organizationId") || "");
         setStoredOrgName(localStorage.getItem("organizationName") || "");
     }, []);
@@ -131,7 +133,7 @@ export default function VehicleModal({ isOpen, onClose, vehicle, onCreated }: Ve
                         {/* Vehicle Info */}
                         <div className="space-y-4">
                             <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-600 mb-2">Vehicle Information</h3>
-                            
+
                             <div>
                                 <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-1.5 flex items-center gap-2">
                                     <Briefcase size={14} className="text-blue-500" />
@@ -225,7 +227,7 @@ export default function VehicleModal({ isOpen, onClose, vehicle, onCreated }: Ve
                         {/* Driver & Photo */}
                         <div className="space-y-4">
                             <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-green-600 mb-2">Driver & Appearance</h3>
-                            
+
                             <div>
                                 <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-1.5 flex items-center gap-2">
                                     <User size={14} className="text-green-500" />

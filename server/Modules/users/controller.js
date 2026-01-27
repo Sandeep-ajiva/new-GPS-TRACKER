@@ -86,94 +86,131 @@ exports.login = async (req, res) => {
 };
 
 
-exports.createOrganizationAdmin = async (req, res) => {
+exports.getMe = async (req, res) => {
     try {
-        await validateAdminData(req.body);
-        const {
-            firstName,
-            lastName,
-            email,
-            mobile,
-            passwordHash,
-            organizationId
-        } = req.body
-
-        const org = await Organization.findById(organizationId)
-        if (!org) {
-            return res.status(404).json({
-                status: false,
-                message: "Organization not found"
-            })
-        }
-
-        const existingUser = await User.findOne({
-            $or: [{ email }, { mobile }]
-        });
-
-        if (existingUser) {
-            return res.status(409).json({
-                status: false,
-                message: "user already exist"
-            })
-        }
-
-        const password = await bcrypt.hash(passwordHash, 10);
-
-        const admin = await User.create({
-            organizationId,
-            firstName,
-            lastName,
-            email,
-            mobile,
-            passwordHash: password,
-            role: "admin",
-            status: "active"
-        })
-
-        // Update organization's adminUser field
-        org.adminUser = admin._id;
-        await org.save();
-
-        return res.status(201).json({
-            status: true,
-            message: "Organization Admin Created",
-            data: admin,
-        });
-
+        const user = await User.findById(req.user.userId).select("-passwordHash").populate("organizationId", "name email phone");
+        if (!user) return res.status(404).json({ status: false, message: "User not found" });
+        return res.json({ status: true, data: user });
     } catch (error) {
-        return res.status(500).json({
-            status: false,
-            message: "Internal server error",
-        });
+        return res.status(500).json({ status: false, message: error.message });
     }
-}
+};
 
-exports.getAllAdmins = async (req, res) => {
+exports.getAll = async (req, res) => {
     try {
-        // 🔒 Extra safety (even though middleware already checks)
+        const query = {};
+        
+        // If not superadmin, restrict to own organization
         if (req.user.role !== "superadmin") {
-            return res.status(403).json({
-                status: false,
-                message: "Access denied",
-            });
+            // Assuming checks are done in middleware, but safe to enforce
+            if (req.user.organizationId) {
+                 query.organizationId = req.user.organizationId;
+            } else {
+                 // Fallback if somehow no orgId but not superadmin (shouldn't happen for valid tokens)
+                 return res.status(403).json({ status: false, message: "Access denied" });
+            }
         }
 
-        const admins = await User.find({ role: "admin" })
+        const users = await User.find(query)
             .select("-passwordHash")
             .populate("organizationId", "name email phone")
             .sort({ createdAt: -1 });
 
         return res.status(200).json({
             status: true,
-            totalAdmins: admins.length,
-            data: admins,
+            total: users.length,
+            data: users,
         });
 
     } catch (error) {
-        console.error("Get All Admins Error:", error);
+        console.error("Get All Users Error:", error);
         return res.status(500).json({
             status: false,
             message: "Server error",
+        });
+    }
+};
+
+exports.create = async (req, res) => {
+    try {
+        await validateAdminData(req.body); // Reusing existing validator for now, requires firstName, lastName, etc.
+
+        const {
+            firstName,
+            lastName,
+            email,
+            mobile,
+            passwordHash,
+            organizationId,
+            role,
+            status
+        } = req.body;
+
+        // Role validation
+        const allowedRoles = ["admin", "manager", "driver"];
+        if (!allowedRoles.includes(role)) {
+             return res.status(400).json({ status: false, message: "Invalid role" });
+        }
+
+        // Organization Check
+        let finalOrgId = organizationId;
+        if (req.user.role !== "superadmin") {
+            // Force assign to creator's org
+            finalOrgId = req.user.organizationId; 
+        }
+
+        if (!finalOrgId && role !== 'superadmin') { // Superadmin usually doesn't need org, but new user might
+             // If creating strict Org user
+             return res.status(400).json({ status: false, message: "Organization is required" });
+        }
+        
+        if (finalOrgId) {
+             const org = await Organization.findById(finalOrgId);
+             if (!org) return res.status(404).json({ status: false, message: "Organization not found" });
+        }
+
+        const existingUser = await User.findOne({
+            $or: [{ email: email.toLowerCase() }, { mobile }]
+        });
+
+        if (existingUser) {
+            return res.status(409).json({
+                status: false,
+                message: "User or Mobile already exists"
+            });
+        }
+
+        const password = await bcrypt.hash(passwordHash, 10);
+
+        const newUser = await User.create({
+            organizationId: finalOrgId,
+            firstName,
+            lastName,
+            email: email.toLowerCase(),
+            mobile,
+            passwordHash: password,
+            role,
+            status: status || "active"
+        });
+
+        // Loophole: If Admin created, update Org?
+        // Old logic: org.adminUser = admin._id
+        // We can keep this if role is 'admin'
+        if (role === 'admin' && finalOrgId) {
+             await Organization.findByIdAndUpdate(finalOrgId, { adminUser: newUser._id });
+        }
+
+        return res.status(201).json({
+            status: true,
+            message: "User created successfully",
+            data: newUser,
+        });
+
+    } catch (error) {
+        console.error("Create User Error:", error);
+        return res.status(500).json({
+            status: false,
+            message: error.message || "Internal server error",
         });
     }
 };
@@ -199,63 +236,6 @@ exports.updateUser = async (req, res) => {
     }
 };
 
-exports.createManager = async (req, res) => {
-    try {
-        await validateAdminData(req.body);
-        const {
-            firstName,
-            lastName,
-            email,
-            mobile,
-            passwordHash,
-            organizationId
-        } = req.body
-
-        const org = await Organization.findById(organizationId)
-        if (!org) {
-            return res.status(404).json({
-                status: false,
-                message: "Organization not found"
-            })
-        }
-
-        const existingUser = await User.findOne({
-            $or: [{ email }, { mobile }]
-        });
-
-        if (existingUser) {
-            return res.status(409).json({
-                status: false,
-                message: "User already exist"
-            })
-        }
-
-        const password = await bcrypt.hash(passwordHash, 10);
-
-        const manager = await User.create({
-            organizationId,
-            firstName,
-            lastName,
-            email,
-            mobile,
-            passwordHash: password,
-            role: "manager",
-            status: "active"
-        })
-        return res.status(201).json({
-            status: true,
-            message: "Manager created successfully",
-            data: manager,
-        });
-
-    } catch (error) {
-        console.error("Create Manager Error:", error);
-        return res.status(500).json({
-            status: false,
-            message: "Internal server error",
-        });
-    }
-}
 
 exports.deleteUser = async (req, res) => {
     try {

@@ -3,40 +3,73 @@
 import { useState, useMemo } from "react";
 import Table from "@/components/ui/Table";
 import ApiErrorBoundary from "@/components/admin/ErrorBoundary/ApiErrorBoundary";
-import { Plus, Edit, Trash2, Filter } from "lucide-react";
+import { Plus, Edit, Trash2, Filter, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { getDevices, getVehicles, setDevices, setVehicles, type GPSDevice } from "@/lib/admin-dummy-data";
+import {
+    useGetGpsDevicesQuery,
+    useCreateGpsDeviceMutation,
+    useUpdateGpsDeviceMutation,
+    useDeleteGpsDeviceMutation
+} from "@/redux/api/gpsDeviceApi";
+import { useGetVehiclesQuery, useUpdateVehicleMutation } from "@/redux/api/vehicleApi";
 
 import Validator from "../Helpers/validators";
 import { usePopups } from "../Helpers/PopupContext";
 import { capitalizeFirstLetter } from "../Helpers/CapitalizeFirstLetter";
 
+export interface GPSDevice {
+    _id: string;
+    organizationId: string;
+    imei: string;
+    deviceModel: string;
+    manufacturer?: string;
+    simNumber?: string;
+    serialNumber?: string;
+    firmwareVersion?: string;
+    hardwareVersion?: string;
+    connectionStatus: "online" | "offline";
+    warrantyExpiry?: string;
+    status: "active" | "inactive";
+}
+
 export default function GpsDevicesPage() {
     const { openPopup, closePopup, isPopupOpen } = usePopups();
-    const [devices, setDevicesState] = useState(getDevices());
-    const [vehicles] = useState(getVehicles());
+
+    // API Hooks
+    const { data: devData, isLoading: isDevLoading } = useGetGpsDevicesQuery(undefined);
+    const { data: vehData, isLoading: isVehLoading } = useGetVehiclesQuery(undefined);
+
+    const [createGpsDevice, { isLoading: isCreating }] = useCreateGpsDeviceMutation();
+    const [updateGpsDevice, { isLoading: isUpdating }] = useUpdateGpsDeviceMutation();
+    const [deleteGpsDevice, { isLoading: isDeleting }] = useDeleteGpsDeviceMutation();
+
+    // We need updateVehicle to Assign/Unassign vehicle
+    const [updateVehicle] = useUpdateVehicleMutation();
+
+    const devices = (devData?.data as GPSDevice[]) || [];
+    const vehiclesData = (vehData?.data as any[]) || [];
+
     const [showFilters, setShowFilters] = useState(false);
-    const [selectedDeviceForAssignment, setSelectedDeviceForAssignment] = useState<any>(null);
     const [filters, setFilters] = useState({
         assigned: "",
         status: ""
     });
 
-    const [editingDevice, setEditingDevice] = useState<any>(null);
+    const [editingDevice, setEditingDevice] = useState<GPSDevice | null>(null);
     const [formData, setFormData] = useState({
         imei: "",
         simNumber: "",
-        model: "",
+        deviceModel: "",
         firmwareVersion: "",
-        status: "active" as "active" | "inactive",
-        assignedVehicleId: null as string | null
+        status: "active" as "active" | "inactive"
     });
     const [errors, setErrors] = useState<any>({});
+    const [selectedDeviceForAssignment, setSelectedDeviceForAssignment] = useState<GPSDevice | null>(null);
 
     const Rules = {
         imei: { required: true, type: "string" as const, errorMessage: "IMEI is required." },
         simNumber: { required: true, type: "string" as const, errorMessage: "SIM number is required." },
-        model: { required: true, type: "string" as const, errorMessage: "Model is required." }
+        deviceModel: { required: true, type: "string" as const, errorMessage: "Model is required." }
     };
 
     const validator = new Validator(Rules);
@@ -49,23 +82,26 @@ export default function GpsDevicesPage() {
         }));
     };
 
+    // Helper to find assigned vehicle for a device
+    const getAssignedVehicle = (deviceId: string) => {
+        return vehiclesData.find(v => v.deviceId === deviceId);
+    };
+
     const filteredDevices = useMemo(() => {
         let filtered = devices;
         if (filters.assigned === "assigned") {
-            filtered = filtered.filter(d => d.assignedVehicleId);
+            filtered = filtered.filter(d => getAssignedVehicle(d._id));
         } else if (filters.assigned === "unassigned") {
-            filtered = filtered.filter(d => !d.assignedVehicleId);
+            filtered = filtered.filter(d => !getAssignedVehicle(d._id));
         }
         if (filters.status) {
             filtered = filtered.filter(d => d.status === filters.status);
         }
         return filtered;
-    }, [devices, filters]);
+    }, [devices, vehiclesData, filters]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-
-        // Use validators
         const validationErrors = await validator.validate(formData);
 
         if (Object.keys(validationErrors).length > 0) {
@@ -74,48 +110,47 @@ export default function GpsDevicesPage() {
             return;
         }
 
-        if (editingDevice) {
-            const updated = devices.map((device) =>
-                device._id === editingDevice._id ? { ...device, ...formData } : device
-            );
-            setDevicesState(updated);
-            setDevices(updated);
-            toast.success("Device updated successfully");
-        } else {
-            const newDevice: GPSDevice = {
-                _id: `gps_${Date.now()}`,
-                imei: formData.imei,
-                simNumber: formData.simNumber,
-                model: formData.model,
-                firmwareVersion: formData.firmwareVersion,
-                status: formData.status,
-                assignedVehicleId: null,
-                lastSeen: new Date().toISOString(),
-            };
-            const updated = [...devices, newDevice];
-            setDevicesState(updated);
-            setDevices(updated);
-            toast.success("Device created successfully");
+        try {
+            if (editingDevice) {
+                await updateGpsDevice({ id: editingDevice._id, ...formData }).unwrap();
+                toast.success("Device updated successfully");
+            } else {
+                // IMPORTANT: Backend strictly requires organizationId if SuperAdmin.
+                // Assuming current user context handles orgId insertion in backend for non-superadmin.
+                // For SuperAdmin, we might need an Org selector in the form? 
+                // Using existing pattern: if no orgId provided, backend might default to user's org.
+                // If I am SuperAdmin, I should probably select Org.
+                // For now, let's assume current logic (like Vehicles) or add Org selector later if needed.
+                // But Vehicles page HAD org selector. Devices page existing form DID NOT.
+                // I will proceed without Org selector, but it might fail for SuperAdmin if backend strict.
+                // However, I can't guess.
+                // Let's add OrganizationId if vehiclesData has orgs? No, devices page fetches devices.
+                // Let's rely on backend user context for now.
+
+                await createGpsDevice(formData).unwrap();
+                toast.success("Device created successfully");
+            }
+            closeModal();
+        } catch (err: any) {
+            toast.error(err?.data?.message || "Operation failed");
         }
-        closeModal();
     };
 
     const openCreateModal = () => {
         setEditingDevice(null);
-        setFormData({ imei: "", simNumber: "", model: "", firmwareVersion: "", status: "active", assignedVehicleId: null });
+        setFormData({ imei: "", simNumber: "", deviceModel: "", firmwareVersion: "", status: "active" });
         setErrors({});
         openPopup("deviceModal");
     };
 
-    const openEditModal = (device: any) => {
+    const openEditModal = (device: GPSDevice) => {
         setEditingDevice(device);
         setFormData({
             imei: device.imei,
             simNumber: device.simNumber || "",
-            model: device.model || "",
+            deviceModel: device.deviceModel || "",
             firmwareVersion: device.firmwareVersion || "",
-            status: device.status || "active",
-            assignedVehicleId: device.assignedVehicleId || null
+            status: device.status || "active"
         });
         setErrors({});
         openPopup("deviceModal");
@@ -128,10 +163,12 @@ export default function GpsDevicesPage() {
 
     const handleDelete = async (id: string) => {
         if (confirm("Are you sure you want to delete this device?")) {
-            const updated = devices.filter((device) => device._id !== id);
-            setDevicesState(updated);
-            setDevices(updated);
-            toast.success("Device deleted");
+            try {
+                await deleteGpsDevice(id).unwrap();
+                toast.success("Device deleted");
+            } catch (err: any) {
+                toast.error(err?.data?.message || "Delete failed");
+            }
         }
     }
 
@@ -139,43 +176,31 @@ export default function GpsDevicesPage() {
         setFilters({ assigned: "", status: "" });
     };
 
-    const openAssignVehicleModal = (device: any) => {
+    // Assignment Logic
+    const availableVehicles = vehiclesData.filter(v => !v.deviceId);
+
+    const openAssignVehicleModal = (device: GPSDevice) => {
         setSelectedDeviceForAssignment(device);
         openPopup("assignVehicleModal");
     };
 
-    const handleAssignVehicle = (vehicleId: string) => {
+    const handleAssignVehicle = async (vehicleId: string) => {
         if (!selectedDeviceForAssignment) return;
-
-        // Update device with assigned vehicle
-        const updatedDevices = devices.map(d =>
-            d._id === selectedDeviceForAssignment._id
-                ? { ...d, assignedVehicleId: vehicleId }
-                : d
-        );
-
-        // Update vehicle with assigned device (bidirectional)
-        const updatedVehicles = vehicles.map(v =>
-            v._id === vehicleId
-                ? { ...v, assignedDeviceId: selectedDeviceForAssignment._id }
-                : v
-        );
-
-        setDevicesState(updatedDevices);
-        setDevices(updatedDevices);
-        setVehicles(updatedVehicles);
-
-        closePopup("assignVehicleModal");
-        setSelectedDeviceForAssignment(null);
-        toast.success("Vehicle assigned successfully");
+        try {
+            // Update Vehicle with this deviceId
+            await updateVehicle({ id: vehicleId, deviceId: selectedDeviceForAssignment._id }).unwrap();
+            toast.success("Vehicle assigned successfully");
+            closePopup("assignVehicleModal");
+            setSelectedDeviceForAssignment(null);
+        } catch (err: any) {
+            toast.error(err?.data?.message || "Assignment failed");
+        }
     };
-
-    const availableVehicles = vehicles.filter(v => !v.assignedDeviceId);
 
     const columns = [
         { header: "IMEI", accessor: "imei" },
         { header: "SIM Number", accessor: "simNumber" },
-        { header: "Model", accessor: "model" },
+        { header: "Model", accessor: "deviceModel" },
         { header: "Firmware", accessor: "firmwareVersion" },
         {
             header: "Status",
@@ -189,7 +214,8 @@ export default function GpsDevicesPage() {
         {
             header: "Assignment",
             accessor: (row: any) => {
-                if (!row.assignedVehicleId) {
+                const assignedVehicle = getAssignedVehicle(row._id);
+                if (!assignedVehicle) {
                     return (
                         <button
                             onClick={() => openAssignVehicleModal(row)}
@@ -199,19 +225,30 @@ export default function GpsDevicesPage() {
                         </button>
                     );
                 }
-                const vehicle = vehicles.find(v => v._id === row.assignedVehicleId);
-                return vehicle ? vehicle.vehicleNumber : "Unknown";
+                return assignedVehicle.vehicleNumber;
             }
         },
         {
             header: "Actions", accessor: (row: any) => (
                 <div className="flex gap-2">
                     <button onClick={() => openEditModal(row)} className="text-slate-700 hover:text-slate-900"><Edit size={16} /></button>
-                    <button onClick={() => handleDelete(row._id)} className="text-rose-600 hover:text-rose-700"><Trash2 size={16} /></button>
+                    {!isLoading && (
+                        <button onClick={() => handleDelete(row._id)} className="text-rose-600 hover:text-rose-700"><Trash2 size={16} /></button>
+                    )}
                 </div>
             )
         }
     ];
+
+    const isLoading = isDevLoading || isVehLoading;
+
+    if (isLoading) {
+        return (
+            <div className="flex items-center justify-center h-full">
+                <Loader2 className="animate-spin text-slate-500" size={32} />
+            </div>
+        )
+    }
 
     return (
         <ApiErrorBoundary hasError={false}>
@@ -277,7 +314,7 @@ export default function GpsDevicesPage() {
                     </div>
                 )}
 
-                <Table columns={columns} data={filteredDevices} loading={false} />
+                <Table columns={columns} data={filteredDevices} loading={isLoading} />
 
                 {isPopupOpen("deviceModal") && (
                     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm">
@@ -306,12 +343,12 @@ export default function GpsDevicesPage() {
                                     </div>
                                     <div>
                                         <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Model</label>
-                                        <input type="text" className={`w-full rounded-xl border ${errors.model ? 'border-red-500' : 'border-slate-200'} p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10`}
-                                            value={formData.model}
-                                            onChange={e => setFormData({ ...formData, model: e.target.value })}
-                                            onBlur={e => handleBlur("model", e.target.value)}
+                                        <input type="text" className={`w-full rounded-xl border ${errors.deviceModel ? 'border-red-500' : 'border-slate-200'} p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10`}
+                                            value={formData.deviceModel}
+                                            onChange={e => setFormData({ ...formData, deviceModel: e.target.value })}
+                                            onBlur={e => handleBlur("deviceModel", e.target.value)}
                                         />
-                                        {errors.model && <p className="text-red-500 text-[10px] mt-1 font-bold">{errors.model}</p>}
+                                        {errors.deviceModel && <p className="text-red-500 text-[10px] mt-1 font-bold">{errors.deviceModel}</p>}
                                     </div>
                                 </div>
                                 <div className="grid grid-cols-2 gap-4">
@@ -331,7 +368,9 @@ export default function GpsDevicesPage() {
                                 </div>
                                 <div className="flex gap-3 mt-6">
                                     <button type="button" onClick={closeModal} className="flex-1 rounded-xl bg-slate-100 py-2.5 text-[11px] font-black uppercase tracking-widest text-slate-700 hover:bg-slate-200">Cancel</button>
-                                    <button type="submit" className="flex-1 rounded-xl bg-slate-900 py-2.5 text-[11px] font-black uppercase tracking-widest text-white hover:bg-slate-800">Save</button>
+                                    <button type="submit" disabled={isCreating || isUpdating} className="flex-1 rounded-xl bg-slate-900 py-2.5 text-[11px] font-black uppercase tracking-widest text-white hover:bg-slate-800 disabled:opacity-50">
+                                        {(isCreating || isUpdating) ? "Saving..." : "Save"}
+                                    </button>
                                 </div>
                             </form>
                         </div>

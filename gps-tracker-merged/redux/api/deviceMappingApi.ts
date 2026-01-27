@@ -3,12 +3,12 @@ import { baseApi } from "./baseApi";
 export const deviceMappingApi = baseApi.injectEndpoints({
     endpoints: (builder) => ({
         getDeviceMappings: builder.query({
-            query: () => "/deviceMapping",
+            query: () => "/devicemapping",
             providesTags: ["DeviceMapping"],
         }),
         assignDevice: builder.mutation({
             query: (body) => ({
-                url: "/deviceMapping",
+                url: "/devicemapping",
                 method: "POST",
                 body,
             }),
@@ -16,14 +16,14 @@ export const deviceMappingApi = baseApi.injectEndpoints({
         }),
         unassignDevice: builder.mutation({
             query: (id) => ({
-                url: `/deviceMapping/${id}/unassign`,
+                url: `/devicemapping/${id}/unassign`,
                 method: "PATCH",
             }),
             invalidatesTags: ["DeviceMapping", "Vehicle", "GPSDevice"],
         }),
         deleteMapping: builder.mutation({
             query: (id) => ({
-                url: `/deviceMapping/${id}`,
+                url: `/devicemapping/${id}`,
                 method: "DELETE"
             }),
             invalidatesTags: ["DeviceMapping"]

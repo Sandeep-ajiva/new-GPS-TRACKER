@@ -4,6 +4,9 @@ import { apiPost } from "./commonApi";
 import { API_ROUTES } from "@/constants/ApiRoutes";
 
 
+import { saveSecureItem } from "@/app/admin/Helpers/encryptionHelper";
+
+
 type LoginResponse = {
   token: string;
   user: {
@@ -20,11 +23,11 @@ export const authApi = baseApi.injectEndpoints({
       { email: string; password: string }
     >({
 
-    query: (body) => ({
-  url: API_ROUTES.LOGIN, // "/login"
-  method: "POST",
-  body,
-}),
+      query: (body) => ({
+        url: API_ROUTES.LOGIN, // "/login"
+        method: "POST",
+        body,
+      }),
 
 
       async onQueryStarted(arg, { queryFulfilled }) {
@@ -33,8 +36,8 @@ export const authApi = baseApi.injectEndpoints({
 
           // ✅ LOGIN RESPONSE SE TOKEN UTHAO
           if (typeof window !== "undefined") {
-            localStorage.setItem("token", data.token);
-            localStorage.setItem("userRole", data.user.role); // ✅ IMPORTANT
+            saveSecureItem("token", data.token);
+            saveSecureItem("userRole", data.user.role); // ✅ IMPORTANT
           }
 
         } catch (err) {

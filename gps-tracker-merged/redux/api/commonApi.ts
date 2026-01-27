@@ -7,6 +7,8 @@ import type {
 import { apiCircuitBreaker } from "@/utils/CircuitBreaker";
 import { encryptPayload } from "@/utils/encryption";
 
+import { getSecureItem } from "@/app/admin/Helpers/encryptionHelper";
+
 /**
  * -----------------------------------------------------
  * RAW BASE QUERY
@@ -25,7 +27,7 @@ const rawBaseQuery = fetchBaseQuery({
     }
 
     if (typeof window !== "undefined") {
-      const token = localStorage.getItem("token");
+      const token = getSecureItem("token");
       if (token) {
         headers.set("Authorization", `Bearer ${token}`);
       }

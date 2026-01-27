@@ -8,20 +8,22 @@ const checkAuthorization = require("../../middleware/checkAuthorization");
 
 
 router.get(
-    "/admins",
+    "/",
     requireAuth,
-    checkAuthorization(["superadmin"], "users", "read"),
-    Controller.getAllAdmins
+    checkAuthorization(["superadmin", "admin"], "users", "read"),
+    Controller.getAll
 );
 
+router.get("/me", requireAuth, Controller.getMe);
 
 router.post("/login", Controller.login);
 
-router.post("/orgadmin", requireAuth,
-    checkAuthorization(["superadmin"], "users", "create"), Controller.createOrganizationAdmin);
-
-router.post("/manager", requireAuth,
-    checkAuthorization(["superadmin"], "users", "create"), Controller.createManager);
+router.post(
+    "/",
+    requireAuth,
+    checkAuthorization(["superadmin", "admin"], "users", "create"),
+    Controller.create
+);
 
 router.put("/:id", requireAuth, checkAuthorization(["superadmin"], "users", "update"), Controller.updateUser);
 router.delete("/:id", requireAuth, checkAuthorization(["superadmin"], "users", "delete"), Controller.deleteUser);
