@@ -13,9 +13,14 @@ import {
 } from "@/redux/api/gpsDeviceApi";
 import { useGetVehiclesQuery, useUpdateVehicleMutation } from "@/redux/api/vehicleApi";
 
-import Validator from "../Helpers/validators";
 import { usePopups } from "../Helpers/PopupContext";
 import { capitalizeFirstLetter } from "../Helpers/CapitalizeFirstLetter";
+import { DynamicModal } from "@/components/common";
+import { FormField } from "@/lib/formTypes";
+import { Cpu, Smartphone, Layout, Activity, ToggleLeft, Building2 } from "lucide-react";
+import { useGetOrganizationsQuery } from "@/redux/api/organizationApi";
+
+
 
 export interface GPSDevice {
     _id: string;
@@ -38,16 +43,21 @@ export default function GpsDevicesPage() {
     // API Hooks
     const { data: devData, isLoading: isDevLoading } = useGetGpsDevicesQuery(undefined);
     const { data: vehData, isLoading: isVehLoading } = useGetVehiclesQuery(undefined);
+    const { data: orgData, isLoading: isOrgLoading } = useGetOrganizationsQuery(undefined);
 
     const [createGpsDevice, { isLoading: isCreating }] = useCreateGpsDeviceMutation();
     const [updateGpsDevice, { isLoading: isUpdating }] = useUpdateGpsDeviceMutation();
+
     const [deleteGpsDevice, { isLoading: isDeleting }] = useDeleteGpsDeviceMutation();
 
     // We need updateVehicle to Assign/Unassign vehicle
     const [updateVehicle] = useUpdateVehicleMutation();
 
-    const devices = (devData?.data as GPSDevice[]) || [];
-    const vehiclesData = (vehData?.data as any[]) || [];
+    const devices = useMemo(() => (devData?.data as GPSDevice[]) || [], [devData]);
+    const vehiclesData = useMemo(() => (vehData?.data as { _id: string; vehicleNumber: string; deviceId?: string; model?: string; vehicleType?: string }[]) || [], [vehData]);
+    const organizations = useMemo(() => (orgData?.data as { _id: string; name: string }[]) || [], [orgData]);
+
+
 
     const [showFilters, setShowFilters] = useState(false);
     const [filters, setFilters] = useState({
@@ -56,43 +66,17 @@ export default function GpsDevicesPage() {
     });
 
     const [editingDevice, setEditingDevice] = useState<GPSDevice | null>(null);
-    const [formData, setFormData] = useState({
-        imei: "",
-        simNumber: "",
-        deviceModel: "",
-        firmwareVersion: "",
-        status: "active" as "active" | "inactive"
-    });
-    const [errors, setErrors] = useState<any>({});
     const [selectedDeviceForAssignment, setSelectedDeviceForAssignment] = useState<GPSDevice | null>(null);
 
-    const Rules = {
-        imei: { required: true, type: "string" as const, errorMessage: "IMEI is required." },
-        simNumber: { required: true, type: "string" as const, errorMessage: "SIM number is required." },
-        deviceModel: { required: true, type: "string" as const, errorMessage: "Model is required." }
-    };
 
-    const validator = new Validator(Rules);
 
-    const handleBlur = async (name: string, value: any) => {
-        const validationErrors = await validator.validateFormField(name, value);
-        setErrors((prev: any) => ({
-            ...prev,
-            [name]: validationErrors[name]
-        }));
-    };
-
-    // Helper to find assigned vehicle for a device
-    const getAssignedVehicle = (deviceId: string) => {
-        return vehiclesData.find(v => v.deviceId === deviceId);
-    };
 
     const filteredDevices = useMemo(() => {
         let filtered = devices;
         if (filters.assigned === "assigned") {
-            filtered = filtered.filter(d => getAssignedVehicle(d._id));
+            filtered = filtered.filter(d => vehiclesData.find(v => v.deviceId === d._id));
         } else if (filters.assigned === "unassigned") {
-            filtered = filtered.filter(d => !getAssignedVehicle(d._id));
+            filtered = filtered.filter(d => !vehiclesData.find(v => v.deviceId === d._id));
         }
         if (filters.status) {
             filtered = filtered.filter(d => d.status === filters.status);
@@ -100,61 +84,88 @@ export default function GpsDevicesPage() {
         return filtered;
     }, [devices, vehiclesData, filters]);
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        const validationErrors = await validator.validate(formData);
 
-        if (Object.keys(validationErrors).length > 0) {
-            setErrors(validationErrors);
-            toast.error("Please fix form errors");
-            return;
-        }
-
+    const handleSubmit = async (data: Record<string, string | number | boolean | File>) => {
         try {
             if (editingDevice) {
-                await updateGpsDevice({ id: editingDevice._id, ...formData }).unwrap();
+                await updateGpsDevice({ id: editingDevice._id, ...data }).unwrap();
                 toast.success("Device updated successfully");
             } else {
-                // IMPORTANT: Backend strictly requires organizationId if SuperAdmin.
-                // Assuming current user context handles orgId insertion in backend for non-superadmin.
-                // For SuperAdmin, we might need an Org selector in the form? 
-                // Using existing pattern: if no orgId provided, backend might default to user's org.
-                // If I am SuperAdmin, I should probably select Org.
-                // For now, let's assume current logic (like Vehicles) or add Org selector later if needed.
-                // But Vehicles page HAD org selector. Devices page existing form DID NOT.
-                // I will proceed without Org selector, but it might fail for SuperAdmin if backend strict.
-                // However, I can't guess.
-                // Let's add OrganizationId if vehiclesData has orgs? No, devices page fetches devices.
-                // Let's rely on backend user context for now.
-
-                await createGpsDevice(formData).unwrap();
+                await createGpsDevice(data).unwrap();
                 toast.success("Device created successfully");
             }
             closeModal();
-        } catch (err: any) {
-            toast.error(err?.data?.message || "Operation failed");
+        } catch (err: unknown) {
+            const error = err as { data?: { message?: string } };
+            toast.error(error?.data?.message || "Operation failed");
         }
     };
 
+
+    const deviceFormFields: FormField[] = [
+        {
+            name: "organizationId",
+            label: "Organization",
+            type: "select",
+            required: true,
+            options: organizations.map(org => ({ label: org.name, value: org._id })),
+            icon: <Building2 size={14} className="text-slate-500" />,
+        },
+        {
+            name: "imei",
+            label: "IMEI",
+            type: "text",
+            required: true,
+            placeholder: "e.g. 86523904...",
+            icon: <Cpu size={14} className="text-slate-500" />,
+        },
+        {
+            name: "simNumber",
+            label: "SIM Number",
+            type: "text",
+            required: true,
+            placeholder: "e.g. +91 98765...",
+            icon: <Smartphone size={14} className="text-slate-500" />,
+        },
+        {
+            name: "deviceModel",
+            label: "Device Model",
+            type: "text",
+            required: true,
+            placeholder: "e.g. GT06",
+            icon: <Layout size={14} className="text-slate-500" />,
+        },
+        {
+            name: "firmwareVersion",
+            label: "Firmware Version",
+            type: "text",
+            placeholder: "e.g. v1.2.3",
+            icon: <Activity size={14} className="text-slate-500" />,
+        },
+        {
+            name: "status",
+            label: "Status",
+            type: "select",
+            required: true,
+            options: [
+                { label: "Active", value: "active" },
+                { label: "Inactive", value: "inactive" },
+            ],
+            icon: <ToggleLeft size={14} className="text-slate-500" />,
+        },
+    ];
+
+
     const openCreateModal = () => {
         setEditingDevice(null);
-        setFormData({ imei: "", simNumber: "", deviceModel: "", firmwareVersion: "", status: "active" });
-        setErrors({});
         openPopup("deviceModal");
     };
 
     const openEditModal = (device: GPSDevice) => {
         setEditingDevice(device);
-        setFormData({
-            imei: device.imei,
-            simNumber: device.simNumber || "",
-            deviceModel: device.deviceModel || "",
-            firmwareVersion: device.firmwareVersion || "",
-            status: device.status || "active"
-        });
-        setErrors({});
         openPopup("deviceModal");
     };
+
 
     const closeModal = () => {
         closePopup("deviceModal");
@@ -204,7 +215,7 @@ export default function GpsDevicesPage() {
         { header: "Firmware", accessor: "firmwareVersion" },
         {
             header: "Status",
-            accessor: (row: any) => (
+            accessor: (row: GPSDevice) => (
                 <span className={`px-2 py-1 rounded-lg text-xs font-bold uppercase ${row.status === "active" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}
                 >
                     {capitalizeFirstLetter(row.status)}
@@ -213,8 +224,8 @@ export default function GpsDevicesPage() {
         },
         {
             header: "Assignment",
-            accessor: (row: any) => {
-                const assignedVehicle = getAssignedVehicle(row._id);
+            accessor: (row: GPSDevice) => {
+                const assignedVehicle = vehiclesData.find(v => v.deviceId === row._id);
                 if (!assignedVehicle) {
                     return (
                         <button
@@ -229,10 +240,10 @@ export default function GpsDevicesPage() {
             }
         },
         {
-            header: "Actions", accessor: (row: any) => (
+            header: "Actions", accessor: (row: GPSDevice) => (
                 <div className="flex gap-2">
                     <button onClick={() => openEditModal(row)} className="text-slate-700 hover:text-slate-900"><Edit size={16} /></button>
-                    {!isLoading && (
+                    {(!isCreating && !isUpdating && !isDeleting) && (
                         <button onClick={() => handleDelete(row._id)} className="text-rose-600 hover:text-rose-700"><Trash2 size={16} /></button>
                     )}
                 </div>
@@ -240,7 +251,9 @@ export default function GpsDevicesPage() {
         }
     ];
 
-    const isLoading = isDevLoading || isVehLoading;
+
+    const isLoading = isDevLoading || isVehLoading || isOrgLoading;
+
 
     if (isLoading) {
         return (
@@ -316,66 +329,24 @@ export default function GpsDevicesPage() {
 
                 <Table columns={columns} data={filteredDevices} loading={isLoading} />
 
-                {isPopupOpen("deviceModal") && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm">
-                        <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
-                            <h2 className="text-xl font-black text-slate-900">{editingDevice ? "Edit Device" : "New Device"}</h2>
-                            <p className="text-xs text-slate-500">Register IMEI and SIM details for tracking.</p>
-                            <form onSubmit={handleSubmit} className="space-y-4">
-                                <div>
-                                    <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">IMEI</label>
-                                    <input type="text" className={`w-full rounded-xl border ${errors.imei ? 'border-red-500' : 'border-slate-200'} p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10`}
-                                        value={formData.imei}
-                                        onChange={e => setFormData({ ...formData, imei: e.target.value })}
-                                        onBlur={e => handleBlur("imei", e.target.value)}
-                                    />
-                                    {errors.imei && <p className="text-red-500 text-[10px] mt-1 font-bold">{errors.imei}</p>}
-                                </div>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">SIM Number</label>
-                                        <input type="text" className={`w-full rounded-xl border ${errors.simNumber ? 'border-red-500' : 'border-slate-200'} p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10`}
-                                            value={formData.simNumber}
-                                            onChange={e => setFormData({ ...formData, simNumber: e.target.value })}
-                                            onBlur={e => handleBlur("simNumber", e.target.value)}
-                                        />
-                                        {errors.simNumber && <p className="text-red-500 text-[10px] mt-1 font-bold">{errors.simNumber}</p>}
-                                    </div>
-                                    <div>
-                                        <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Model</label>
-                                        <input type="text" className={`w-full rounded-xl border ${errors.deviceModel ? 'border-red-500' : 'border-slate-200'} p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10`}
-                                            value={formData.deviceModel}
-                                            onChange={e => setFormData({ ...formData, deviceModel: e.target.value })}
-                                            onBlur={e => handleBlur("deviceModel", e.target.value)}
-                                        />
-                                        {errors.deviceModel && <p className="text-red-500 text-[10px] mt-1 font-bold">{errors.deviceModel}</p>}
-                                    </div>
-                                </div>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Firmware Version</label>
-                                        <input type="text" className="w-full rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
-                                            value={formData.firmwareVersion} onChange={e => setFormData({ ...formData, firmwareVersion: e.target.value })} />
-                                    </div>
-                                    <div>
-                                        <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Status</label>
-                                        <select className="w-full rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
-                                            value={formData.status} onChange={e => setFormData({ ...formData, status: e.target.value as "active" | "inactive" })}>
-                                            <option value="active">Active</option>
-                                            <option value="inactive">Inactive</option>
-                                        </select>
-                                    </div>
-                                </div>
-                                <div className="flex gap-3 mt-6">
-                                    <button type="button" onClick={closeModal} className="flex-1 rounded-xl bg-slate-100 py-2.5 text-[11px] font-black uppercase tracking-widest text-slate-700 hover:bg-slate-200">Cancel</button>
-                                    <button type="submit" disabled={isCreating || isUpdating} className="flex-1 rounded-xl bg-slate-900 py-2.5 text-[11px] font-black uppercase tracking-widest text-white hover:bg-slate-800 disabled:opacity-50">
-                                        {(isCreating || isUpdating) ? "Saving..." : "Save"}
-                                    </button>
-                                </div>
-                            </form>
-                        </div>
-                    </div>
-                )}
+                <DynamicModal
+                    isOpen={isPopupOpen("deviceModal")}
+                    onClose={closeModal}
+                    title={editingDevice ? "Edit Device" : "New Device"}
+                    description="Register IMEI and SIM details for tracking."
+                    fields={deviceFormFields}
+                    initialData={editingDevice ? {
+                        organizationId: editingDevice.organizationId,
+                        imei: editingDevice.imei,
+                        simNumber: editingDevice.simNumber || "",
+                        deviceModel: editingDevice.deviceModel,
+                        firmwareVersion: editingDevice.firmwareVersion || "",
+                        status: editingDevice.status,
+                    } : undefined}
+                    onSubmit={handleSubmit}
+                    submitLabel={editingDevice ? "Update Device" : "Create Device"}
+                />
+
 
                 {isPopupOpen("assignVehicleModal") && (
                     <div className="fixed inset-0 bg-slate-950/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">

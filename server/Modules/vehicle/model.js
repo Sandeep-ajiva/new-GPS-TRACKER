@@ -69,10 +69,12 @@ const vehicleSchema = {
   },
 };
 
-const VehicleModel = new ajModel("Vehicle", vehicleSchema, {
-  indexes: [
-    { fields: { organizationId: 1, vehicleNumber: 1 }, options: { unique: true } }
-  ]
-}).getModel();
+const VehicleModel = new ajModel("Vehicle", vehicleSchema).getModel();
+
+// Then add indexes manually:
+VehicleModel.schema.index(
+  { organizationId: 1, vehicleNumber: 1 },
+  { unique: true },
+);
 
 module.exports = VehicleModel;

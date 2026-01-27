@@ -6,16 +6,16 @@ const checkOrganization = require("../../middleware/checkOrganization");
 const checkAuthorization = require("../../middleware/checkAuthorization");
 const { handleVehicleImageUpload } = require("../../middleware/multerUpload");
 
-const Controller = require('./controller')
+const Controller = require("./controller");
 
 // create vehicle
 router.post(
   "/",
-  verifyToken,  
+  verifyToken,
   checkAuthorization(["admin", "superadmin", "manager"], "vehicle", "create"),
   checkOrganization,
   handleVehicleImageUpload,
-  Controller.create
+  Controller.create,
 );
 
 // get all vehicles
@@ -23,8 +23,8 @@ router.get(
   "/",
   verifyToken,
   checkAuthorization(["admin", "superadmin", "manager"], "vehicle", "read"),
-  // checkOrganization,
-  Controller.getAll
+  checkOrganization,
+  Controller.getAll,
 );
 
 // get vehicle by id
@@ -33,7 +33,7 @@ router.get(
   verifyToken,
   checkAuthorization(["admin", "superadmin", "manager"], "vehicle", "read"),
   checkOrganization,
-  Controller.getById
+  Controller.getById,
 );
 
 // update vehicle
@@ -43,7 +43,7 @@ router.put(
   checkAuthorization(["admin", "superadmin"], "vehicle", "update"),
   checkOrganization,
   handleVehicleImageUpload,
-  Controller.update
+  Controller.update,
 );
 
 // deactivate vehicle
@@ -52,7 +52,7 @@ router.patch(
   verifyToken,
   checkAuthorization(["admin", "superadmin"], "vehicle", "update"),
   checkOrganization,
-  Controller.deactivate
+  Controller.deactivate,
 );
 
 // activate vehicle (MISSING AUTH ❌)
@@ -61,7 +61,7 @@ router.patch(
   verifyToken,
   checkAuthorization(["admin", "superadmin"], "vehicle", "update"),
   checkOrganization,
-  Controller.updateStatus
+  Controller.updateStatus,
 );
 
 // hard delete (superadmin only)
@@ -70,8 +70,7 @@ router.delete(
   verifyToken,
   checkAuthorization(["superadmin"], "vehicle", "delete"),
   checkOrganization,
-  Controller.remove
+  Controller.remove,
 );
 
-
-module.exports = router;    
+module.exports = router;
