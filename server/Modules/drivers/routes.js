@@ -10,35 +10,35 @@ router.post(
   "/",
   requireAuth,
   checkAuthorization(["admin", "manager"], "drivers", "create"),
-  Controller.create
+  Controller.create,
 );
 
 router.get(
   "/",
   requireAuth,
   checkAuthorization(["admin", "manager"], "drivers", "read"),
-  Controller.getAll
+  Controller.getAll,
 );
 
 router.get(
   "/:id",
   requireAuth,
   checkAuthorization(["admin", "manager"], "drivers", "read"),
-  Controller.getById
+  Controller.getById,
 );
 
 router.put(
   "/:id",
   requireAuth,
   checkAuthorization(["admin", "manager"], "drivers", "update"),
-  Controller.update
+  Controller.update,
 );
 
 router.delete(
   "/:id",
   requireAuth,
   checkAuthorization(["admin"], "drivers", "delete"),
-  Controller.delete
+  Controller.delete,
 );
 
 module.exports = router;

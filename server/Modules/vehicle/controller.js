@@ -1,14 +1,13 @@
 const mongoose = require("mongoose");
 const VehicleModel = require("./model");
 const paginate = require("../../helpers/limitoffset");
-const Validator = require('../../helpers/validators')
-
+const Validator = require("../../helpers/validators");
 
 const validateCreateVehicle = async (data, user) => {
   const rules = {
     vehicleType: "required|in:car,bus,truck,bike,other",
     model: "string",
-    make: "string",
+    // make: "string",
     color: "string",
     status: "in:active,inactive",
   };
@@ -77,21 +76,29 @@ const validateUpdateVehicle = async (data) => {
   await validator.validate();
 };
 
-
-
 exports.create = async (req, res) => {
   try {
     await validateCreateVehicle(req.body, req.user);
 
-    const { vehicleType, vehicleNumber, make, model, year, color, deviceId, driverId, status } = req.body;
+    const {
+      vehicleType,
+      vehicleNumber,
+      make,
+      model,
+      year,
+      color,
+      deviceId,
+      driverId,
+      status,
+    } = req.body;
 
     // Handle image upload - use uploaded file path if available, otherwise use from body
-    const image = req.file ? `/uploads/vehicles/${req.file.filename}` : (req.body.image || null);
+    const image = req.file
+      ? `/uploads/vehicles/${req.file.filename}`
+      : req.body.image || null;
 
     const organizationId =
-      req.user.role === "superadmin"
-        ? req.body.organizationId
-        : req.orgId;
+      req.user.role === "superadmin" ? req.body.organizationId : req.orgId;
 
     if (!organizationId) {
       return res.status(400).json({
@@ -177,7 +184,7 @@ exports.getAll = async (req, res) => {
       limit,
       ["createdBy"],
       ["vehicleNumber", "model", "vehicleType"],
-      search
+      search,
     );
 
     return res.status(200).json(result);
@@ -223,11 +230,10 @@ exports.getById = async (req, res) => {
     return res.status(error.status || 500).json({
       status: false,
       message: error.message,
-      errors: error.errors || null
+      errors: error.errors || null,
     });
   }
 };
-
 
 exports.update = async (req, res) => {
   try {
@@ -236,9 +242,9 @@ exports.update = async (req, res) => {
     const vehicle = await VehicleModel.findById(req.params.id);
 
     if (!vehicle) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         status: false,
-        message: "Vehicle not found" 
+        message: "Vehicle not found",
       });
     }
 
@@ -246,9 +252,9 @@ exports.update = async (req, res) => {
       req.user.role !== "superadmin" &&
       vehicle.organizationId.toString() !== req.orgId.toString()
     ) {
-      return res.status(403).json({ 
+      return res.status(403).json({
         status: false,
-        message: "Forbidden" 
+        message: "Forbidden",
       });
     }
 
@@ -257,13 +263,13 @@ exports.update = async (req, res) => {
       const duplicate = await VehicleModel.findOne({
         organizationId: vehicle.organizationId,
         vehicleNumber: req.body.vehicleNumber.toUpperCase().trim(),
-        _id: { $ne: vehicle._id }
+        _id: { $ne: vehicle._id },
       });
 
       if (duplicate) {
         return res.status(409).json({
           status: false,
-          message: "Vehicle number already exists in this organization"
+          message: "Vehicle number already exists in this organization",
         });
       }
 
@@ -290,11 +296,10 @@ exports.update = async (req, res) => {
     return res.status(error.status || 500).json({
       status: false,
       message: error.message || "Internal server error",
-      errors: error.errors || null
+      errors: error.errors || null,
     });
   }
 };
-
 
 exports.deactivate = async (req, res) => {
   try {
@@ -322,7 +327,7 @@ exports.deactivate = async (req, res) => {
     return res.status(error.status || 500).json({
       status: false,
       message: error.message,
-      errors: error.errors || null
+      errors: error.errors || null,
     });
   }
 };
@@ -337,25 +342,29 @@ exports.updateStatus = async (req, res) => {
     const { status, runningStatus } = req.body;
 
     if (status && !["active", "inactive"].includes(status)) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         status: false,
-        message: "Invalid status. Must be 'active' or 'inactive'" 
+        message: "Invalid status. Must be 'active' or 'inactive'",
       });
     }
 
-    if (runningStatus && !["running", "idle", "stopped", "inactive"].includes(runningStatus)) {
-      return res.status(400).json({ 
+    if (
+      runningStatus &&
+      !["running", "idle", "stopped", "inactive"].includes(runningStatus)
+    ) {
+      return res.status(400).json({
         status: false,
-        message: "Invalid running status. Must be 'running', 'idle', 'stopped', or 'inactive'" 
+        message:
+          "Invalid running status. Must be 'running', 'idle', 'stopped', or 'inactive'",
       });
     }
 
     const vehicle = await VehicleModel.findById(req.params.id);
 
     if (!vehicle) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         status: false,
-        message: "Vehicle not found" 
+        message: "Vehicle not found",
       });
     }
 
@@ -363,9 +372,9 @@ exports.updateStatus = async (req, res) => {
       req.user.role !== "superadmin" &&
       vehicle.organizationId.toString() !== req.orgId.toString()
     ) {
-      return res.status(403).json({ 
+      return res.status(403).json({
         status: false,
-        message: "Forbidden" 
+        message: "Forbidden",
       });
     }
 
@@ -384,7 +393,7 @@ exports.updateStatus = async (req, res) => {
     return res.status(error.status || 500).json({
       status: false,
       message: error.message || "Internal server error",
-      errors: error.errors || null
+      errors: error.errors || null,
     });
   }
 };
@@ -416,7 +425,7 @@ exports.remove = async (req, res) => {
     return res.status(error.status || 500).json({
       status: false,
       message: error.message,
-      errors: error.errors || null
+      errors: error.errors || null,
     });
   }
 };

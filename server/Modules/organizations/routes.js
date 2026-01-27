@@ -4,39 +4,66 @@ const router = express.Router();
 const requireAuth = require("../../middleware/verifyToken");
 const checkAuthorization = require("../../middleware/checkAuthorization");
 const { handleLogoUpload } = require("../../middleware/multerUpload");
+const checkOrganization = require("../../middleware/checkOrganization");
 
-const Controller = require('./controller')
+const Controller = require("./controller");
 
 router.post(
   "/",
   requireAuth,
   checkAuthorization(["superadmin"], "organizations", "create"),
   handleLogoUpload,
-  Controller.createOrganization
+  Controller.createOrganization,
 );
 
-router.get("/", requireAuth, checkAuthorization(["superadmin", "admin"], "organizations", "read"), Controller.getAll);
-router.get("/sub", requireAuth, checkAuthorization(["superadmin" , "admin"], "organizations", "read"), Controller.getSubOrganizations);
-router.get("/:id", requireAuth, checkAuthorization(["superadmin"], "organizations", "read"), Controller.getById);
-
-router.post(
-  "/sub-organization",
+router.get(
+  "/",
   requireAuth,
-  checkAuthorization(["superadmin"], "organizations", "create"),
-  handleLogoUpload,
-  Controller.createSubOrganization
+  checkAuthorization(["superadmin", "admin"], "organizations", "read"),
+  Controller.getAll,
 );
+router.get(
+  "/sub",
+  requireAuth,
+  checkAuthorization(["superadmin", "admin"], "organizations", "read"),
+  Controller.getSubOrganizations,
+);
+router.get(
+  "/:id",
+  requireAuth,
+  checkAuthorization(["superadmin"], "organizations", "read"),
+  Controller.getById,
+);
+
+// router.post(
+//   "/sub-organization",
+//   requireAuth,
+//   checkAuthorization(["superadmin"], "organizations", "create"),
+//   handleLogoUpload,
+//   Controller.createSubOrganization
+// );
 
 router.post(
   "/with-manager",
   requireAuth,
-  checkAuthorization(["superadmin" , "admin"], "organizations", "create"),
+  checkAuthorization(["superadmin", "admin"], "organizations", "create"),
   handleLogoUpload,
-  Controller.createSubOrgWithManager
+  checkOrganization,
+  Controller.createSubOrgWithManager,
 );
 
-router.put("/:id", requireAuth, checkAuthorization(["superadmin"], "organizations", "update"), handleLogoUpload, Controller.update);
-router.delete("/:id", requireAuth, checkAuthorization(["superadmin"], "organizations", "delete"), Controller.delete);
-
+router.put(
+  "/:id",
+  requireAuth,
+  checkAuthorization(["superadmin"], "organizations", "update"),
+  handleLogoUpload,
+  Controller.update,
+);
+router.delete(
+  "/:id",
+  requireAuth,
+  checkAuthorization(["superadmin"], "organizations", "delete"),
+  Controller.delete,
+);
 
 module.exports = router;
