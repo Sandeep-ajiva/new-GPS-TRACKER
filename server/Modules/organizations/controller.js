@@ -389,66 +389,116 @@ exports.delete = async (req, res) => {
 /* ======================================================
    CREATE SUB-ORG + MANAGER (TRANSACTION)
 ====================================================== */
-
-exports.createSubOrgWithManager = async (req, res) => {
+exports.createSubOrganizationWithManager = async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
 
   try {
+    parseJsonFields(req.body, [
+      "organizationData.address",
+      "organizationData.geo",
+      "organizationData.settings",
+    ]);
+
     const { organizationData, managerData, parentOrganizationId } = req.body;
 
     await validateOrganizationData(organizationData);
     await validateManagerData(managerData);
 
-    const parentOrg = await Organization.findById(parentOrganizationId);
-    if (!parentOrg) {
-      return res
-        .status(404)
-        .json({ status: false, message: "Parent organization not found" });
+    // 🔐 existing logged-in admin
+    const adminUser = req.user;
+
+    // 🔐 ensure admin has access to parent org
+    if (
+      req.orgScope !== "ALL" &&
+      !req.orgScope.some(
+        (id) => id.toString() === parentOrganizationId.toString()
+      )
+    ) {
+      return res.status(403).json({
+        status: false,
+        message: "You are not allowed to create sub-organization under this organization",
+      });
     }
 
-    const slug = organizationData.name.toLowerCase().replace(/\s+/g, "-");
-    const path = `${parentOrg.path}/${slug}-${Date.now()}`;
+
+    // parent org check
+    const parentOrg = await Organization.findById(parentOrganizationId);
+    if (!parentOrg) {
+      return res.status(404).json({
+        status: false,
+        message: "Parent organization not found",
+      });
+    }
+
+    // 🔒 duplicate organization check (SAME as root org)
+    const orgExists = await Organization.findOne({
+      $or: [
+        { email: organizationData.email.toLowerCase() },
+        { phone: organizationData.phone.trim() },
+      ],
+    });
+
+    if (orgExists) {
+      return res.status(409).json({
+        status: false,
+        message: "Organization with this email or phone already exists",
+      });
+    }
+
+    // 🧠 slug + path (same logic everywhere)
+    const slug = organizationData.name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-");
+
+    const path = `${parentOrg.path}/${slug}`;
 
     const logo = req.file
       ? `/uploads/logos/${req.file.filename}`
-      : organizationData.logo || null;
+      : null;
 
-    const [subOrg] = await Organization.create(
+    // 1️⃣ create sub-organization
+    const [subOrganization] = await Organization.create(
       [
         {
-          ...organizationData,
-          email: organizationData.email.toLowerCase(),
+          name: organizationData.name.trim(),
+          organizationType: organizationData.organizationType,
+          email: organizationData.email.toLowerCase().trim(),
           phone: organizationData.phone.trim(),
+          logo,
+          address: organizationData.address || {},
+          geo: organizationData.geo || { timezone: "Asia/Kolkata" },
+          settings: organizationData.settings || {},
           parentOrganizationId,
           path,
-          logo,
-          createdBy: req.user._id,
           status: "active",
+          createdBy: adminUser._id,
+          adminUser: adminUser._id, // ✅ ownership stays with existing admin
         },
       ],
       { session },
     );
 
+    // 2️⃣ create manager
+    // 🔥 email & phone SAME as organization
     const passwordHash = await bcrypt.hash(managerData.password, 10);
 
     const [manager] = await User.create(
       [
         {
-          organizationId: subOrg._id,
-          ...managerData,
-          email: managerData.email.toLowerCase(),
-          mobile: managerData.mobile.trim(),
+          organizationId: subOrganization._id,
+          firstName: managerData.firstName.trim(),
+          lastName: managerData.lastName.trim(),
+          email: organizationData.email.toLowerCase().trim(), // ✅ SAME
+          mobile: organizationData.phone.trim(),              // ✅ SAME
           passwordHash,
           role: "manager",
           status: "active",
+          createdBy: adminUser._id,
         },
       ],
       { session },
     );
-
-    subOrg.adminUser = manager._id;
-    await subOrg.save({ session });
 
     await session.commitTransaction();
     session.endSession();
@@ -456,13 +506,16 @@ exports.createSubOrgWithManager = async (req, res) => {
     return res.status(201).json({
       status: true,
       message: "Sub-organization and manager created successfully",
-      data: { organization: subOrg, manager },
+      data: {
+        organization: subOrganization,
+        manager,
+      },
     });
   } catch (error) {
     await session.abortTransaction();
     session.endSession();
 
-    console.error("Create Sub Organization Error:", error);
+    console.error("Create Sub Organization With Manager Error:", error);
     return res.status(500).json({
       status: false,
       message: error.message || "Internal server error",
@@ -470,23 +523,29 @@ exports.createSubOrgWithManager = async (req, res) => {
   }
 };
 
+
 /* ======================================================
    GET SUB-ORGANIZATIONS
 ====================================================== */
 
 exports.getSubOrganizations = async (req, res) => {
   try {
-    const { parentId, page, limit, search, organizationType, status } =
-      req.query;
+    const { page, limit, search, organizationType, status } = req.query;
 
-    if (!parentId) {
+    // 🔐 org scope from middleware
+    if (!req.orgScope || req.orgScope === "ALL") {
       return res.status(400).json({
         status: false,
-        message: "parentId query parameter is required",
+        message: "Organization scope missing",
       });
     }
 
-    const filter = { parentOrganizationId: parentId };
+    // 👇 exclude parent org itself, keep only sub-orgs
+    const filter = {
+      _id: { $in: req.orgScope },
+      parentOrganizationId: { $ne: null },
+    };
+
     if (organizationType) filter.organizationType = organizationType;
     if (status) filter.status = status;
 
@@ -497,7 +556,7 @@ exports.getSubOrganizations = async (req, res) => {
       limit,
       ["parentOrganizationId", "createdBy"],
       ["name", "email", "phone", "organizationType"],
-      search,
+      search
     );
 
     return res.status(200).json(result);
@@ -509,3 +568,4 @@ exports.getSubOrganizations = async (req, res) => {
     });
   }
 };
+

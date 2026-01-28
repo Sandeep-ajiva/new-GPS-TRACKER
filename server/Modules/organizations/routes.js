@@ -28,7 +28,7 @@ router.post(
   checkAuthorization(["superadmin", "admin"], "organizations", "create"),
   checkOrganization,
   handleLogoUpload,
-  Controller.createSubOrgWithManager
+  Controller.createSubOrganizationWithManager
 );
 
 /* =========================

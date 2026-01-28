@@ -10,7 +10,7 @@ import { toast } from "sonner";
 import {
   useGetOrganizationsQuery,
   useGetSubOrganizationsQuery,
-  useCreateSubOrgWithManagerMutation,
+  useCreateSubOrganizationWithManagerMutation,
   useUpdateOrganizationMutation,
   useDeleteOrganizationMutation,
 } from "@/redux/api/organizationApi";
@@ -41,42 +41,49 @@ interface Organization {
 
 export default function OrganizationsPage() {
   const router = useRouter();
+
   /* ---------------------------------------
-     STEP 1: Fetch all organizations
+     1️⃣ Fetch all organizations
   ---------------------------------------- */
   const { data: allOrgResponse, isLoading: loadingAll } =
     useGetOrganizationsQuery(undefined, { refetchOnMountOrArgChange: true });
 
   const allOrganizations: Organization[] = useMemo(
     () => allOrgResponse?.data || [],
-    [allOrgResponse],
+    [allOrgResponse]
   );
 
   /* ---------------------------------------
-     STEP 2: Find parent organization
+     2️⃣ Find parent organization
   ---------------------------------------- */
   const parentOrg = useMemo(
     () => allOrganizations.find((o) => o.parentOrganizationId === null),
-    [allOrganizations],
+    [allOrganizations]
   );
 
   const parentOrgId = parentOrg?._id;
 
   /* ---------------------------------------
-     STEP 3: Fetch sub-organizations
+     3️⃣ Fetch sub-organizations (NO parentId param)
   ---------------------------------------- */
   const {
     data: subOrgResponse,
     isLoading,
     error,
-  } = useGetSubOrganizationsQuery(parentOrgId!, {
+  } = useGetSubOrganizationsQuery(undefined, {
     skip: !parentOrgId,
   });
+
+  const organizations: Organization[] = useMemo(
+    () => subOrgResponse?.data || [],
+    [subOrgResponse]
+  );
 
   /* ---------------------------------------
      Mutations
   ---------------------------------------- */
-  const [createSubOrgWithManager] = useCreateSubOrgWithManagerMutation();
+  const [createSubOrganizationWithManager] =
+    useCreateSubOrganizationWithManagerMutation();
   const [updateOrganization] = useUpdateOrganizationMutation();
   const [deleteOrganization] = useDeleteOrganizationMutation();
 
@@ -92,11 +99,6 @@ export default function OrganizationsPage() {
     status: "",
   });
 
-  const organizations: Organization[] = useMemo(
-    () => subOrgResponse?.data || [],
-    [subOrgResponse],
-  );
-
   const filteredOrganizations = useMemo(() => {
     const nameFilter = filters.name.trim().toLowerCase();
     return organizations.filter((org) => {
@@ -111,11 +113,7 @@ export default function OrganizationsPage() {
       }
       return true;
     });
-  }, [organizations, filters.name, filters.status, filters.type]);
-
-  const clearFilters = () => {
-    setFilters({ name: "", type: "", status: "" });
-  };
+  }, [organizations, filters]);
 
   /* ---------------------------------------
      Modal handlers
@@ -160,31 +158,22 @@ export default function OrganizationsPage() {
 
         toast.success("Organization updated successfully");
       } else {
-        await createSubOrgWithManager({
+        await createSubOrganizationWithManager({
           parentOrganizationId: parentOrgId,
           organizationData: {
             name: form.name,
             organizationType: form.organizationType,
-            email: form.email, // shared email
+            email: form.email,
             phone: form.phone,
             address,
             geo: {
-              lat: null,
-              lng: null,
               timezone: "Asia/Kolkata",
             },
-            settings: {
-              speedAlert: true,
-              speedLimit: 80,
-              idleTimeThreshold: 5,
-              lowFuelThreshold: 20,
-              workingHours: "09:00-18:00",
-            },
+            settings: {},
           },
           managerData: {
             firstName: form.managerFirstName,
             lastName: form.managerLastName,
-            email: form.email, // SAME email as organization
             password: form.managerPassword,
           },
         }).unwrap();
@@ -220,31 +209,14 @@ export default function OrganizationsPage() {
     { header: "Email", accessor: "email" },
     { header: "Phone", accessor: "phone" },
     {
-      header: "Address",
-      accessor: (row: Organization) => {
-        const address = row.address || {};
-        const parts = [
-          address.addressLine,
-          address.city,
-          address.state,
-          address.country,
-          address.pincode,
-        ].filter(Boolean);
-        return (
-          <span className="text-xs font-semibold text-slate-600">
-            {parts.length > 0 ? parts.join(", ") : "-"}
-          </span>
-        );
-      },
-    },
-    {
       header: "Status",
       accessor: (row: Organization) => (
         <span
-          className={`px-2 py-1 rounded text-xs font-bold ${row.status === "active"
+          className={`px-2 py-1 rounded text-xs font-bold ${
+            row.status === "active"
               ? "bg-green-100 text-green-700"
               : "bg-red-100 text-red-700"
-            }`}
+          }`}
         >
           {row.status}
         </span>
@@ -256,8 +228,6 @@ export default function OrganizationsPage() {
         <div className="flex gap-2">
           <button
             onClick={() => router.push(`/dashboard?organizationId=${row._id}`)}
-            className="text-slate-500 hover:text-slate-900"
-            title="Open manager dashboard"
           >
             <Eye size={16} />
           </button>
@@ -301,92 +271,19 @@ export default function OrganizationsPage() {
   return (
     <ApiErrorBoundary hasError={false}>
       <div className="space-y-6">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-2xl font-black">Sub Organizations</h1>
-            <p className="text-sm text-slate-500">Parent: {parentOrg?.name}</p>
-          </div>
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <button
-              onClick={() => setShowFilters(!showFilters)}
-              className="bg-slate-100 text-slate-700 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 hover:bg-slate-200 transition-colors"
-            >
-              <Filter size={14} /> Filter
-            </button>
-            <button
-              onClick={openCreateModal}
-              className="bg-blue-600 text-white px-4 py-2 rounded-xl text-xs font-black uppercase flex items-center gap-2 hover:bg-blue-700 transition-colors"
-            >
-              <Plus size={14} /> Add Sub Organization
-            </button>
-          </div>
+        <div className="flex justify-between">
+          <h1 className="text-2xl font-black">
+            Sub Organizations (Parent: {parentOrg?.name})
+          </h1>
+          <button
+            onClick={openCreateModal}
+            className="bg-blue-600 text-white px-4 py-2 rounded-xl text-xs font-black flex items-center gap-2"
+          >
+            <Plus size={14} /> Add Sub Organization
+          </button>
         </div>
 
-        {showFilters && (
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div>
-                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
-                  Name
-                </label>
-                <input
-                  type="text"
-                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-blue-500/20"
-                  value={filters.name}
-                  onChange={(e) =>
-                    setFilters({ ...filters, name: e.target.value })
-                  }
-                  placeholder="Search name"
-                />
-              </div>
-              <div>
-                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
-                  Type
-                </label>
-                <select
-                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-blue-500/20"
-                  value={filters.type}
-                  onChange={(e) =>
-                    setFilters({ ...filters, type: e.target.value })
-                  }
-                >
-                  <option value="">All Types</option>
-                  <option value="logistics">Logistics</option>
-                  <option value="transport">Transport</option>
-                  <option value="school">School</option>
-                  <option value="taxi">Taxi</option>
-                  <option value="fleet">Fleet</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
-                  Status
-                </label>
-                <select
-                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-blue-500/20"
-                  value={filters.status}
-                  onChange={(e) =>
-                    setFilters({ ...filters, status: e.target.value })
-                  }
-                >
-                  <option value="">All Status</option>
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
-                </select>
-              </div>
-              <div className="flex items-end">
-                <button
-                  onClick={clearFilters}
-                  className="w-full bg-slate-100 text-slate-700 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-slate-200 transition-colors"
-                >
-                  Clear Filters
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        <Table columns={columns} data={filteredOrganizations} loading={isLoading} />
+        <Table columns={columns} data={filteredOrganizations} />
 
         <DynamicModal
           isOpen={isModalOpen}
@@ -438,13 +335,8 @@ function getFormFields(isEdit: boolean): FormField[] {
         { label: "Fleet", value: "fleet" },
       ],
     },
-    {
-      name: "email",
-      label: "Organization / Manager Email",
-      type: "email",
-      required: true,
-    },
-    { name: "phone", label: "Organization Phone", type: "tel", required: true },
+    { name: "email", label: "Email", type: "email", required: true },
+    { name: "phone", label: "Phone", type: "tel", required: true },
     { name: "addressLine", label: "Address Line", type: "text", required: true },
     { name: "city", label: "City", type: "text", required: true },
     { name: "state", label: "State", type: "text", required: true },
