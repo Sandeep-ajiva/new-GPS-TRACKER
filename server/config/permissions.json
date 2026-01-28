@@ -22,7 +22,6 @@
       "users": ["create", "read", "update", "delete"],
       "vehicle": ["create", "read", "update", "delete"],
       "gpsDevice": ["create", "read", "update", "delete"],
-      "drivers": ["create", "read", "update", "delete"],
       "vehicleMapping": ["create", "read", "update", "delete"],
       "gpsLiveData": ["read"],
       "gpsHistory": ["read"],
