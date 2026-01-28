@@ -59,6 +59,7 @@ router.delete(
   "/:id",
   verifyToken,
   checkAuthorization(["superadmin", "admin"], "gpsDevice", "delete"),
+  checkOrganization,
   Controller.delete
 );
 

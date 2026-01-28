@@ -8,15 +8,31 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import OrganizationCreateModal from "@/components/admin/Modals/OrganizationCreateModal";
 
-const demoOrganizations = [
-    { _id: "org_ajiva", name: "Ajiva Tracker", adminName: "Diana Kapoor", email: "admin@ajiva.com", phone: "+91 98765 43210", address: "Delhi HQ", status: "active" },
-    { _id: "org_north", name: "North Branch", adminName: "Rohan Singh", email: "north@ajiva.com", phone: "+91 98765 43211", address: "Chandigarh", status: "active" },
-    { _id: "org_west", name: "West Branch", adminName: "Aanya Mehta", email: "west@ajiva.com", phone: "+91 98765 43212", address: "Jaipur", status: "inactive" },
-];
+import {
+  useGetOrganizationsQuery,
+  useCreateOrganizationMutation,
+  useUpdateOrganizationMutation,
+  useDeleteOrganizationMutation,
+} from "@/redux/api/organizationApi";
+
+interface ApiOrg {
+  _id: string;
+  name: string;
+  email: string;
+  phone: string;
+  address?: { city?: string; state?: string } | any;
+  status: string;
+  adminUser?: string; // or object
+}
 
 export default function OrganizationsPage() {
     const router = useRouter();
-    const [organizations, setOrganizations] = useState(demoOrganizations);
+    const { data: orgsData, isLoading } = useGetOrganizationsQuery({});
+    const [createOrg] = useCreateOrganizationMutation();
+    const [updateOrg] = useUpdateOrganizationMutation();
+    const [deleteOrg] = useDeleteOrganizationMutation();
+
+    const organizations: ApiOrg[] = useMemo(() => orgsData?.docs || [], [orgsData]);
     const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
     const [searchTerm, setSearchTerm] = useState("");
 
@@ -27,15 +43,15 @@ export default function OrganizationsPage() {
 
     const handleEditSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (editingOrg) {
-            setOrganizations((prev) =>
-                prev.map((org) =>
-                    org._id === editingOrg._id ? { ...org, ...formData } : org
-                )
-            );
-            toast.success("Organization updated successfully");
+        try {
+            if (editingOrg) {
+                 await updateOrg({ id: editingOrg._id, ...formData }).unwrap();
+                 toast.success("Organization updated successfully");
+            }
+            closeEditModal();
+        } catch (error: any) {
+             toast.error(error.data?.message || "Failed to update organization");
         }
-        closeEditModal();
     };
 
     const openCreateModal = () => {
@@ -60,8 +76,12 @@ export default function OrganizationsPage() {
 
     const handleDelete = async (id: string) => {
         if (confirm("Are you sure you want to delete this organization?")) {
-            setOrganizations((prev) => prev.filter((org) => org._id !== id));
-            toast.success("Organization deleted");
+            try {
+                await deleteOrg(id).unwrap();
+                toast.success("Organization deleted");
+            } catch (error: any) {
+                 toast.error(error.data?.message || "Failed to delete organization");
+            }
         }
     }
 
@@ -72,19 +92,18 @@ export default function OrganizationsPage() {
             const matchesSearch =
                 !trimmed ||
                 org.name.toLowerCase().includes(trimmed) ||
-                org.email.toLowerCase().includes(trimmed) ||
-                org.adminName.toLowerCase().includes(trimmed);
+                org.email.toLowerCase().includes(trimmed);
             return matchesStatus && matchesSearch;
         });
     }, [organizations, searchTerm, statusFilter]);
 
     const columns = [
         { header: "Name", accessor: "name" },
-        { header: "Admin", accessor: "adminName" },
+        // { header: "Admin", accessor: "adminName" }, // Admin name not directly in org object unless populated
         { header: "Email", accessor: "email" },
         { header: "Phone", accessor: "phone" },
         {
-            header: "Status", accessor: (row: any) => (
+            header: "Status", accessor: (row: ApiOrg) => (
                 <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-widest ${row.status === 'active'
                     ? 'border-emerald-500/30 bg-emerald-500/20 text-emerald-200'
                     : 'border-rose-500/30 bg-rose-500/20 text-rose-200'
@@ -94,7 +113,7 @@ export default function OrganizationsPage() {
             )
         },
         {
-            header: "Actions", accessor: (row: any) => (
+            header: "Actions", accessor: (row: ApiOrg) => (
                 <div className="flex gap-2">
                     <button onClick={() => router.push(`/superadmin/organizations/${row._id}`)} className="text-emerald-200 hover:text-emerald-100"><Eye size={16} /></button>
                     <button
@@ -158,26 +177,23 @@ export default function OrganizationsPage() {
                     />
                 </div>
 
-            <Table columns={columns} data={filteredOrganizations} loading={false} variant="dark" />
+            <Table columns={columns} data={filteredOrganizations} loading={isLoading} variant="dark" />
 
             <OrganizationCreateModal
                 isOpen={isCreateModalOpen}
                 onClose={() => setIsCreateModalOpen(false)}
                 variant="dark"
-                onCreate={(payload) => {
-                    setOrganizations((prev) => [
-                        ...prev,
-                        {
-                            _id: `org_${Date.now()}`,
-                            status: "active",
-                            name: payload.name,
-                            email: payload.email,
-                            phone: payload.phone,
-                            address: payload.address,
-                            adminName: "New Admin",
-                        },
-                    ]);
-                    toast.success("Organization created successfully");
+                onCreate={async (payload) => {
+                    try {
+                        await createOrg({
+                            ...payload,
+                            organizationType: "logistics", // Default or add to modal
+                            settings: { speedLimit: 80 }
+                        }).unwrap();
+                        toast.success("Organization created successfully");
+                    } catch (error: any) {
+                        toast.error(error.data?.message || "Failed to create organization");
+                    }
                 }}
             />
 

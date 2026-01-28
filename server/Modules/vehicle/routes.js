@@ -73,4 +73,13 @@ router.delete(
   Controller.remove,
 );
 
+// get vehicles by suborganization
+router.get(
+  "/suborganization/:suborganizationId",
+  verifyToken,
+  checkAuthorization(["admin", "superadmin", "manager"], "vehicle", "read"),
+  checkOrganization,
+  Controller.getBySuborganization
+);
+
 module.exports = router;

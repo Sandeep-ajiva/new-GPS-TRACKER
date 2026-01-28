@@ -57,6 +57,7 @@ const vehicleSchema = {
   },
 
   runningStatus: {
+    
     type: String,
     enum: ["running", "idle", "stopped", "inactive"],
     default: "inactive",

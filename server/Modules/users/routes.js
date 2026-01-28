@@ -2,7 +2,7 @@ const express = require("express");
 const router = express.Router();
 const Controller = require("./controller");
 
-const requireAuth = require("../../middleware/verifyToken");
+const verifyToken = require("../../middleware/verifyToken");
 const checkAuthorization = require("../../middleware/checkAuthorization");
 const checkOrganization = require("../../middleware/checkOrganization");
 
@@ -17,7 +17,7 @@ router.get("/me", requireAuth, Controller.getMe);
 
 router.get(
   "/users",
-  requireAuth,
+  verifyToken,
   checkAuthorization(["admin", "superadmin"], "users", "read"),
   checkOrganization,
   Controller.getManagerByOrganization,
@@ -25,24 +25,13 @@ router.get(
 
 router.post("/login", Controller.login);
 
-router.post(
-  "/",
-  requireAuth,
-  checkAuthorization(["superadmin", "admin"], "users", "create"),
-  Controller.create,
-);
+router.post("/organization-admin", verifyToken,
+    checkAuthorization(["superadmin"], "users", "create"), 
+    handleLogoUpload,
+    Controller.createOrganizationWithAdmin);
 
-router.put(
-  "/:id",
-  requireAuth,
-  checkAuthorization(["superadmin"], "users", "update"),
-  Controller.updateUser,
-);
-router.delete(
-  "/:id",
-  requireAuth,
-  checkAuthorization(["superadmin"], "users", "delete"),
-  Controller.deleteUser,
-);
+
+router.put("/:id", verifyToken, checkAuthorization(["superadmin"], "users", "update"), Controller.updateUser);
+router.delete("/:id", verifyToken, checkAuthorization(["superadmin"], "users", "delete"), Controller.deleteUser);
 
 module.exports = router;

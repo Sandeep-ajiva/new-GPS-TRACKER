@@ -57,6 +57,12 @@ const userSchema = {
     default: null,
   },
 
+  driverId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Driver",
+    default: null,
+  },
+
   lastLoginAt: {
     type: Date,
   },

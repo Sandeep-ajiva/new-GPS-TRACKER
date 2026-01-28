@@ -1,6 +1,7 @@
-const GpsDevice = require("./model");
-const Validator = require("../../helpers/validators");
-const mongoose = require("mongoose");
+const GpsDevice = require('./model');
+const Validator = require('../../helpers/validators');
+const mongoose = require('mongoose');
+const paginate = require("../../helpers/limitoffset");
 
 const validateCreateGpsDevice = async (data, user) => {
   const rules = {
@@ -140,8 +141,6 @@ exports.create = async (req, res) => {
     });
   }
 };
-
-const paginate = require("../../helpers/limitoffset");
 
 exports.getAll = async (req, res) => {
   try {

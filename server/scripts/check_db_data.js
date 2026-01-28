@@ -2,7 +2,7 @@ require('dotenv').config();
 const mongoose = require('mongoose');
 const connectDB = require('../config/database');
 const GpsDevice = require('../Modules/gpsDevice/model');
-const VehicleDeviceMapping = require('../Modules/deviceMapping/model');
+const VehicleDeviceMapping = require('../Modules/vehicleMapping/model');
 
 // Connect to DB
 connectDB();
@@ -12,7 +12,7 @@ const checkData = async () => {
         console.log("🔍 Checking for valid test data...\n");
 
         // 1. Find all Devices
-        const devices = await GpsDevice.find({ isActive: true }).limit(5);
+        const devices = await GpsDevice.find({ status: "active" }).limit(5);
         if (devices.length === 0) {
             console.log("❌ No Active GPS Devices found in DB.");
             console.log("👉 Please create a Device via your API or Compass first.");

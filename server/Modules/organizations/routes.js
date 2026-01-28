@@ -8,13 +8,13 @@ const checkOrganization = require("../../middleware/checkOrganization");
 
 const Controller = require("./controller");
 
-router.post(
-  "/",
-  requireAuth,
-  checkAuthorization(["superadmin"], "organizations", "create"),
-  handleLogoUpload,
-  Controller.createOrganization,
-);
+// router.post(
+//   "/",
+//   requireAuth,
+//   checkAuthorization(["superadmin"], "organizations", "create"),
+//   handleLogoUpload,
+//   Controller.createOrganization,
+// );
 
 router.get(
   "/",

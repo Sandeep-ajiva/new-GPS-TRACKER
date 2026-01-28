@@ -1,8 +1,8 @@
-const Organization = require("./model");
-const User = require("../users/model");
-const Validator = require("../../helpers/validators");
-const bcrypt = require("bcryptjs");
-const mongoose = require("mongoose");
+const Organization = require('./model');
+const User = require('../users/model');
+const Validator = require('../../helpers/validators');
+const paginate = require("../../helpers/limitoffset");
+const bcrypt = require('bcryptjs');
 
 const validateOrganizationData = async (data) => {
   const rules = {
@@ -561,8 +561,8 @@ exports.createSubOrgWithManager = async (req, res) => {
 };
 
 exports.getSubOrganizations = async (req, res) => {
-  try {
-    const { parentId } = req.query;
+    try {
+        const { parentId, page, limit, search, organizationType, status } = req.query;
 
     if (!parentId) {
       return res.status(400).json({
@@ -571,21 +571,26 @@ exports.getSubOrganizations = async (req, res) => {
       });
     }
 
-    const subOrgs = await Organization.find({ parentOrganizationId: parentId })
-      .populate("parentOrganizationId", "name email")
-      .populate("createdBy", "firstName lastName email");
+        const filter = { parentOrganizationId: parentId };
+        if (organizationType) filter.organizationType = organizationType;
+        if (status) filter.status = status;
 
-    return res.status(200).json({
-      status: true,
-      message: "Sub-organizations fetched successfully",
-      totalSubOrgs: subOrgs.length,
-      data: subOrgs,
-    });
-  } catch (error) {
-    console.error("Get Sub-Organizations Error:", error);
-    return res.status(500).json({
-      status: false,
-      message: "Internal server error",
-    });
-  }
+        const result = await paginate(
+            Organization,
+            filter,
+            page,
+            limit,
+            ["parentOrganizationId", "createdBy"],
+            ["name", "email", "phone", "organizationType"],
+            search
+        );
+
+        return res.status(200).json(result);
+    } catch (error) {
+        console.error("Get Sub-Organizations Error:", error);
+        return res.status(500).json({
+            status: false,
+            message: "Internal server error",
+        });
+    }
 };
