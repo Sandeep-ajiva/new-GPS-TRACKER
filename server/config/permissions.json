@@ -9,7 +9,8 @@
       "deviceMapping": ["create", "read", "update", "delete"],
       "gpsLiveData": ["create", "read", "update", "delete"],
       "gpsHistory": ["create", "read", "update", "delete"],
-      "alerts": ["read", "update", "delete"]
+      "alerts": ["read", "update", "delete"],
+      "drivers": ["create", "read", "update", "delete"]
     }
   },
 
@@ -23,7 +24,8 @@
       "deviceMapping": ["create", "read", "update", "delete"],
       "gpsLiveData": ["read"],
       "gpsHistory": ["read"],
-      "alerts": ["read", "update", "delete"]
+      "alerts": ["read", "update", "delete"],
+      "drivers": ["create", "read", "update", "delete"]
     }
   },
 
@@ -37,7 +39,8 @@
       "deviceMapping": ["read"],
       "gpsLiveData": ["read"],
       "gpsHistory": ["read"],
-      "alerts": ["read", "update", "delete"]
+      "alerts": ["read", "update", "delete"],
+      "drivers": ["create", "read", "update"]
     }
   },
 
@@ -51,7 +54,8 @@
       "deviceMapping": [],
       "gpsLiveData": ["read"],
       "gpsHistory": ["read"],
-      "alerts": ["read", "update", "delete"]
+      "alerts": ["read", "update", "delete"],
+      "drivers": ["read"]
     }
   },
 
@@ -65,7 +69,8 @@
       "deviceMapping": [],
       "gpsLiveData": ["read"],
       "gpsHistory": ["read"],
-      "alerts": ["read", "update", "delete"]
+      "alerts": ["read", "update", "delete"],
+      "drivers": ["read"]
     }
   }
 }

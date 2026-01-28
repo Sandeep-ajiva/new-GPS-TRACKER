@@ -55,13 +55,7 @@ export default function LoginPage() {
           localStorage.setItem("organizationId", data.user.organizationId)
         }
 
-        if (role === "superadmin") {
-          router.push("/superadmin")
-        } else if (role === "admin") {
-          router.push("/admin")
-        } else {
-          router.push("/dashboard")
-        }
+        router.push("/home")
         return
       }
 
@@ -90,13 +84,7 @@ export default function LoginPage() {
         localStorage.setItem("organizationName", account.organizationName)
       }
 
-      if (account.role === "superadmin") {
-        router.push("/superadmin")
-      } else if (account.role === "admin") {
-        router.push("/admin")
-      } else {
-        router.push("/dashboard")
-      }
+      router.push("/home")
     } catch (err: any) {
       setError(err.message || "An error occurred")
       setIsSubmitting(false)
@@ -212,7 +200,7 @@ export default function LoginPage() {
               </div>
             </div>
             <p className="mt-3 border-t border-white/10 pt-3 text-slate-400">
-              ℹ️ Admin & Super Admin → /admin | Manager & Driver → /dashboard
+              ℹ️ All roles land on the shared home screen after login.
             </p>
           </div>
         </div>

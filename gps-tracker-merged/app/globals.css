@@ -90,3 +90,140 @@ select::placeholder {
   background: var(--text-muted);
 }
 
+@keyframes vehicle-move-1 {
+  0% {
+    transform: translate(0, 0);
+  }
+  50% {
+    transform: translate(160px, -40px);
+  }
+  100% {
+    transform: translate(0, 0);
+  }
+}
+
+@keyframes vehicle-move-2 {
+  0% {
+    transform: translate(0, 0);
+  }
+  50% {
+    transform: translate(-140px, 60px);
+  }
+  100% {
+    transform: translate(0, 0);
+  }
+}
+
+@keyframes vehicle-move-3 {
+  0% {
+    transform: translate(0, 0);
+  }
+  50% {
+    transform: translate(120px, -30px);
+  }
+  100% {
+    transform: translate(0, 0);
+  }
+}
+
+@keyframes border-shift {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 200% 50%;
+  }
+}
+
+@keyframes float-orb {
+  0% {
+    transform: translate(0, 0);
+  }
+  50% {
+    transform: translate(18px, -24px);
+  }
+  100% {
+    transform: translate(0, 0);
+  }
+}
+
+.pulse-border {
+  position: relative;
+}
+
+.pulse-border::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  padding: 1px;
+  border-radius: inherit;
+  background: linear-gradient(120deg, rgba(37, 99, 235, 0.6), rgba(16, 185, 129, 0.6), rgba(14, 116, 144, 0.6), rgba(37, 99, 235, 0.6));
+  background-size: 200% 200%;
+  animation: border-shift 8s linear infinite;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+.float-orb {
+  animation: float-orb 10s ease-in-out infinite;
+}
+
+.orb-2 {
+  animation-duration: 14s;
+}
+
+.orb-3 {
+  animation-duration: 16s;
+}
+
+.orb-4 {
+  animation-duration: 18s;
+}
+
+@keyframes fade-up {
+  0% {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes grid-pan {
+  0% {
+    background-position: 0 0, 0 0;
+  }
+  100% {
+    background-position: 120px 120px, 120px 120px;
+  }
+}
+
+@keyframes metric-fill {
+  0% {
+    transform: translateX(-60%);
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+
+.fade-up {
+  animation: fade-up 0.8s ease both;
+}
+
+.grid-pan {
+  background-image:
+    linear-gradient(#e2e8f0 1px, transparent 1px),
+    linear-gradient(90deg, #e2e8f0 1px, transparent 1px);
+  background-size: 48px 48px;
+  animation: grid-pan 18s linear infinite;
+}
+
+.metric-bar {
+  background: linear-gradient(90deg, #2563eb, #22c55e, #0ea5e9);
+  animation: metric-fill 2.5s ease-in-out infinite;
+}

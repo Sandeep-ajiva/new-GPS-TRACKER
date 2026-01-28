@@ -14,6 +14,7 @@ import {
 } from "@/redux/api/vehicleApi";
 import { useGetOrganizationsQuery } from "@/redux/api/organizationApi";
 import { useGetGpsDevicesQuery } from "@/redux/api/gpsDeviceApi";
+import { useGetDriversQuery } from "@/redux/api/driversApi";
 
 import { usePopups } from "../Helpers/PopupContext";
 import { capitalizeFirstLetter } from "../Helpers/CapitalizeFirstLetter";
@@ -60,6 +61,8 @@ export default function VehiclesPage() {
     useGetOrganizationsQuery(undefined, { refetchOnMountOrArgChange: true });
   const { data: devData, isLoading: isDevLoading } =
     useGetGpsDevicesQuery(undefined, { refetchOnMountOrArgChange: true });
+  const { data: driverData, isLoading: isDriverLoading } =
+    useGetDriversQuery(undefined);
 
   const [createVehicle, { isLoading: isCreating }] = useCreateVehicleMutation();
   const [updateVehicle, { isLoading: isUpdating }] = useUpdateVehicleMutation();
@@ -80,13 +83,27 @@ export default function VehiclesPage() {
       }[]) || [],
     [devData],
   );
+  const drivers = useMemo(
+    () =>
+      (driverData?.data as {
+        _id: string;
+        firstName: string;
+        lastName: string;
+        organizationId?: string | { _id: string; name?: string };
+      }[]) || [],
+    [driverData],
+  );
 
   const [showFilters, setShowFilters] = useState(false);
   const [selectedVehicleForAssignment, setSelectedVehicleForAssignment] =
     useState<Vehicle | null>(null);
   const [filters, setFilters] = useState({
+    number: "",
+    type: "",
     organizationId: "",
     status: "",
+    runningStatus: "",
+    driverId: "",
     deviceAssigned: "",
   });
 
@@ -112,8 +129,22 @@ export default function VehiclesPage() {
         return orgId === filters.organizationId;
       });
     }
+    if (filters.number) {
+      filtered = filtered.filter((v) =>
+        v.vehicleNumber.toLowerCase().includes(filters.number.toLowerCase()),
+      );
+    }
+    if (filters.type) {
+      filtered = filtered.filter((v) => v.vehicleType === filters.type);
+    }
     if (filters.status) {
       filtered = filtered.filter((v) => v.status === filters.status);
+    }
+    if (filters.runningStatus) {
+      filtered = filtered.filter((v) => v.runningStatus === filters.runningStatus);
+    }
+    if (filters.driverId) {
+      filtered = filtered.filter((v) => v.driverId === filters.driverId);
     }
     if (filters.deviceAssigned === "assigned") {
       filtered = filtered.filter((v) => v.deviceId);
@@ -264,6 +295,28 @@ export default function VehiclesPage() {
       icon: <ToggleLeft size={14} className="text-slate-500" />,
     },
     {
+      name: "runningStatus",
+      label: "Running Status",
+      type: "select",
+      options: [
+        { label: "Running", value: "running" },
+        { label: "Idle", value: "idle" },
+        { label: "Stopped", value: "stopped" },
+        { label: "Inactive", value: "inactive" },
+      ],
+      icon: <ToggleLeft size={14} className="text-slate-500" />,
+    },
+    {
+      name: "driverId",
+      label: "Driver",
+      type: "select",
+      options: drivers.map((driver) => ({
+        label: `${driver.firstName} ${driver.lastName}`,
+        value: driver._id,
+      })),
+      icon: <Info size={14} className="text-slate-500" />,
+    },
+    {
       name: "deviceId",
       label: "Assign GPS Device",
       type: "select",
@@ -323,7 +376,15 @@ export default function VehiclesPage() {
   };
 
   const clearFilters = () => {
-    setFilters({ organizationId: "", status: "", deviceAssigned: "" });
+    setFilters({
+      number: "",
+      type: "",
+      organizationId: "",
+      status: "",
+      runningStatus: "",
+      driverId: "",
+      deviceAssigned: "",
+    });
   };
 
   const openAssignDeviceModal = (vehicle: Vehicle) => {
@@ -353,10 +414,39 @@ export default function VehiclesPage() {
       },
     },
     {
+      header: "Driver",
+      accessor: (row: Vehicle) => {
+        const driver = drivers.find((d) => d._id === row.driverId);
+        return driver ? `${driver.firstName} ${driver.lastName}` : "-";
+      },
+    },
+    {
+      header: "Running",
+      accessor: (row: Vehicle) => (
+        <span
+          className={`capitalize text-xs font-semibold ${
+            row.runningStatus === "running"
+              ? "text-green-600"
+              : row.runningStatus === "idle"
+                ? "text-amber-600"
+                : row.runningStatus === "stopped"
+                  ? "text-red-600"
+                  : "text-slate-500"
+          }`}
+        >
+          {row.runningStatus || "-"}
+        </span>
+      ),
+    },
+    {
       header: "Status",
       accessor: (row: Vehicle) => (
         <span
-          className={`px-2 py-1 rounded-lg text-xs font-bold uppercase ${row.status === "active" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}
+          className={`px-2 py-1 rounded-lg text-xs font-bold uppercase ${
+            row.status === "active"
+              ? "bg-green-100 text-green-700"
+              : "bg-red-100 text-red-700"
+          }`}
         >
           {capitalizeFirstLetter(row.status || "active")}
         </span>
@@ -402,7 +492,7 @@ export default function VehiclesPage() {
     },
   ];
 
-  const isLoading = isVehLoading || isOrgLoading || isDevLoading;
+  const isLoading = isVehLoading || isOrgLoading || isDevLoading || isDriverLoading;
 
   if (isLoading) {
     return (
@@ -440,13 +530,45 @@ export default function VehiclesPage() {
 
         {showFilters && (
           <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div>
+                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
+                  Number
+                </label>
+                <input
+                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-blue-500/20 outline-none"
+                  value={filters.number}
+                  onChange={(e) =>
+                    setFilters({ ...filters, number: e.target.value })
+                  }
+                  placeholder="Search number"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
+                  Type
+                </label>
+                <select
+                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-blue-500/20 outline-none"
+                  value={filters.type}
+                  onChange={(e) =>
+                    setFilters({ ...filters, type: e.target.value })
+                  }
+                >
+                  <option value="">All Types</option>
+                  <option value="car">Car</option>
+                  <option value="truck">Truck</option>
+                  <option value="bus">Bus</option>
+                  <option value="bike">Bike</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
               <div>
                 <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
                   Organization
                 </label>
                 <select
-                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-slate-900/10 outline-none"
+                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-blue-500/20 outline-none"
                   value={filters.organizationId}
                   onChange={(e) =>
                     setFilters({ ...filters, organizationId: e.target.value })
@@ -462,10 +584,29 @@ export default function VehiclesPage() {
               </div>
               <div>
                 <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
+                  Driver
+                </label>
+                <select
+                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-blue-500/20 outline-none"
+                  value={filters.driverId}
+                  onChange={(e) =>
+                    setFilters({ ...filters, driverId: e.target.value })
+                  }
+                >
+                  <option value="">All Drivers</option>
+                  {drivers.map((driver) => (
+                    <option key={driver._id} value={driver._id}>
+                      {driver.firstName} {driver.lastName}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
                   Status
                 </label>
                 <select
-                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-slate-900/10 outline-none"
+                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-blue-500/20 outline-none"
                   value={filters.status}
                   onChange={(e) =>
                     setFilters({ ...filters, status: e.target.value })
@@ -478,10 +619,28 @@ export default function VehiclesPage() {
               </div>
               <div>
                 <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
+                  Running
+                </label>
+                <select
+                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-blue-500/20 outline-none"
+                  value={filters.runningStatus}
+                  onChange={(e) =>
+                    setFilters({ ...filters, runningStatus: e.target.value })
+                  }
+                >
+                  <option value="">All</option>
+                  <option value="running">Running</option>
+                  <option value="idle">Idle</option>
+                  <option value="stopped">Stopped</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
                   Device
                 </label>
                 <select
-                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-slate-900/10 outline-none"
+                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-blue-500/20 outline-none"
                   value={filters.deviceAssigned}
                   onChange={(e) =>
                     setFilters({ ...filters, deviceAssigned: e.target.value })
@@ -525,6 +684,8 @@ export default function VehiclesPage() {
                 year: editingVehicle.year || "",
                 color: editingVehicle.color || "",
                 status: editingVehicle.status,
+                runningStatus: editingVehicle.runningStatus || "",
+                driverId: editingVehicle.driverId || "",
                 deviceId: editingVehicle.deviceId || "",
               }
               : undefined

@@ -39,6 +39,7 @@ import {
 export interface GPSDevice {
   _id: string;
   organizationId: string | { _id: string; name: string };
+  vehicleId?: string;
   imei: string;
   deviceModel: string;
   manufacturer?: string;
@@ -105,7 +106,17 @@ export default function GpsDevicesPage() {
   /* ================= STATE ================= */
 
   const [showFilters, setShowFilters] = useState(false);
-  const [filters, setFilters] = useState({ assigned: "", status: "" });
+  const [filters, setFilters] = useState({
+    imei: "",
+    model: "",
+    firmware: "",
+    simNumber: "",
+    connectionStatus: "",
+    status: "",
+    assigned: "",
+    vehicleNumber: "",
+    warrantyExpiry: "",
+  });
 
   const [editingDevice, setEditingDevice] = useState<GPSDevice | null>(null);
   const [selectedDeviceForAssignment, setSelectedDeviceForAssignment] =
@@ -115,6 +126,51 @@ export default function GpsDevicesPage() {
 
   const filteredDevices = useMemo(() => {
     let filtered = devices;
+
+    if (filters.imei) {
+      filtered = filtered.filter((d) =>
+        d.imei.toLowerCase().includes(filters.imei.toLowerCase()),
+      );
+    }
+
+    if (filters.model) {
+      filtered = filtered.filter((d) =>
+        d.deviceModel.toLowerCase().includes(filters.model.toLowerCase()),
+      );
+    }
+
+    if (filters.firmware) {
+      filtered = filtered.filter((d) =>
+        (d.firmwareVersion || "").toLowerCase().includes(filters.firmware.toLowerCase()),
+      );
+    }
+
+    if (filters.simNumber) {
+      filtered = filtered.filter((d) =>
+        (d.simNumber || "").toLowerCase().includes(filters.simNumber.toLowerCase()),
+      );
+    }
+
+    if (filters.connectionStatus) {
+      filtered = filtered.filter(
+        (d) => d.connectionStatus === filters.connectionStatus,
+      );
+    }
+
+    if (filters.vehicleNumber) {
+      filtered = filtered.filter((d) => {
+        const vehicle = vehiclesData.find((v) => v._id === d.vehicleId);
+        return vehicle
+          ? vehicle.vehicleNumber.toLowerCase().includes(filters.vehicleNumber.toLowerCase())
+          : false;
+      });
+    }
+
+    if (filters.warrantyExpiry) {
+      filtered = filtered.filter(
+        (d) => (d.warrantyExpiry || "").split("T")[0] === filters.warrantyExpiry,
+      );
+    }
 
     if (filters.assigned === "assigned") {
       filtered = filtered.filter((d) =>
@@ -245,7 +301,17 @@ export default function GpsDevicesPage() {
   };
 
   const clearFilters = () => {
-    setFilters({ assigned: "", status: "" });
+    setFilters({
+      imei: "",
+      model: "",
+      firmware: "",
+      simNumber: "",
+      connectionStatus: "",
+      status: "",
+      assigned: "",
+      vehicleNumber: "",
+      warrantyExpiry: "",
+    });
   };
 
   /* ================= DELETE ================= */
@@ -272,9 +338,44 @@ export default function GpsDevicesPage() {
     { header: "IMEI", accessor: "imei" },
     { header: "Model", accessor: "deviceModel" },
     { header: "Firmware", accessor: "firmwareVersion" },
+    { header: "SIM", accessor: "simNumber" },
+    {
+      header: "Vehicle",
+      accessor: (row: GPSDevice) => {
+        const vehicle = vehiclesData.find((v) => v._id === row.vehicleId);
+        return vehicle ? vehicle.vehicleNumber : "-";
+      },
+    },
+    {
+      header: "Connection",
+      accessor: (row: GPSDevice) => (
+        <span
+          className={`capitalize text-xs font-semibold ${
+            row.connectionStatus === "online"
+              ? "text-green-600"
+              : "text-red-600"
+          }`}
+        >
+          {row.connectionStatus || "-"}
+        </span>
+      ),
+    },
+    {
+      header: "Warranty",
+      accessor: (row: GPSDevice) =>
+        row.warrantyExpiry ? row.warrantyExpiry.split("T")[0] : "-",
+    },
     {
       header: "Status",
-      accessor: (row: GPSDevice) => capitalizeFirstLetter(row.status),
+      accessor: (row: GPSDevice) => (
+        <span
+          className={`capitalize text-xs font-semibold ${
+            row.status === "active" ? "text-green-600" : "text-red-600"
+          }`}
+        >
+          {capitalizeFirstLetter(row.status)}
+        </span>
+      ),
     },
     {
       header: "Actions",
@@ -327,13 +428,65 @@ export default function GpsDevicesPage() {
         {/* Filter Section */}
         {showFilters && (
           <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div>
+                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
+                  IMEI
+                </label>
+                <input
+                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-blue-500/20 outline-none"
+                  value={filters.imei}
+                  onChange={(e) =>
+                    setFilters({ ...filters, imei: e.target.value })
+                  }
+                  placeholder="Search IMEI"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
+                  Model
+                </label>
+                <input
+                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-blue-500/20 outline-none"
+                  value={filters.model}
+                  onChange={(e) =>
+                    setFilters({ ...filters, model: e.target.value })
+                  }
+                  placeholder="Search model"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
+                  Firmware
+                </label>
+                <input
+                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-blue-500/20 outline-none"
+                  value={filters.firmware}
+                  onChange={(e) =>
+                    setFilters({ ...filters, firmware: e.target.value })
+                  }
+                  placeholder="Search firmware"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
+                  SIM Number
+                </label>
+                <input
+                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-blue-500/20 outline-none"
+                  value={filters.simNumber}
+                  onChange={(e) =>
+                    setFilters({ ...filters, simNumber: e.target.value })
+                  }
+                  placeholder="Search SIM"
+                />
+              </div>
               <div>
                 <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
                   Assignment
                 </label>
                 <select
-                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-slate-900/10 outline-none"
+                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-blue-500/20 outline-none"
                   value={filters.assigned}
                   onChange={(e) =>
                     setFilters({ ...filters, assigned: e.target.value })
@@ -349,7 +502,7 @@ export default function GpsDevicesPage() {
                   Status
                 </label>
                 <select
-                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-slate-900/10 outline-none"
+                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-blue-500/20 outline-none"
                   value={filters.status}
                   onChange={(e) =>
                     setFilters({ ...filters, status: e.target.value })
@@ -359,6 +512,48 @@ export default function GpsDevicesPage() {
                   <option value="active">Active</option>
                   <option value="inactive">Inactive</option>
                 </select>
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
+                  Connection
+                </label>
+                <select
+                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-blue-500/20 outline-none"
+                  value={filters.connectionStatus}
+                  onChange={(e) =>
+                    setFilters({ ...filters, connectionStatus: e.target.value })
+                  }
+                >
+                  <option value="">All</option>
+                  <option value="online">Online</option>
+                  <option value="offline">Offline</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
+                  Vehicle Number
+                </label>
+                <input
+                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-blue-500/20 outline-none"
+                  value={filters.vehicleNumber}
+                  onChange={(e) =>
+                    setFilters({ ...filters, vehicleNumber: e.target.value })
+                  }
+                  placeholder="Search vehicle"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
+                  Warranty
+                </label>
+                <input
+                  type="date"
+                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-blue-500/20 outline-none"
+                  value={filters.warrantyExpiry}
+                  onChange={(e) =>
+                    setFilters({ ...filters, warrantyExpiry: e.target.value })
+                  }
+                />
               </div>
               <div className="flex items-end">
                 <button

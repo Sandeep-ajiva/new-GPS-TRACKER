@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Table from "@/components/ui/Table";
 import ApiErrorBoundary from "@/components/admin/ErrorBoundary/ApiErrorBoundary";
-import { Plus, Edit, Trash2, Loader2, Eye } from "lucide-react";
+import { Plus, Edit, Trash2, Loader2, Eye, Filter } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -28,6 +28,10 @@ interface Organization {
   phone: string;
   address?: {
     addressLine?: string;
+    city?: string;
+    state?: string;
+    country?: string;
+    pincode?: string;
   };
   parentOrganizationId: string | null;
   status: "active" | "inactive";
@@ -69,11 +73,6 @@ export default function OrganizationsPage() {
     skip: !parentOrgId,
   });
 
-  const organizations: Organization[] = useMemo(
-    () => subOrgResponse?.data || [],
-    [subOrgResponse],
-  );
-
   /* ---------------------------------------
      Mutations
   ---------------------------------------- */
@@ -86,6 +85,37 @@ export default function OrganizationsPage() {
   ---------------------------------------- */
   const [editingOrg, setEditingOrg] = useState<Organization | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
+  const [filters, setFilters] = useState({
+    name: "",
+    type: "",
+    status: "",
+  });
+
+  const organizations: Organization[] = useMemo(
+    () => subOrgResponse?.data || [],
+    [subOrgResponse],
+  );
+
+  const filteredOrganizations = useMemo(() => {
+    const nameFilter = filters.name.trim().toLowerCase();
+    return organizations.filter((org) => {
+      if (nameFilter && !org.name.toLowerCase().includes(nameFilter)) {
+        return false;
+      }
+      if (filters.type && org.organizationType !== filters.type) {
+        return false;
+      }
+      if (filters.status && org.status !== filters.status) {
+        return false;
+      }
+      return true;
+    });
+  }, [organizations, filters.name, filters.status, filters.type]);
+
+  const clearFilters = () => {
+    setFilters({ name: "", type: "", status: "" });
+  };
 
   /* ---------------------------------------
      Modal handlers
@@ -110,6 +140,14 @@ export default function OrganizationsPage() {
   ---------------------------------------- */
   const handleSubmit = async (form: Record<string, any>) => {
     try {
+      const address = {
+        addressLine: form.addressLine,
+        city: form.city,
+        state: form.state,
+        country: form.country,
+        pincode: form.pincode,
+      };
+
       if (editingOrg) {
         await updateOrganization({
           id: editingOrg._id,
@@ -117,7 +155,7 @@ export default function OrganizationsPage() {
           organizationType: form.organizationType,
           email: form.email,
           phone: form.phone,
-          address: { addressLine: form.address },
+          address,
         }).unwrap();
 
         toast.success("Organization updated successfully");
@@ -129,9 +167,7 @@ export default function OrganizationsPage() {
             organizationType: form.organizationType,
             email: form.email, // shared email
             phone: form.phone,
-            address: {
-              addressLine: form.address,
-            },
+            address,
             geo: {
               lat: null,
               lng: null,
@@ -149,7 +185,6 @@ export default function OrganizationsPage() {
             firstName: form.managerFirstName,
             lastName: form.managerLastName,
             email: form.email, // SAME email as organization
-            mobile: form.managerMobile,
             password: form.managerPassword,
           },
         }).unwrap();
@@ -184,6 +219,24 @@ export default function OrganizationsPage() {
     { header: "Type", accessor: "organizationType" },
     { header: "Email", accessor: "email" },
     { header: "Phone", accessor: "phone" },
+    {
+      header: "Address",
+      accessor: (row: Organization) => {
+        const address = row.address || {};
+        const parts = [
+          address.addressLine,
+          address.city,
+          address.state,
+          address.country,
+          address.pincode,
+        ].filter(Boolean);
+        return (
+          <span className="text-xs font-semibold text-slate-600">
+            {parts.length > 0 ? parts.join(", ") : "-"}
+          </span>
+        );
+      },
+    },
     {
       header: "Status",
       accessor: (row: Organization) => (
@@ -253,15 +306,87 @@ export default function OrganizationsPage() {
             <h1 className="text-2xl font-black">Sub Organizations</h1>
             <p className="text-sm text-slate-500">Parent: {parentOrg?.name}</p>
           </div>
-          <button
-            onClick={openCreateModal}
-            className="bg-blue-600 text-white px-4 py-2 rounded-xl text-xs font-black uppercase flex items-center gap-2 hover:bg-blue-700 transition-colors"
-          >
-            <Plus size={14} /> Add Sub Organization
-          </button>
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <button
+              onClick={() => setShowFilters(!showFilters)}
+              className="bg-slate-100 text-slate-700 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 hover:bg-slate-200 transition-colors"
+            >
+              <Filter size={14} /> Filter
+            </button>
+            <button
+              onClick={openCreateModal}
+              className="bg-blue-600 text-white px-4 py-2 rounded-xl text-xs font-black uppercase flex items-center gap-2 hover:bg-blue-700 transition-colors"
+            >
+              <Plus size={14} /> Add Sub Organization
+            </button>
+          </div>
         </div>
 
-        <Table columns={columns} data={organizations} loading={isLoading} />
+        {showFilters && (
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div>
+                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
+                  Name
+                </label>
+                <input
+                  type="text"
+                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-blue-500/20"
+                  value={filters.name}
+                  onChange={(e) =>
+                    setFilters({ ...filters, name: e.target.value })
+                  }
+                  placeholder="Search name"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
+                  Type
+                </label>
+                <select
+                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-blue-500/20"
+                  value={filters.type}
+                  onChange={(e) =>
+                    setFilters({ ...filters, type: e.target.value })
+                  }
+                >
+                  <option value="">All Types</option>
+                  <option value="logistics">Logistics</option>
+                  <option value="transport">Transport</option>
+                  <option value="school">School</option>
+                  <option value="taxi">Taxi</option>
+                  <option value="fleet">Fleet</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
+                  Status
+                </label>
+                <select
+                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-blue-500/20"
+                  value={filters.status}
+                  onChange={(e) =>
+                    setFilters({ ...filters, status: e.target.value })
+                  }
+                >
+                  <option value="">All Status</option>
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+              </div>
+              <div className="flex items-end">
+                <button
+                  onClick={clearFilters}
+                  className="w-full bg-slate-100 text-slate-700 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-slate-200 transition-colors"
+                >
+                  Clear Filters
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <Table columns={columns} data={filteredOrganizations} loading={isLoading} />
 
         <DynamicModal
           isOpen={isModalOpen}
@@ -275,12 +400,16 @@ export default function OrganizationsPage() {
           initialData={
             editingOrg
               ? {
-                name: editingOrg.name,
-                organizationType: editingOrg.organizationType,
-                email: editingOrg.email,
-                phone: editingOrg.phone,
-                address: editingOrg.address?.addressLine || "",
-              }
+                  name: editingOrg.name,
+                  organizationType: editingOrg.organizationType,
+                  email: editingOrg.email,
+                  phone: editingOrg.phone,
+                  addressLine: editingOrg.address?.addressLine || "",
+                  city: editingOrg.address?.city || "",
+                  state: editingOrg.address?.state || "",
+                  country: editingOrg.address?.country || "",
+                  pincode: editingOrg.address?.pincode || "",
+                }
               : undefined
           }
           onSubmit={handleSubmit}
@@ -316,7 +445,11 @@ function getFormFields(isEdit: boolean): FormField[] {
       required: true,
     },
     { name: "phone", label: "Organization Phone", type: "tel", required: true },
-    { name: "address", label: "Address", type: "textarea", required: true },
+    { name: "addressLine", label: "Address Line", type: "text", required: true },
+    { name: "city", label: "City", type: "text", required: true },
+    { name: "state", label: "State", type: "text", required: true },
+    { name: "country", label: "Country", type: "text", required: true },
+    { name: "pincode", label: "Pincode", type: "text", required: true },
   ];
 
   if (isEdit) return orgFields;
@@ -333,12 +466,6 @@ function getFormFields(isEdit: boolean): FormField[] {
       name: "managerLastName",
       label: "Manager Last Name",
       type: "text",
-      required: true,
-    },
-    {
-      name: "managerMobile",
-      label: "Manager Mobile",
-      type: "tel",
       required: true,
     },
     {
