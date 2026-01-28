@@ -50,7 +50,7 @@ const userSchema = {
     enum: ["active", "inactive"],
     default: "active",
   },
-  
+
   assignedVehicleId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Vehicle",

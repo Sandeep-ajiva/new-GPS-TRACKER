@@ -54,8 +54,6 @@ const validateUpdateVehicle = async (data) => {
   if (data.year !== undefined) data.year = Number(data.year);
 };
 
-
-
 exports.create = async (req, res) => {
   try {
     await validateCreateVehicle(req.body, req.user);

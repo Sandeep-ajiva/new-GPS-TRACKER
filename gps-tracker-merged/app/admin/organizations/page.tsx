@@ -9,7 +9,6 @@ import { toast } from "sonner";
 import {
   useGetOrganizationsQuery,
   useGetSubOrganizationsQuery,
-  useCreateOrganizationMutation,
   useCreateSubOrgWithManagerMutation,
   useUpdateOrganizationMutation,
   useDeleteOrganizationMutation,
@@ -37,8 +36,7 @@ interface Organization {
 
 export default function OrganizationsPage() {
   /* ---------------------------------------
-     STEP 1: Fetch ALL organizations
-     (Used ONLY to detect parent org)
+     STEP 1: Fetch all organizations
   ---------------------------------------- */
   const { data: allOrgResponse, isLoading: loadingAll } =
     useGetOrganizationsQuery(undefined);
@@ -49,8 +47,7 @@ export default function OrganizationsPage() {
   );
 
   /* ---------------------------------------
-     STEP 2: Find PARENT organization
-     (parentOrganizationId === null)
+     STEP 2: Find parent organization
   ---------------------------------------- */
   const parentOrg = useMemo(
     () => allOrganizations.find((o) => o.parentOrganizationId === null),
@@ -60,8 +57,7 @@ export default function OrganizationsPage() {
   const parentOrgId = parentOrg?._id;
 
   /* ---------------------------------------
-     STEP 3: Fetch SUB-ORGANIZATIONS
-     (ONLY when parentId exists)
+     STEP 3: Fetch sub-organizations
   ---------------------------------------- */
   const {
     data: subOrgResponse,
@@ -79,7 +75,6 @@ export default function OrganizationsPage() {
   /* ---------------------------------------
      Mutations
   ---------------------------------------- */
-  const [createOrganization] = useCreateOrganizationMutation();
   const [createSubOrgWithManager] = useCreateSubOrgWithManagerMutation();
   const [updateOrganization] = useUpdateOrganizationMutation();
   const [deleteOrganization] = useDeleteOrganizationMutation();
@@ -91,9 +86,8 @@ export default function OrganizationsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   /* ---------------------------------------
-     Handlers
+     Modal handlers
   ---------------------------------------- */
-
   const openCreateModal = () => {
     setEditingOrg(null);
     setIsModalOpen(true);
@@ -109,50 +103,79 @@ export default function OrganizationsPage() {
     setIsModalOpen(false);
   };
 
+  /* ---------------------------------------
+     Submit handler
+  ---------------------------------------- */
   const handleSubmit = async (form: Record<string, any>) => {
     try {
       if (editingOrg) {
         await updateOrganization({
           id: editingOrg._id,
-          ...form,
+          name: form.name,
+          organizationType: form.organizationType,
+          email: form.email,
+          phone: form.phone,
           address: { addressLine: form.address },
         }).unwrap();
-        toast.success("Organization updated");
+
+        toast.success("Organization updated successfully");
       } else {
         await createSubOrgWithManager({
           parentOrganizationId: parentOrgId,
           organizationData: {
             name: form.name,
             organizationType: form.organizationType,
-            email: form.email,
+            email: form.email, // shared email
             phone: form.phone,
-            address: { addressLine: form.address },
-            status: form.status,
+            address: {
+              addressLine: form.address,
+            },
+            geo: {
+              lat: null,
+              lng: null,
+              timezone: "Asia/Kolkata",
+            },
+            settings: {
+              speedAlert: true,
+              speedLimit: 80,
+              idleTimeThreshold: 5,
+              lowFuelThreshold: 20,
+              workingHours: "09:00-18:00",
+            },
           },
           managerData: {
             firstName: form.managerFirstName,
             lastName: form.managerLastName,
-            email: form.managerEmail,
+            email: form.email, // SAME email as organization
             mobile: form.managerMobile,
-            passwordHash: form.managerPassword,
+            password: form.managerPassword,
           },
         }).unwrap();
-        toast.success("Sub-organization created");
+
+        toast.success("Sub-organization & manager created successfully");
       }
+
       closeModal();
     } catch (err: any) {
       toast.error(err?.data?.message || "Operation failed");
     }
   };
 
+  /* ---------------------------------------
+     Delete
+  ---------------------------------------- */
   const handleDelete = async (id: string) => {
-    if (!confirm("Delete this organization?")) return;
-    await deleteOrganization(id).unwrap();
-    toast.success("Organization deleted");
+    if (!confirm("Are you sure you want to delete this organization?")) return;
+    try {
+      await deleteOrganization(id).unwrap();
+      toast.success("Organization deleted");
+    } catch (err: any) {
+      toast.error(err?.data?.message || "Delete failed");
+    }
   };
 
   /* ---------------------------------------
-     Table Columns
+     Table columns
   ---------------------------------------- */
   const columns = [
     { header: "Name", accessor: "name" },
@@ -235,9 +258,23 @@ export default function OrganizationsPage() {
         <DynamicModal
           isOpen={isModalOpen}
           onClose={closeModal}
-          title={editingOrg ? "Edit Organization" : "Create Sub Organization"}
+          title={
+            editingOrg
+              ? "Edit Organization"
+              : "Create Sub Organization & Manager"
+          }
           fields={getFormFields(!!editingOrg)}
-          initialData={editingOrg || undefined}
+          initialData={
+            editingOrg
+              ? {
+                  name: editingOrg.name,
+                  organizationType: editingOrg.organizationType,
+                  email: editingOrg.email,
+                  phone: editingOrg.phone,
+                  address: editingOrg.address?.addressLine || "",
+                }
+              : undefined
+          }
           onSubmit={handleSubmit}
           submitLabel={editingOrg ? "Update" : "Create"}
         />
@@ -264,29 +301,43 @@ function getFormFields(isEdit: boolean): FormField[] {
         { label: "Fleet", value: "fleet" },
       ],
     },
-    { name: "email", label: "Email", type: "email", required: true },
-    { name: "phone", label: "Phone", type: "tel", required: true },
-    { name: "address", label: "Address", type: "textarea" },
     {
-      name: "status",
-      label: "Status",
-      type: "select",
+      name: "email",
+      label: "Organization / Manager Email",
+      type: "email",
       required: true,
-      options: [
-        { label: "Active", value: "active" },
-        { label: "Inactive", value: "inactive" },
-      ],
     },
+    { name: "phone", label: "Organization Phone", type: "tel", required: true },
+    { name: "address", label: "Address", type: "textarea", required: true },
   ];
 
   if (isEdit) return orgFields;
 
   return [
     ...orgFields,
-    { name: "managerFirstName", label: "Manager First Name", type: "text" },
-    { name: "managerLastName", label: "Manager Last Name", type: "text" },
-    { name: "managerEmail", label: "Manager Email", type: "email" },
-    { name: "managerMobile", label: "Manager Mobile", type: "tel" },
-    { name: "managerPassword", label: "Manager Password", type: "password" },
+    {
+      name: "managerFirstName",
+      label: "Manager First Name",
+      type: "text",
+      required: true,
+    },
+    {
+      name: "managerLastName",
+      label: "Manager Last Name",
+      type: "text",
+      required: true,
+    },
+    {
+      name: "managerMobile",
+      label: "Manager Mobile",
+      type: "tel",
+      required: true,
+    },
+    {
+      name: "managerPassword",
+      label: "Manager Password",
+      type: "password",
+      required: true,
+    },
   ];
 }
