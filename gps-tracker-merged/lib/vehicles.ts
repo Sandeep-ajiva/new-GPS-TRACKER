@@ -20,4 +20,5 @@ export type Vehicle = {
   route: VehicleRoutePoint[]
 }
 
+export const vehicles: Vehicle[] = []
 

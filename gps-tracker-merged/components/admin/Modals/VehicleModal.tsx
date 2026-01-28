@@ -76,14 +76,18 @@ export default function VehicleModal({ isOpen, onClose, vehicle, onCreated }: Ve
             return;
         }
         try {
+            const payload = {
+                organizationId: resolvedOrgId,
+                vehicleType: formData.vehicleType,
+                vehicleNumber: formData.vehicleNumber || formData.registrationNumber,
+                model: formData.model,
+                status: formData.status,
+            };
             if (vehicle) {
-                await updateVehicle({ id: vehicle._id, ...formData }).unwrap();
+                await updateVehicle({ id: vehicle._id, ...payload }).unwrap();
                 toast.success("Vehicle updated successfully");
             } else {
-                const created = await createVehicle({
-                    ...formData,
-                    ...(resolvedOrgId ? { organizationId: resolvedOrgId } : {}),
-                }).unwrap();
+                const created = await createVehicle(payload).unwrap();
                 const createdVehicle = created?.data || created;
                 if (createdVehicle && onCreated) {
                     onCreated(createdVehicle);

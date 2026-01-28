@@ -101,11 +101,40 @@ exports.acknowledge = async (req, res) => {
     }
 };
 
+exports.acknowledgeAll = async (req, res) => {
+    try {
+        const result = await Alert.updateMany(
+            { acknowledged: false },
+            { acknowledged: true, acknowledgedAt: new Date() }
+        );
+        return res.status(200).json({
+            status: true,
+            message: "All alerts acknowledged",
+            data: result,
+        });
+    } catch (error) {
+        return res.status(500).json({ status: false, message: error.message });
+    }
+};
+
 exports.delete = async (req, res) => {
     try {
         const alert = await Alert.findByIdAndDelete(req.params.id);
         if (!alert) return res.status(404).json({ status: false, message: "Alert not found" });
         return res.status(200).json({ status: true, message: "Deleted Successfully" });
+    } catch (error) {
+        return res.status(500).json({ status: false, message: error.message });
+    }
+};
+
+exports.deleteAll = async (req, res) => {
+    try {
+        const result = await Alert.deleteMany({});
+        return res.status(200).json({
+            status: true,
+            message: "All alerts deleted",
+            data: result,
+        });
     } catch (error) {
         return res.status(500).json({ status: false, message: error.message });
     }

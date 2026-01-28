@@ -38,7 +38,7 @@ import {
 
 export interface GPSDevice {
   _id: string;
-  organizationId: string;
+  organizationId: string | { _id: string; name: string };
   imei: string;
   deviceModel: string;
   manufacturer?: string;
@@ -59,13 +59,13 @@ export default function GpsDevicesPage() {
   /* ================= API ================= */
 
   const { data: devData, isLoading: isDevLoading } =
-    useGetGpsDevicesQuery(undefined);
+    useGetGpsDevicesQuery(undefined, { refetchOnMountOrArgChange: true });
 
   const { data: vehData, isLoading: isVehLoading } =
-    useGetVehiclesQuery(undefined);
+    useGetVehiclesQuery(undefined, { refetchOnMountOrArgChange: true });
 
   const { data: orgData, isLoading: isOrgLoading } =
-    useGetOrganizationsQuery(undefined);
+    useGetOrganizationsQuery(undefined, { refetchOnMountOrArgChange: true });
 
   const [createGpsDevice, { isLoading: isCreating }] =
     useCreateGpsDeviceMutation();
@@ -140,15 +140,14 @@ export default function GpsDevicesPage() {
   const handleSubmit = async (data: Record<string, any>) => {
     try {
       if (editingDevice) {
+        const { _id, ...payloadData } = data;
         const payload = {
-          ...data,
+          ...payloadData,
           organizationId:
             typeof data.organizationId === "object"
               ? data.organizationId._id
               : data.organizationId,
         };
-
-        delete payload._id; // 🔥 very important
 
         await updateGpsDevice({
           id: editingDevice._id, // ✅ always string
@@ -228,12 +227,13 @@ export default function GpsDevicesPage() {
   };
 
   const openEditModal = (device: GPSDevice) => {
+    const orgId = typeof device.organizationId === "object"
+      ? device.organizationId._id
+      : device.organizationId;
+
     setEditingDevice({
       ...device,
-      organizationId:
-        typeof device.organizationId === "object"
-          ? device.organizationId._id
-          : device.organizationId,
+      organizationId: orgId as string,
     });
 
     openPopup("deviceModal");
@@ -242,6 +242,10 @@ export default function GpsDevicesPage() {
   const closeModal = () => {
     closePopup("deviceModal");
     setEditingDevice(null);
+  };
+
+  const clearFilters = () => {
+    setFilters({ assigned: "", status: "" });
   };
 
   /* ================= DELETE ================= */
@@ -295,7 +299,85 @@ export default function GpsDevicesPage() {
 
   return (
     <ApiErrorBoundary hasError={false}>
-      <Table columns={columns} data={filteredDevices} />
+      <div className="space-y-6">
+        {/* Header Section */}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-2xl font-black text-slate-900">GPS Devices</h1>
+            <p className="text-sm text-slate-500">
+              Manage GPS tracking devices and their assignments.
+            </p>
+          </div>
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <button
+              onClick={() => setShowFilters(!showFilters)}
+              className="bg-slate-100 text-slate-700 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 hover:bg-slate-200 transition-colors"
+            >
+              <Filter size={16} /> Filters
+            </button>
+            <button
+              onClick={openCreateModal}
+              className="bg-blue-600 text-white px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 hover:bg-blue-700 transition-colors"
+            >
+              <Plus size={16} /> Add Device
+            </button>
+          </div>
+        </div>
+
+        {/* Filter Section */}
+        {showFilters && (
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
+                  Assignment
+                </label>
+                <select
+                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-slate-900/10 outline-none"
+                  value={filters.assigned}
+                  onChange={(e) =>
+                    setFilters({ ...filters, assigned: e.target.value })
+                  }
+                >
+                  <option value="">All Devices</option>
+                  <option value="assigned">Assigned to Vehicle</option>
+                  <option value="unassigned">Unassigned</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
+                  Status
+                </label>
+                <select
+                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-slate-900/10 outline-none"
+                  value={filters.status}
+                  onChange={(e) =>
+                    setFilters({ ...filters, status: e.target.value })
+                  }
+                >
+                  <option value="">All Status</option>
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+              </div>
+              <div className="flex items-end">
+                <button
+                  onClick={clearFilters}
+                  className="w-full bg-slate-100 text-slate-700 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-slate-200 transition-colors"
+                >
+                  Clear Filters
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Table Section */}
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+          <Table columns={columns} data={filteredDevices} />
+        </div>
+      </div>
+
       <DynamicModal
         isOpen={isPopupOpen("deviceModal")}
         onClose={closeModal}
@@ -304,20 +386,22 @@ export default function GpsDevicesPage() {
         initialData={
           editingDevice
             ? {
-                organizationId: editingDevice.organizationId,
-                imei: editingDevice.imei,
-                simNumber: editingDevice.simNumber || "",
-                deviceModel: editingDevice.deviceModel,
-                manufacturer: editingDevice.manufacturer || "",
-                serialNumber: editingDevice.serialNumber || "",
-                firmwareVersion: editingDevice.firmwareVersion || "",
-                hardwareVersion: editingDevice.hardwareVersion || "",
-                warrantyExpiry: editingDevice.warrantyExpiry
-                  ? editingDevice.warrantyExpiry.split("T")[0]
-                  : "",
-                connectionStatus: editingDevice.connectionStatus,
-                status: editingDevice.status,
-              }
+              organizationId: typeof editingDevice.organizationId === "object"
+                ? editingDevice.organizationId._id
+                : editingDevice.organizationId,
+              imei: editingDevice.imei,
+              simNumber: editingDevice.simNumber || "",
+              deviceModel: editingDevice.deviceModel,
+              manufacturer: editingDevice.manufacturer || "",
+              serialNumber: editingDevice.serialNumber || "",
+              firmwareVersion: editingDevice.firmwareVersion || "",
+              hardwareVersion: editingDevice.hardwareVersion || "",
+              warrantyExpiry: editingDevice.warrantyExpiry
+                ? editingDevice.warrantyExpiry.split("T")[0]
+                : "",
+              connectionStatus: editingDevice.connectionStatus,
+              status: editingDevice.status,
+            }
             : undefined
         }
         onSubmit={handleSubmit}

@@ -19,11 +19,14 @@ export const vehicleApi = baseApi.injectEndpoints({
       invalidatesTags: ["Vehicle"],
     }),
     updateVehicle: builder.mutation({
-      query: ({ id, formData }) => ({
-        url: `/vehicle/${id}`,
-        method: "PUT",
-        body: formData,
-      }),
+      query: (payload) => {
+        const { id, formData, ...rest } = payload;
+        return {
+          url: `/vehicle/${id}`,
+          method: "PUT",
+          body: formData || rest,
+        };
+      },
       invalidatesTags: ["Vehicle"],
     }),
 

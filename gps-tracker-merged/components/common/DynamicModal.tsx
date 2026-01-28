@@ -79,7 +79,7 @@ export function DynamicModal({
       {/* Modal Content */}
       <div
         className={cn(
-          "relative w-full max-w-xl rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200",
+          "relative w-full max-w-xl rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 max-h-[90vh] flex flex-col",
           isDark
             ? "bg-slate-900 border border-slate-800 text-slate-100"
             : "bg-white border border-slate-200 text-slate-900",
@@ -88,7 +88,7 @@ export function DynamicModal({
         {/* Header */}
         <div
           className={cn(
-            "flex items-center justify-between p-6",
+            "flex items-center justify-between p-4 sm:p-6",
             isDark
               ? "border-b border-slate-800 bg-slate-950/40"
               : "border-b border-slate-100 bg-slate-50/50",
@@ -121,12 +121,12 @@ export function DynamicModal({
         </div>
 
         {/* Body */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-6 overflow-y-auto">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {fields.map((field) => (
               <div
                 key={field.name}
-                className={cn(field.type === "textarea" ? "md:col-span-2" : "")}
+                className={cn(field.type === "textarea" ? "sm:col-span-2" : "")}
               >
                 <label
                   className={cn(
@@ -151,7 +151,7 @@ export function DynamicModal({
                       "w-full rounded-xl px-4 py-2.5 text-sm font-semibold outline-none transition-all resize-none",
                       isDark
                         ? "bg-slate-950/60 border border-slate-800 text-slate-100 focus:ring-2 focus:ring-slate-500/20 focus:border-slate-500 placeholder:text-slate-600"
-                        : "bg-slate-50 border border-slate-200 text-slate-800 focus:bg-white focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400 placeholder:text-slate-400",
+                        : "bg-slate-50 border border-slate-200 text-slate-800 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 placeholder:text-slate-400",
                     )}
                   />
                 ) : field.type === "select" ? (
@@ -164,7 +164,7 @@ export function DynamicModal({
                       "w-full rounded-xl px-4 py-2.5 text-sm font-semibold outline-none transition-all appearance-none",
                       isDark
                         ? "bg-slate-950/60 border border-slate-800 text-slate-100 focus:ring-2 focus:ring-slate-500/20 focus:border-slate-500"
-                        : "bg-slate-50 border border-slate-200 text-slate-800 focus:bg-white focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400",
+                        : "bg-slate-50 border border-slate-200 text-slate-800 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500",
                     )}
                   >
                     <option value="">Select option</option>
@@ -185,7 +185,7 @@ export function DynamicModal({
                         "w-5 h-5 rounded border transition-all cursor-pointer",
                         isDark
                           ? "bg-slate-950 border-slate-700 text-emerald-500 focus:ring-emerald-500/20"
-                          : "border-slate-300 text-slate-900 focus:ring-slate-900/20",
+                          : "border-slate-300 text-slate-900 focus:ring-blue-500/20",
                       )}
                     />
                     <span
@@ -229,7 +229,7 @@ export function DynamicModal({
                       "w-full rounded-xl px-4 py-2.5 text-sm font-semibold outline-none transition-all",
                       isDark
                         ? "bg-slate-950/60 border border-slate-800 text-slate-100 focus:ring-2 focus:ring-slate-500/20 focus:border-slate-500 placeholder:text-slate-600"
-                        : "bg-slate-50 border border-slate-200 text-slate-800 focus:bg-white focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400 placeholder:text-slate-400",
+                        : "bg-slate-50 border border-slate-200 text-slate-800 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 placeholder:text-slate-400",
                     )}
                   />
                 )}
@@ -240,7 +240,7 @@ export function DynamicModal({
           {/* Footer */}
           <div
             className={cn(
-              "flex gap-3 pt-6 mt-4",
+              "flex flex-col sm:flex-row gap-3 pt-6 mt-4",
               isDark
                 ? "border-t border-slate-800"
                 : "border-t border-slate-100",
@@ -265,7 +265,7 @@ export function DynamicModal({
                 "flex-1 px-6 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 shadow-lg",
                 isDark
                   ? "bg-emerald-500 text-slate-950 hover:bg-emerald-400 shadow-emerald-500/10"
-                  : "bg-slate-900 text-white hover:bg-slate-800 shadow-slate-900/10",
+                  : "bg-blue-600 text-white hover:bg-blue-700 shadow-blue-200/40",
               )}
             >
               {isSaving && <Loader2 size={16} className="animate-spin" />}

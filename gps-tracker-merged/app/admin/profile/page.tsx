@@ -9,7 +9,7 @@ import { useGetMeQuery, useUpdateUserMutation } from "@/redux/api/usersApi";
 import { capitalizeFirstLetter } from "../Helpers/CapitalizeFirstLetter";
 
 export default function ProfilePage() {
-    const { data: userData, isLoading, error } = useGetMeQuery(undefined);
+    const { data: userData, isLoading, error } = useGetMeQuery(undefined, { refetchOnMountOrArgChange: true });
     const [updateUser, { isLoading: isUpdating }] = useUpdateUserMutation();
 
     const user = userData?.data;
@@ -120,13 +120,13 @@ export default function ProfilePage() {
                         </div>
 
                         {user?.organizationId && (
-                            <div className="bg-slate-900 p-6 rounded-2xl text-white shadow-lg shadow-slate-900/20">
-                                <div className="flex items-center gap-3 mb-4 opacity-80">
+                            <div className="bg-white p-6 rounded-2xl text-slate-900 shadow-sm border border-slate-200">
+                                <div className="flex items-center gap-3 mb-4 text-slate-500">
                                     <Building size={16} />
                                     <span className="text-xs font-black uppercase tracking-widest">Organization</span>
                                 </div>
                                 <h3 className="text-xl font-bold">{user.organizationId.name || "My Organization"}</h3>
-                                <p className="text-xs text-slate-400 mt-2">{user.organizationId.email}</p>
+                                <p className="text-xs text-slate-500 mt-2">{user.organizationId.email}</p>
                             </div>
                         )}
                     </div>
@@ -135,7 +135,7 @@ export default function ProfilePage() {
                     <div className="md:col-span-2">
                         <form onSubmit={handleSubmit} className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100 space-y-6">
                             <h3 className="text-lg font-black text-slate-900 mb-6 uppercase tracking-widest flex items-center gap-2">
-                                <span className="w-2 h-2 bg-slate-900 rounded-full"></span> Basic Details
+                                <span className="w-2 h-2 bg-blue-600 rounded-full"></span> Basic Details
                             </h3>
 
                             <div className="grid grid-cols-2 gap-6">
@@ -164,7 +164,7 @@ export default function ProfilePage() {
                             </div>
 
                             <div>
-                                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 icon-label flex items-center gap-2"><Mail size={12} /> Email Address</label>
+                                <label className="flex text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 icon-label items-center gap-2"><Mail size={12} /> Email Address</label>
                                 <input
                                     type="email"
                                     className={`w-full px-4 py-3 rounded-xl bg-slate-50 border ${errors.email ? 'border-red-500' : 'border-transparent'} text-sm font-bold text-slate-900 focus:bg-white focus:ring-2 focus:ring-slate-900/10 transition-all outline-none`}
@@ -177,7 +177,7 @@ export default function ProfilePage() {
                             </div>
 
                             <div>
-                                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 icon-label flex items-center gap-2"><Phone size={12} /> Mobile Number</label>
+                                <label className="flex text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 icon-label items-center gap-2"><Phone size={12} /> Mobile Number</label>
                                 <input
                                     type="text"
                                     className={`w-full px-4 py-3 rounded-xl bg-slate-50 border ${errors.mobile ? 'border-red-500' : 'border-transparent'} text-sm font-bold text-slate-900 focus:bg-white focus:ring-2 focus:ring-slate-900/10 transition-all outline-none`}

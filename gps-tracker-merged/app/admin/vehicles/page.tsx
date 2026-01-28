@@ -55,11 +55,11 @@ export default function VehiclesPage() {
 
   // API Hooks
   const { data: vehData, isLoading: isVehLoading } =
-    useGetVehiclesQuery(undefined);
+    useGetVehiclesQuery(undefined, { refetchOnMountOrArgChange: true });
   const { data: orgData, isLoading: isOrgLoading } =
-    useGetOrganizationsQuery(undefined);
+    useGetOrganizationsQuery(undefined, { refetchOnMountOrArgChange: true });
   const { data: devData, isLoading: isDevLoading } =
-    useGetGpsDevicesQuery(undefined);
+    useGetGpsDevicesQuery(undefined, { refetchOnMountOrArgChange: true });
 
   const [createVehicle, { isLoading: isCreating }] = useCreateVehicleMutation();
   const [updateVehicle, { isLoading: isUpdating }] = useUpdateVehicleMutation();
@@ -105,11 +105,12 @@ export default function VehiclesPage() {
     }
 
     if (filters.organizationId) {
-      filtered = filtered.filter(
-        (v) =>
-          (v.organizationId?._id || v.organizationId) ===
-          filters.organizationId,
-      );
+      filtered = filtered.filter((v) => {
+        const orgId = typeof v.organizationId === "object"
+          ? v.organizationId._id
+          : v.organizationId;
+        return orgId === filters.organizationId;
+      });
     }
     if (filters.status) {
       filtered = filtered.filter((v) => v.status === filters.status);
@@ -136,64 +137,64 @@ export default function VehiclesPage() {
   };
 
 
-const handleSubmit = async (
-  data: Record<string, string | number | boolean | File>,
-) => {
-  try {
-    const formData = new FormData();
+  const handleSubmit = async (
+    data: Record<string, string | number | boolean | File>,
+  ) => {
+    try {
+      const formData = new FormData();
 
-    // 🔹 Append fields carefully
-    Object.entries(data).forEach(([key, value]) => {
-      if (
-        value === "" ||
-        value === undefined ||
-        value === null ||
-        key === "image"
-      ) {
-        return;
+      // 🔹 Append fields carefully
+      Object.entries(data).forEach(([key, value]) => {
+        if (
+          value === "" ||
+          value === undefined ||
+          value === null ||
+          key === "image"
+        ) {
+          return;
+        }
+
+        // ❌ UPDATE ke time organizationId skip
+        if (editingVehicle && key === "organizationId") {
+          return;
+        }
+
+        formData.append(key, String(value));
+      });
+
+      // 🔹 Uppercase vehicle number
+      if (data.vehicleNumber) {
+        formData.set(
+          "vehicleNumber",
+          String(data.vehicleNumber).toUpperCase(),
+        );
       }
 
-      // ❌ UPDATE ke time organizationId skip
-      if (editingVehicle && key === "organizationId") {
-        return;
+      // 🔹 Image
+      if (data.image instanceof File) {
+        formData.append("image", data.image);
       }
 
-      formData.append(key, String(value));
-    });
+      if (editingVehicle) {
+        // ✅ UPDATE
+        await updateVehicle({
+          id: editingVehicle._id,
+          formData,
+        }).unwrap();
 
-    // 🔹 Uppercase vehicle number
-    if (data.vehicleNumber) {
-      formData.set(
-        "vehicleNumber",
-        String(data.vehicleNumber).toUpperCase(),
-      );
+        toast.success("Vehicle updated successfully");
+      } else {
+        // ✅ CREATE (organizationId allowed here)
+        await createVehicle(formData).unwrap();
+        toast.success("Vehicle created successfully");
+      }
+
+      closeModal();
+    } catch (err: unknown) {
+      const error = err as { data?: { message?: string } };
+      toast.error(error?.data?.message || "Operation failed");
     }
-
-    // 🔹 Image
-    if (data.image instanceof File) {
-      formData.append("image", data.image);
-    }
-
-    if (editingVehicle) {
-      // ✅ UPDATE
-      await updateVehicle({
-        id: editingVehicle._id,
-        formData,
-      }).unwrap();
-
-      toast.success("Vehicle updated successfully");
-    } else {
-      // ✅ CREATE (organizationId allowed here)
-      await createVehicle(formData).unwrap();
-      toast.success("Vehicle created successfully");
-    }
-
-    closeModal();
-  } catch (err: unknown) {
-    const error = err as { data?: { message?: string } };
-    toast.error(error?.data?.message || "Operation failed");
-  }
-};
+  };
 
 
   const vehicleFormFields: FormField[] = [
@@ -414,14 +415,14 @@ const handleSubmit = async (
   return (
     <ApiErrorBoundary hasError={false}>
       <div className="space-y-6">
-        <div className="flex justify-between items-center">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-2xl font-black text-slate-900">Vehicles</h1>
             <p className="text-sm text-slate-500">
               Manage your fleet vehicles here.
             </p>
           </div>
-          <div className="flex gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row">
             <button
               onClick={() => setShowFilters(!showFilters)}
               className="bg-slate-100 text-slate-700 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 hover:bg-slate-200 transition-colors"
@@ -430,7 +431,7 @@ const handleSubmit = async (
             </button>
             <button
               onClick={openCreateModal}
-              className="bg-slate-900 text-white px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 hover:bg-slate-800 transition-colors"
+              className="bg-blue-600 text-white px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 hover:bg-blue-700 transition-colors"
             >
               <Plus size={16} /> Add Vehicle
             </button>
@@ -514,17 +515,18 @@ const handleSubmit = async (
           initialData={
             editingVehicle
               ? {
-                  organizationId:
-                    editingVehicle.organizationId?._id ||
-                    editingVehicle.organizationId,
-                  vehicleType: editingVehicle.vehicleType,
-                  vehicleNumber: editingVehicle.vehicleNumber,
-                  model: editingVehicle.model || "",
-                  year: editingVehicle.year || "",
-                  color: editingVehicle.color || "",
-                  status: editingVehicle.status,
-                  deviceId: editingVehicle.deviceId || "",
-                }
+                organizationId:
+                  typeof editingVehicle.organizationId === "object"
+                    ? editingVehicle.organizationId._id
+                    : editingVehicle.organizationId,
+                vehicleType: editingVehicle.vehicleType,
+                vehicleNumber: editingVehicle.vehicleNumber,
+                model: editingVehicle.model || "",
+                year: editingVehicle.year || "",
+                color: editingVehicle.color || "",
+                status: editingVehicle.status,
+                deviceId: editingVehicle.deviceId || "",
+              }
               : undefined
           }
           onSubmit={handleSubmit}

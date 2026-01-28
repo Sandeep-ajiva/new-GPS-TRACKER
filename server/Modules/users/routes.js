@@ -17,7 +17,7 @@ router.get("/me", requireAuth, Controller.getMe);
 
 router.get(
   "/users",
-  verifyToken,
+  requireAuth,
   checkAuthorization(["admin", "superadmin"], "users", "read"),
   checkOrganization,
   Controller.getManagerByOrganization,

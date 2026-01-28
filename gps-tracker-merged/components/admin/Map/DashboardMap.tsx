@@ -12,7 +12,7 @@ export default function DashboardMap() {
 
     if (!apiKey) {
         return (
-            <div className="flex h-full w-full items-center justify-center bg-slate-950 text-slate-300">
+            <div className="flex h-full w-full items-center justify-center bg-slate-50 text-slate-500">
                 Add `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` to load Google Maps.
             </div>
         );
@@ -20,32 +20,34 @@ export default function DashboardMap() {
 
     if (loadError) {
         return (
-            <div className="flex h-full w-full items-center justify-center bg-slate-950 text-slate-300">
+            <div className="flex h-full w-full items-center justify-center bg-slate-50 text-slate-500">
                 Unable to load Google Maps. Check the API key and billing settings.
             </div>
         );
     }
 
     if (!isLoaded) {
-        return <div className="h-full w-full animate-pulse rounded-xl bg-slate-900/60" />;
+        return <div className="h-full w-full animate-pulse rounded-xl bg-slate-100" />;
     }
 
     const mapStyles: google.maps.MapTypeStyle[] = [
-        { elementType: "geometry", stylers: [{ color: "#0f172a" }] },
-        { elementType: "labels.text.stroke", stylers: [{ color: "#0f172a" }] },
-        { elementType: "labels.text.fill", stylers: [{ color: "#94a3b8" }] },
-        { featureType: "administrative", elementType: "geometry", stylers: [{ color: "#1f2937" }] },
+        { elementType: "geometry", stylers: [{ color: "#f8fafc" }] },
+        { elementType: "labels.text.stroke", stylers: [{ color: "#ffffff" }] },
+        { elementType: "labels.text.fill", stylers: [{ color: "#64748b" }] },
+        { featureType: "administrative", elementType: "geometry", stylers: [{ color: "#e2e8f0" }] },
+        { featureType: "poi", elementType: "geometry", stylers: [{ color: "#eef2f7" }] },
         { featureType: "poi", elementType: "labels.text.fill", stylers: [{ color: "#64748b" }] },
-        { featureType: "road", elementType: "geometry", stylers: [{ color: "#1e293b" }] },
-        { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#0f172a" }] },
-        { featureType: "water", elementType: "geometry", stylers: [{ color: "#0b1d30" }] },
-        { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#38bdf8" }] },
+        { featureType: "road", elementType: "geometry", stylers: [{ color: "#ffffff" }] },
+        { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#e2e8f0" }] },
+        { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#94a3b8" }] },
+        { featureType: "water", elementType: "geometry", stylers: [{ color: "#dbeafe" }] },
+        { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#3b82f6" }] },
     ];
 
     const markerPosition = { lat: 28.6139, lng: 77.209 };
 
     return (
-        <div className="relative h-full w-full bg-slate-950">
+        <div className="relative h-full w-full bg-slate-50">
             <GoogleMap
                 mapContainerStyle={{ width: "100%", height: "100%" }}
                 zoom={5}

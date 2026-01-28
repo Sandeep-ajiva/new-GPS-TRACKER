@@ -87,7 +87,7 @@ exports.login = async (req, res) => {
 
 exports.getMe = async (req, res) => {
   try {
-    const user = await User.findById(req.user.userId)
+    const user = await User.findById(req.user._id)
       .select("-passwordHash")
       .populate("organizationId", "name email phone");
     if (!user)

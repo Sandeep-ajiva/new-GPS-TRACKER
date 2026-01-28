@@ -12,8 +12,9 @@ const LiveMap = dynamic(() => import("@/components/admin/Map/LiveMap"), {
 
 export default function LiveTrackingPage() {
     const { data: liveDataRes, isLoading } = useGetLiveVehiclesQuery(undefined, {
-        pollingInterval: 5000,
-        refetchOnFocus: true,
+        pollingInterval: 30000, // Changed from 5000ms to 30000ms to reduce excessive API calls
+        refetchOnMountOrArgChange: true,
+        refetchOnFocus: false, // Disable refetch on focus to avoid unnecessary calls
         refetchOnReconnect: true
     });
 

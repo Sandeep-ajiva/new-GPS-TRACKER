@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect, useRef } from "react";
-import { Bell, Search, X, Building2, Car, Radio, User, Trash2 } from "lucide-react";
+import { Bell, Search, X, Building2, Car, Radio, User, Trash2, Menu } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useGetMeQuery } from "@/redux/api/usersApi";
@@ -12,7 +12,11 @@ import {
 } from "@/redux/api/notificationsApi";
 import { useGetOrganizationsQuery } from "@/redux/api/organizationApi";
 
-export default function Header() {
+type HeaderProps = {
+    onOpenSidebar?: () => void;
+};
+
+export default function Header({ onOpenSidebar }: HeaderProps) {
     const router = useRouter();
     const [searchQuery, setSearchQuery] = useState("");
     const [searchResults, setSearchResults] = useState<Array<{ type: string; id: string; name: string; details: string }>>([]);
@@ -20,9 +24,12 @@ export default function Header() {
     const [showNotifications, setShowNotifications] = useState(false);
 
     // Redux Hooks
-    const { data: userData } = useGetMeQuery(undefined);
-    const { data: notifData } = useGetNotificationsQuery(undefined, { pollingInterval: 15000 });
-    const { data: orgData } = useGetOrganizationsQuery(undefined);
+    const { data: userData } = useGetMeQuery(undefined, { refetchOnMountOrArgChange: true });
+    const { data: notifData } = useGetNotificationsQuery(undefined, {
+        pollingInterval: 60000, // Changed from 15000ms to 60000ms (60 seconds) to reduce excessive API calls
+        refetchOnMountOrArgChange: true,
+    });
+    const { data: orgData } = useGetOrganizationsQuery(undefined, { refetchOnMountOrArgChange: true });
 
     const [markAsRead] = useMarkAsReadMutation();
     const [deleteNotification] = useDeleteNotificationMutation();
@@ -122,17 +129,27 @@ export default function Header() {
         : "AD";
 
     return (
-        <header className="h-16 bg-[#111827] border-b border-[#1E293B] fixed top-0 right-0 left-64 z-40 px-6 flex items-center justify-between">
-            <div className="w-[420px] relative" ref={searchRef}>
-                {/* Search disabled temporarily as per refactor plan */}
-                <div className="relative opacity-50 cursor-not-allowed">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#9CA3AF] w-4 h-4" />
-                    <input
-                        type="text"
-                        placeholder="Search unavailable (Backend pending)..."
-                        disabled
-                        className="w-full pl-10 pr-4 py-2 border border-[#1E293B] rounded-xl text-sm font-semibold text-[#E5E7EB] bg-[#020617] focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:border-[#2563EB] placeholder-[#9CA3AF] transition cursor-not-allowed"
-                    />
+        <header className="h-16 bg-white/90 backdrop-blur border-b border-slate-200 fixed top-0 right-0 left-0 md:left-64 z-40 px-4 sm:px-6 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3 flex-1 min-w-0">
+                <button
+                    type="button"
+                    onClick={onOpenSidebar}
+                    className="md:hidden p-2 rounded-lg text-slate-600 hover:bg-slate-100 transition"
+                    aria-label="Open sidebar"
+                >
+                    <Menu size={18} />
+                </button>
+                <div className="w-full max-w-55 sm:max-w-90 md:max-w-105 relative" ref={searchRef}>
+                    {/* Search disabled temporarily as per refactor plan */}
+                    <div className="relative opacity-50 cursor-not-allowed">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
+                        <input
+                            type="text"
+                            placeholder="Search unavailable (Backend pending)..."
+                            disabled
+                            className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 placeholder-slate-400 transition cursor-not-allowed"
+                        />
+                    </div>
                 </div>
             </div>
 
@@ -140,26 +157,26 @@ export default function Header() {
                 <div className="relative" ref={notifRef}>
                     <button
                         onClick={() => setShowNotifications(!showNotifications)}
-                        className="relative p-2 text-[#9CA3AF] hover:bg-[#020617] rounded-full transition"
+                        className="relative p-2 text-slate-500 hover:bg-slate-100 rounded-full transition"
                     >
                         <Bell size={20} />
                         {unreadCount > 0 && (
-                            <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-[#EF4444] rounded-full border border-[#111827]"></span>
+                            <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border border-white"></span>
                         )}
                     </button>
 
                     {showNotifications && (
-                        <div className="absolute right-0 top-full mt-2 w-80 bg-[#020617] border border-[#1E293B] rounded-xl shadow-lg max-h-96 overflow-y-auto z-50">
-                            <div className="p-4 border-b border-[#1E293B] flex items-center justify-between sticky top-0 bg-[#020617]">
-                                <h3 className="text-sm font-black text-[#E5E7EB] uppercase tracking-widest">Notifications</h3>
+                        <div className="absolute right-0 top-full mt-2 w-72 sm:w-80 bg-white border border-slate-200 rounded-xl shadow-lg max-h-96 overflow-y-auto z-50">
+                            <div className="p-4 border-b border-slate-200 flex items-center justify-between sticky top-0 bg-white/95">
+                                <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Notifications</h3>
                                 <div className="flex items-center gap-2">
                                     {unreadCount > 0 && (
-                                        <span className="text-xs font-semibold text-[#EF4444]">{unreadCount} unread</span>
+                                        <span className="text-xs font-semibold text-red-500">{unreadCount} unread</span>
                                     )}
                                     {notifications.length > 0 && (
                                         <button
                                             onClick={handleClearAllNotifications}
-                                            className="text-xs font-semibold text-[#9CA3AF] hover:text-[#E5E7EB] underline"
+                                            className="text-xs font-semibold text-slate-500 hover:text-slate-900 underline"
                                         >
                                             Clear All
                                         </button>
@@ -168,27 +185,27 @@ export default function Header() {
                             </div>
                             <div className="max-h-80 overflow-y-auto">
                                 {notifications.length === 0 ? (
-                                    <div className="p-4 text-sm text-[#9CA3AF] text-center">No notifications</div>
+                                    <div className="p-4 text-sm text-slate-500 text-center">No notifications</div>
                                 ) : (
                                     notifications.map((notif: any) => (
                                         <div
                                             key={notif._id}
-                                            className={`relative group px-4 py-3 border-b border-[#1E293B] last:border-b-0 transition-colors ${!notif.read ? "bg-[#111827]" : ""
+                                            className={`relative group px-4 py-3 border-b border-slate-100 last:border-b-0 transition-colors ${!notif.read ? "bg-blue-50/60" : ""
                                                 }`}
                                         >
                                             <button
                                                 onClick={() => handleNotificationClick(notif)}
                                                 className="w-full text-left"
                                             >
-                                                <div className="text-sm font-semibold text-[#E5E7EB] pr-8">{notif.title}</div>
-                                                <div className="text-xs text-[#9CA3AF] mt-1">{notif.message}</div>
-                                                <div className="text-[10px] text-[#6B7280] mt-1">
+                                                <div className="text-sm font-semibold text-slate-900 pr-8">{notif.title}</div>
+                                                <div className="text-xs text-slate-500 mt-1">{notif.message}</div>
+                                                <div className="text-[10px] text-slate-400 mt-1">
                                                     {new Date(notif.createdAt || notif.timestamp).toLocaleString()}
                                                 </div>
                                             </button>
                                             <button
                                                 onClick={(e) => handleDeleteNotification(e, notif._id)}
-                                                className="absolute top-3 right-3 p-1 text-[#9CA3AF] hover:text-[#EF4444] opacity-0 group-hover:opacity-100 transition-opacity"
+                                                className="absolute top-3 right-3 p-1 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
                                                 title="Delete notification"
                                             >
                                                 <Trash2 size={14} />
@@ -201,23 +218,23 @@ export default function Header() {
                     )}
                 </div>
 
-                <div className="h-8 w-px bg-[#1E293B]"></div>
+                <div className="h-8 w-px bg-slate-200"></div>
 
                 <button
                     onClick={() => router.push("/admin/profile")}
-                    className="flex items-center gap-3 hover:bg-[#020617] rounded-lg px-2 py-1 transition-colors cursor-pointer"
+                    className="flex items-center gap-3 hover:bg-slate-100 rounded-lg px-2 py-1 transition-colors cursor-pointer"
                 >
                     <div className="text-right hidden sm:block">
-                        <p className="text-sm font-semibold text-[#E5E7EB]">{adminUser.name || "Admin User"}</p>
-                        <p className="text-xs text-[#9CA3AF]">{adminUser.email || "admin@example.com"}</p>
+                        <p className="text-sm font-semibold text-slate-900">{adminUser.name || "Admin User"}</p>
+                        <p className="text-xs text-slate-500">{adminUser.email || "admin@example.com"}</p>
                     </div>
                     {adminUser.avatar ? (
-                        <div className="w-10 h-10 bg-[#2563EB] rounded-full flex items-center justify-center text-white font-bold border-2 border-[#2563EB]">
+                        <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold border-2 border-blue-200">
                             {/* If avatar is URL, use img, else initials */}
                             {adminUser.avatar.startsWith("http") ? <img src={adminUser.avatar} className="w-full h-full rounded-full object-cover" /> : adminUser.avatar}
                         </div>
                     ) : (
-                        <div className="w-10 h-10 bg-[#2563EB] rounded-full flex items-center justify-center text-white font-bold border-2 border-[#2563EB]">
+                        <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold border-2 border-blue-200">
                             {userInitials}
                         </div>
                     )}

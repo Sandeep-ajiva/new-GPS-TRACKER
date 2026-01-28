@@ -13,7 +13,8 @@ import {
     Link as LinkIcon,
     Building2,
     Settings,
-    LogOut
+    LogOut,
+    X
 } from "lucide-react";
 
 const menuGroups = [
@@ -49,7 +50,14 @@ const menuGroups = [
     }
 ];
 
-export default function Sidebar() {
+type SidebarProps = {
+    className?: string;
+    showClose?: boolean;
+    onClose?: () => void;
+    onNavigate?: () => void;
+};
+
+export default function Sidebar({ className, showClose, onClose, onNavigate }: SidebarProps) {
     const pathname = usePathname();
     const router = useRouter();
     const [rootOrg, setRootOrgState] = useState(getRootOrganization());
@@ -64,12 +72,22 @@ export default function Sidebar() {
     }, []);
 
     return (
-        <aside className="w-64 bg-[#0F172A] border-r border-[#1E293B] h-screen fixed left-0 top-0 flex flex-col z-50">
-            <div className="h-16 flex items-center px-6 border-b border-[#1E293B]">
-                <span className="text-xl font-black text-[#E5E7EB] tracking-tight">
+        <aside className={`w-64 bg-white border-r border-slate-200 h-screen fixed left-0 top-0 flex flex-col z-50 ${className || ""}`}>
+            <div className="h-16 flex items-center px-6 border-b border-slate-200 justify-between">
+                <span className="text-xl font-black text-slate-900 tracking-tight">
                     {orgName}
-                    <span className="text-[#6B7280] text-xs font-semibold ml-2 uppercase tracking-[0.35em]">Admin</span>
+                    <span className="text-slate-400 text-xs font-semibold ml-2 uppercase tracking-[0.35em]">Admin</span>
                 </span>
+                {showClose && (
+                    <button
+                        type="button"
+                        className="md:hidden p-2 rounded-lg text-slate-500 hover:bg-slate-100 transition"
+                        onClick={onClose}
+                        aria-label="Close sidebar"
+                    >
+                        <X size={18} />
+                    </button>
+                )}
             </div>
 
             {/* Navigation */}
@@ -77,7 +95,7 @@ export default function Sidebar() {
                 <div className="space-y-6 px-4">
                     {menuGroups.map((group) => (
                         <div key={group.title}>
-                            <h3 className="px-1 mb-2 text-[10px] font-black uppercase text-[#6B7280] tracking-[0.35em]">
+                            <h3 className="px-1 mb-2 text-[10px] font-black uppercase text-slate-400 tracking-[0.35em]">
                                 {group.title}
                             </h3>
                             <ul className="space-y-1">
@@ -90,10 +108,13 @@ export default function Sidebar() {
                                         <li key={item.name}>
                                             <button
                                                 type="button"
-                                                onClick={() => router.push(item.href)}
+                                                onClick={() => {
+                                                    router.push(item.href);
+                                                    onNavigate?.();
+                                                }}
                                                 className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold transition-all w-full relative ${isActive
-                                                        ? "bg-[#020617] text-[#E5E7EB] before:absolute before:left-0 before:top-0 before:bottom-0 before:w-[3px] before:bg-[#2563EB] before:rounded-r"
-                                                        : "text-[#9CA3AF] hover:bg-[#020617] hover:text-[#E5E7EB]"
+                                                        ? "bg-blue-50 text-slate-900 before:absolute before:left-0 before:top-0 before:bottom-0 before:w-0.75 before:bg-blue-500 before:rounded-r"
+                                                        : "text-slate-500 hover:bg-slate-100 hover:text-slate-900"
                                                     }`}
                                                 aria-current={isActive ? "page" : undefined}
                                             >
@@ -110,7 +131,7 @@ export default function Sidebar() {
             </nav>
 
             {/* Footer / Logout */}
-            <div className="p-4 border-t border-[#1E293B]">
+            <div className="p-4 border-t border-slate-200">
                 <button
                     onClick={() => {
                         if (typeof window !== "undefined") {
@@ -122,7 +143,7 @@ export default function Sidebar() {
                             }
                         }
                     }}
-                    className="flex items-center gap-3 w-full px-3 py-2.5 text-sm font-semibold text-[#EF4444] hover:bg-[#020617] rounded-lg transition-colors">
+                    className="flex items-center gap-3 w-full px-3 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-50 rounded-lg transition-colors">
                     <LogOut size={20} />
                     Sign Out
                 </button>

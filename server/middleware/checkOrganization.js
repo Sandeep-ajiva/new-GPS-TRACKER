@@ -1,4 +1,4 @@
-const Organization = require("../models/Organization");
+const Organization = require("../Modules/organizations/model");
 
 module.exports = async function checkOrganization(req, res, next) {
   try {
@@ -23,6 +23,8 @@ module.exports = async function checkOrganization(req, res, next) {
         message: "Organization context missing",
       });
     }
+
+    req.orgId = user.organizationId;
 
     // 🔥 fetch parent + child orgs
     const orgs = await Organization.find({

@@ -7,7 +7,8 @@ export type FieldType =
   | "select"
   | "textarea"
   | "checkbox"
-  | "file";
+  | "file"
+  | "date";
 
 export interface FormOption {
   label: string;

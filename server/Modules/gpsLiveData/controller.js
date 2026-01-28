@@ -50,7 +50,7 @@ exports.create = async (req, res) => {
     }
 };
 
-exports.getAll = async (req, res) => {
+exports.getLiveData = async (req, res) => {
     try {
         const liveData = await GpsLiveData.find()
             .populate('organizationId')
@@ -66,7 +66,7 @@ exports.getAll = async (req, res) => {
     }
 };
 
-exports.getByVehicle = async (req, res) => {
+exports.getLiveDataByVehicle = async (req, res) => {
     try {
         const liveData = await GpsLiveData.findOne({ vehicleId: req.params.vehicleId })
             .populate('organizationId')

@@ -58,16 +58,20 @@ export default function UsersPage() {
     undefined,
     {
       skip: !!filters.organizationId, // Skip if filtering by org
+      refetchOnMountOrArgChange: true,
     },
   );
 
   const { data: orgUsersData, isLoading: isOrgUsersLoading } =
     useGetManagerByOrganizationQuery(filters.organizationId, {
       skip: !filters.organizationId, // Skip if NOT filtering by org
+      refetchOnMountOrArgChange: true,
     });
 
   const { data: orgData, isLoading: isOrgLoading } =
-    useGetOrganizationsQuery(undefined);
+    useGetOrganizationsQuery(undefined, {
+      refetchOnMountOrArgChange: true,
+    });
 
   const [createUser, { isLoading: isCreating }] = useCreateUserMutation();
   const [updateUser, { isLoading: isUpdating }] = useUpdateUserMutation();
@@ -159,15 +163,15 @@ export default function UsersPage() {
     // Password only on creation
     ...(!editingUser
       ? [
-          {
-            name: "passwordHash",
-            label: "Password",
-            type: "password" as const,
-            required: true,
-            placeholder: "********",
-            icon: <Lock size={14} className="text-slate-500" />,
-          },
-        ]
+        {
+          name: "passwordHash",
+          label: "Password",
+          type: "password" as const,
+          required: true,
+          placeholder: "********",
+          icon: <Lock size={14} className="text-slate-500" />,
+        },
+      ]
       : []),
     {
       name: "role",
@@ -206,10 +210,7 @@ export default function UsersPage() {
     },
   ];
 
-  const openCreateModal = () => {
-    setEditingUser(null);
-    openPopup("userModal");
-  };
+
 
   const openEditModal = (user: User) => {
     setEditingUser(user);
@@ -326,21 +327,13 @@ export default function UsersPage() {
               Manage administrators and access across organizations.
             </p>
           </div>
-          <div className="flex gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row">
             <button
               onClick={() => setShowFilters(!showFilters)}
               className="rounded-xl bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-widest text-slate-700 shadow-sm transition hover:bg-slate-200"
             >
               <span className="inline-flex items-center gap-2">
                 <Filter size={16} /> Filter Users
-              </span>
-            </button>
-            <button
-              onClick={openCreateModal}
-              className="rounded-xl bg-slate-900 px-4 py-2 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-slate-900/20 transition hover:bg-slate-800"
-            >
-              <span className="inline-flex items-center gap-2">
-                <Plus size={16} /> Add User
               </span>
             </button>
           </div>
@@ -439,21 +432,21 @@ export default function UsersPage() {
           initialData={
             editingUser
               ? {
-                  firstName: editingUser.firstName,
-                  lastName: editingUser.lastName,
-                  email: editingUser.email,
-                  mobile: editingUser.mobile,
-                  role:
-                    editingUser.role === "superadmin" ||
+                firstName: editingUser.firstName,
+                lastName: editingUser.lastName,
+                email: editingUser.email,
+                mobile: editingUser.mobile,
+                role:
+                  editingUser.role === "superadmin" ||
                     editingUser.role === "driver"
-                      ? "admin"
-                      : editingUser.role,
-                  organizationId:
-                    editingUser.organizationId?._id ||
-                    editingUser.organizationId ||
-                    "",
-                  status: editingUser.status,
-                }
+                    ? "admin"
+                    : editingUser.role,
+                organizationId:
+                  typeof editingUser.organizationId === "object"
+                    ? editingUser.organizationId._id
+                    : editingUser.organizationId || "",
+                status: editingUser.status,
+              }
               : undefined
           }
           onSubmit={handleSubmit}

@@ -9,29 +9,50 @@ const Controller = require("./controller");
 router.get(
   "/",
   requireAuth,
-  checkAuthorization(["admin", "manager", "viewer"], "alerts", "read"),
+  checkAuthorization(["superadmin", "admin", "manager", "driver", "viewer"], "alerts", "read"),
   Controller.getAll
 );
 
 router.get(
   "/vehicle/:vehicleId",
   requireAuth,
-  checkAuthorization(["admin", "manager"], "alerts", "read"),
+  checkAuthorization(["superadmin", "admin", "manager", "driver", "viewer"], "alerts", "read"),
   Controller.getByVehicle
 );
 
 router.get(
   "/unacknowledged",
   requireAuth,
-  checkAuthorization(["admin", "manager"], "alerts", "read"),
+  checkAuthorization(["superadmin", "admin", "manager", "driver", "viewer"], "alerts", "read"),
   Controller.getUnacknowledged
 );
 
 router.post(
   "/:id/ack",
   requireAuth,
-  checkAuthorization(["admin", "manager"], "alerts", "update"),
+  checkAuthorization(["superadmin", "admin", "manager", "driver", "viewer"], "alerts", "update"),
   Controller.acknowledge
+);
+
+router.post(
+  "/ack-all",
+  requireAuth,
+  checkAuthorization(["superadmin", "admin", "manager", "driver", "viewer"], "alerts", "update"),
+  Controller.acknowledgeAll
+);
+
+router.delete(
+  "/:id",
+  requireAuth,
+  checkAuthorization(["superadmin", "admin", "manager", "driver", "viewer"], "alerts", "delete"),
+  Controller.delete
+);
+
+router.delete(
+  "/",
+  requireAuth,
+  checkAuthorization(["superadmin", "admin", "manager", "driver", "viewer"], "alerts", "delete"),
+  Controller.deleteAll
 );
 
 module.exports = router;
