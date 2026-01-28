@@ -6,32 +6,47 @@ const verifyToken = require("../../middleware/verifyToken");
 const checkAuthorization = require("../../middleware/checkAuthorization");
 const checkOrganization = require("../../middleware/checkOrganization");
 
+// AUTH
+router.post("/login", Controller.login);
+router.get("/me", verifyToken, Controller.getMe);
+
+// SUPERADMIN – GLOBAL
 router.get(
   "/",
-  requireAuth,
-  checkAuthorization(["superadmin", "admin"], "users", "read"),
-  Controller.getAll,
+  verifyToken,
+  checkAuthorization(["superadmin"], "users", "read"),
+  Controller.getAll
 );
 
-router.get("/me", requireAuth, Controller.getMe);
+router.put(
+  "/:id",
+  verifyToken,
+  checkAuthorization(["superadmin"], "users", "update"),
+  Controller.updateUser
+);
 
+router.delete(
+  "/:id",
+  verifyToken,
+  checkAuthorization(["superadmin"], "users", "delete"),
+  Controller.deleteUser
+);
+
+// ORG-SCOPED
 router.get(
-  "/users",
+  "/by-organization",
   verifyToken,
   checkAuthorization(["admin", "superadmin"], "users", "read"),
   checkOrganization,
-  Controller.getManagerByOrganization,
+  Controller.getManagerByOrganization
 );
 
-router.post("/login", Controller.login);
-
-router.post("/organization-admin", verifyToken,
-    checkAuthorization(["superadmin"], "users", "create"), 
-    handleLogoUpload,
-    Controller.createOrganizationWithAdmin);
-
-
-router.put("/:id", verifyToken, checkAuthorization(["superadmin"], "users", "update"), Controller.updateUser);
-router.delete("/:id", verifyToken, checkAuthorization(["superadmin"], "users", "delete"), Controller.deleteUser);
+// CREATE USER
+router.post(
+  "/",
+  verifyToken,
+  checkAuthorization(["admin", "superadmin"], "users", "create"),
+  Controller.createUser
+);
 
 module.exports = router;

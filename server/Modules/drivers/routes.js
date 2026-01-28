@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 
-const verifyToken = require("../../middleware/verifyToken");
+const requireAuth = require("../../middleware/verifyToken");
 const checkOrganization = require("../../middleware/checkOrganization");
 const checkAuthorization = require("../../middleware/checkAuthorization");
 
@@ -17,7 +17,7 @@ router.post(
 // Create Driver + User in single request (Industry Standard)
 router.post(
   "/create-with-user",
-  verifyToken,
+  requireAuth,
   checkAuthorization(["admin", "superadmin", "manager"], "drivers", "create"),
   checkOrganization,
   Controller.createDriverUser
