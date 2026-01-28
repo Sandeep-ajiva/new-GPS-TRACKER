@@ -406,7 +406,60 @@ exports.remove = async (req, res) => {
     return res.status(error.status || 500).json({
       status: false,
       message: error.message,
-      errors: error.errors || null,
+      errors: error.errors || null
+    });
+  }
+};
+
+/**
+ * =========================
+ * GET VEHICLES BY SUBORGANIZATION
+ * =========================
+ */
+exports.getBySuborganization = async (req, res) => {
+  try {
+    const { suborganizationId } = req.params;
+    const { vehicleType, status, page, limit, search } = req.query;
+
+    // Validate suborganization ID
+    if (!mongoose.isValidObjectId(suborganizationId)) {
+      return res.status(400).json({
+        status: false,
+        message: "Invalid suborganization ID"
+      });
+    }
+
+    // Check if suborganization belongs to user's organization
+    if (req.user.role !== "admin" && suborganizationId !== req.orgId.toString()) {
+      return res.status(403).json({
+        status: false,
+        message: "Forbidden: Cannot access vehicles from other suborganizations"
+      });
+    }
+
+    const filter = {
+      organizationId: mongoose.Types.ObjectId(suborganizationId)
+    };
+
+    if (vehicleType) filter.vehicleType = vehicleType;
+    if (status) filter.status = status;
+
+    const result = await paginate(
+      VehicleModel,
+      filter,
+      page,
+      limit,
+      ["createdBy"],
+      ["vehicleNumber", "model", "vehicleType"],
+      search
+    );
+
+    return res.status(200).json(result);
+  } catch (error) {
+    console.error("Get By Suborganization Error:", error);
+    return res.status(500).json({
+      status: false,
+      message: error.message,
     });
   }
 };

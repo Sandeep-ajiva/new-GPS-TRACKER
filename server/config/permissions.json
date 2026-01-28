@@ -6,11 +6,12 @@
       "users": ["create", "read", "update", "delete"],
       "vehicle": ["create", "read", "update", "delete"],
       "gpsDevice": ["create", "read", "update", "delete"],
-      "deviceMapping": ["create", "read", "update", "delete"],
+      "vehicleMapping": ["create", "read", "update", "delete"],
       "gpsLiveData": ["create", "read", "update", "delete"],
       "gpsHistory": ["create", "read", "update", "delete"],
-      "alerts": ["read", "update", "delete"],
-      "drivers": ["create", "read", "update", "delete"]
+      "drivers": ["create", "read", "update", "delete"],
+      "vehicleDriverMapping": ["create", "read", "update", "delete"],
+      "alerts": ["read", "update", "delete"]
     }
   },
 
@@ -21,11 +22,14 @@
       "users": ["create", "read", "update", "delete"],
       "vehicle": ["create", "read", "update", "delete"],
       "gpsDevice": ["create", "read", "update", "delete"],
-      "deviceMapping": ["create", "read", "update", "delete"],
+      "drivers": ["create", "read", "update", "delete"],
+      "vehicleMapping": ["create", "read", "update", "delete"],
       "gpsLiveData": ["read"],
       "gpsHistory": ["read"],
       "alerts": ["read", "update", "delete"],
-      "drivers": ["create", "read", "update", "delete"]
+      "drivers": ["create", "read", "update", "delete"],
+      "vehicleDriverMapping": ["create", "read", "update", "delete"]
+
     }
   },
 
@@ -36,7 +40,7 @@
       "users": ["create", "read", "update"],
       "vehicle": ["create", "read", "update"],
       "gpsDevice": ["read"],
-      "deviceMapping": ["read"],
+      "vehicleMapping": ["read"],
       "gpsLiveData": ["read"],
       "gpsHistory": ["read"],
       "alerts": ["read", "update", "delete"],

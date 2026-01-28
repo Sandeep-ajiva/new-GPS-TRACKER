@@ -5,6 +5,44 @@ import { Activity, Car, ExternalLink, Plus, Radio, Users } from "lucide-react";
 import { useRouter } from "next/navigation";
 import OrganizationCreateModal from "@/components/admin/Modals/OrganizationCreateModal";
 import OrganizationMap from "@/components/admin/Map/OrganizationMap";
+import { useGetOrganizationsQuery } from "@/redux/api/organizationApi";
+import { useGetVehiclesQuery } from "@/redux/api/vehicleApi";
+import { useGetGpsDevicesQuery } from "@/redux/api/gpsDeviceApi";
+import { useGetLiveVehiclesQuery } from "@/redux/api/gpsLiveApi";
+
+interface ApiOrg {
+  _id: string;
+  name: string;
+  address?: {
+    city?: string;
+    state?: string;
+  };
+  adminUser?: string;
+  email: string;
+  phone: string;
+  status: string;
+  geo?: {
+    lat?: number;
+    lng?: number;
+  };
+}
+
+interface ApiVehicle {
+  _id: string;
+  organizationId: string;
+  vehicleNumber: string;
+  driverId?: string;
+}
+
+interface ApiLiveDataItem {
+  vehicleId?: { _id: string } | string;
+  currentSpeed?: number;
+  updatedAt?: string;
+  currentLocation?: string;
+  movementStatus?: string;
+  latitude?: number;
+  longitude?: number;
+}
 
 type BranchRecord = {
   id: string;
@@ -47,141 +85,64 @@ export default function DashboardPage() {
   const [isOrgModalOpen, setIsOrgModalOpen] = useState(false);
   const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
-  const [orgs, setOrgs] = useState<OrgRecord[]>([
-    {
-      id: "org_ajiva",
-      name: "Ajiva Tracker",
-      address: "24 Connaught Place, New Delhi",
-      adminId: "adm_901",
-      adminName: "Diana Kapoor",
-      email: "admin@ajiva.com",
-      phone: "+91 98765 43210",
-      status: "active",
-      position: { lat: 28.6329, lng: 77.2195 },
-      branches: [
-        {
-          id: "org_ajiva_br_1",
-          name: "Ajiva East Branch",
-          address: "Laxmi Nagar, Delhi",
-          manager: "Sahil Verma",
-          status: "active",
-          position: { lat: 28.6412, lng: 77.2863 },
-        },
-        {
-          id: "org_ajiva_br_2",
-          name: "Ajiva South Branch",
-          address: "Saket, Delhi",
-          manager: "Neha Rao",
-          status: "paused",
-          position: { lat: 28.5244, lng: 77.2066 },
-        },
-      ],
-    },
-    {
-      id: "org_north",
-      name: "North Branch",
-      address: "Sector 17, Chandigarh",
-      adminId: "adm_902",
-      adminName: "Rohan Singh",
-      email: "north@ajiva.com",
-      phone: "+91 98765 43211",
-      status: "active",
-      position: { lat: 30.7333, lng: 76.7794 },
-      branches: [
-        {
-          id: "org_north_br_1",
-          name: "North Logistics Hub",
-          address: "Industrial Area, Chandigarh",
-          manager: "Kunal Kapoor",
-          status: "active",
-          position: { lat: 30.7112, lng: 76.806 },
-        },
-      ],
-    },
-    {
-      id: "org_west",
-      name: "West Branch",
-      address: "MI Road, Jaipur",
-      adminId: "adm_903",
-      adminName: "Aanya Mehta",
-      email: "west@ajiva.com",
-      phone: "+91 98765 43212",
-      status: "paused",
-      position: { lat: 26.9124, lng: 75.7873 },
-      branches: [
-        {
-          id: "org_west_br_1",
-          name: "West Service Bay",
-          address: "Civil Lines, Jaipur",
-          manager: "Karan Meena",
-          status: "active",
-          position: { lat: 26.9121, lng: 75.8021 },
-        },
-      ],
-    },
-  ]);
 
-  const vehicles: VehicleRecord[] = [
-    {
-      id: "org_ajiva:veh_1",
-      orgId: "org_ajiva",
-      branchId: "org_ajiva_br_1",
-      label: "DL 10CK1840",
-      driverName: "Dave Mathew",
-      driverId: "drv_101",
-      speed: 46,
-      lastUpdated: "2m ago",
-      location: "Connaught Place, Delhi",
-      status: "running",
-      position: { lat: 28.6312, lng: 77.2167 },
-    },
-    {
-      id: "org_ajiva:veh_2",
-      orgId: "org_ajiva",
-      branchId: "org_ajiva_br_2",
-      label: "DL 10CK1844",
-      driverName: "Asha Patel",
-      driverId: "drv_102",
-      speed: 0,
-      lastUpdated: "6m ago",
-      location: "Karol Bagh, Delhi",
-      status: "stopped",
-      position: { lat: 28.6512, lng: 77.189 },
-    },
-    {
-      id: "org_north:veh_1",
-      orgId: "org_north",
-      branchId: "org_north_br_1",
-      label: "PB 10AX2234",
-      driverName: "Mitchell John",
-      driverId: "drv_201",
-      speed: 12,
-      lastUpdated: "1m ago",
-      location: "Sector 17, Chandigarh",
-      status: "idle",
-      position: { lat: 30.7394, lng: 76.7752 },
-    },
-    {
-      id: "org_west:veh_1",
-      orgId: "org_west",
-      branchId: "org_west_br_1",
-      label: "RJ 14ZX8890",
-      driverName: "Karan Meena",
-      driverId: "drv_301",
-      speed: 55,
-      lastUpdated: "30s ago",
-      location: "MI Road, Jaipur",
-      status: "running",
-      position: { lat: 26.9166, lng: 75.7801 },
-    },
-  ];
+  const { data: orgsData, isLoading: isOrgsLoading } = useGetOrganizationsQuery({});
+  const { data: vehiclesData, isLoading: isVehiclesLoading } = useGetVehiclesQuery({});
+  const { data: devicesData, isLoading: isDevicesLoading } = useGetGpsDevicesQuery({});
+  const { data: liveData, isLoading: isLiveLoading } = useGetLiveVehiclesQuery({});
 
-  const devices = [
-    { _id: "gps_1", imei: "86543210001" },
-    { _id: "gps_2", imei: "86543210002" },
-    { _id: "gps_3", imei: "86543210003" },
-    { _id: "gps_4", imei: "86543210004" },
-  ];
+  const orgs: OrgRecord[] = useMemo(() => {
+    if (!orgsData?.docs) return [];
+    return orgsData.docs.map((org: ApiOrg) => ({
+      id: org._id,
+      name: org.name,
+      address: org.address ? `${org.address.city || ''}, ${org.address.state || ''}` : "N/A",
+      adminId: org.adminUser || "N/A",
+      adminName: "Admin", // Should be fetched or populated
+      email: org.email,
+      phone: org.phone,
+      status: org.status === "active" ? "active" : "paused",
+      position: { lat: org.geo?.lat || 28.6139, lng: org.geo?.lng || 77.2090 },
+      branches: [], // Nested branches not currently returned by API
+    }));
+  }, [orgsData]);
+
+  const vehicles: VehicleRecord[] = useMemo(() => {
+    if (!vehiclesData?.docs) return [];
+    
+    // Create a map of live data by vehicleId for quick lookup
+    const liveDataMap = new Map();
+    if (liveData?.data) {
+        liveData.data.forEach((item: ApiLiveDataItem) => {
+            if (item.vehicleId) {
+                const vId = typeof item.vehicleId === 'string' ? item.vehicleId : item.vehicleId._id;
+                liveDataMap.set(vId, item);
+            }
+        });
+    }
+
+    return vehiclesData.docs.map((vehicle: ApiVehicle) => {
+      const liveInfo = liveDataMap.get(vehicle._id);
+      return {
+        id: vehicle._id,
+        orgId: vehicle.organizationId,
+        branchId: undefined, // Branch logic needed
+        label: vehicle.vehicleNumber,
+        driverName: "Unknown Driver", // Not populated
+        driverId: vehicle.driverId || "N/A",
+        speed: liveInfo?.currentSpeed || 0,
+        lastUpdated: liveInfo?.updatedAt ? new Date(liveInfo.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Recently",
+        location: liveInfo?.currentLocation || "Location Unavailable",
+        status: liveInfo?.movementStatus === "moving" ? "running" : (liveInfo?.movementStatus || "stopped"),
+        position: { lat: liveInfo?.latitude || 28.6139, lng: liveInfo?.longitude || 77.2090 },
+      };
+    });
+  }, [vehiclesData, liveData]);
+
+  const devices = useMemo(() => {
+     if (!devicesData?.docs) return [];
+     return devicesData.docs;
+  }, [devicesData]);
 
   const orgPoints = useMemo(
     () =>
@@ -210,7 +171,7 @@ export default function DashboardPage() {
 
   const displayLiveData = vehicles.map((vehicle) => ({ status: vehicle.status }));
   const onlineVehicles = displayLiveData.filter((v) => v.status === "running").length;
-  const offlineVehicles = vehicles.length - onlineVehicles;
+  // const offlineVehicles = vehicles.length - onlineVehicles;
 
   const selectedOrg = orgs.find((org) => org.id === selectedOrgId) || null;
   const selectedBranches = selectedOrg ? selectedOrg.branches : [];
@@ -220,6 +181,10 @@ export default function DashboardPage() {
     setSelectedOrgId(orgId);
     setSelectedVehicleId(null);
   };
+
+  if (isOrgsLoading || isVehiclesLoading || isDevicesLoading || isLiveLoading) {
+      return <div className="p-10 text-center text-slate-400">Loading Dashboard...</div>;
+  }
 
   return (
     <div className="space-y-8 pb-10">
@@ -248,23 +213,8 @@ export default function DashboardPage() {
         isOpen={isOrgModalOpen}
         onClose={() => setIsOrgModalOpen(false)}
         variant="dark"
-        onCreate={(payload) => {
-          const id = `org_${Date.now()}`;
-          setOrgs((prev) => [
-            ...prev,
-            {
-              id,
-              name: payload.name,
-              address: payload.address,
-              adminId: `adm_${Math.floor(Math.random() * 900 + 100)}`,
-              adminName: "New Admin",
-              email: payload.email,
-              phone: payload.phone,
-              status: "active",
-              position: { lat: 28.7 + Math.random() * 0.3, lng: 77.1 + Math.random() * 0.3 },
-              branches: [],
-            },
-          ]);
+        onCreate={() => {
+            // Ideally should call createOrganization mutation here
         }}
       />
 
@@ -288,7 +238,7 @@ export default function DashboardPage() {
               </span>
             </div>
           </div>
-          <div className="space-y-3">
+          <div className="space-y-3 h-[600px] overflow-y-auto pr-2 custom-scrollbar">
             {orgs.map((org) => {
               const vehicleCount = vehicles.filter((vehicle) => vehicle.orgId === org.id).length;
               const isActive = org.id === selectedOrgId;
@@ -479,8 +429,8 @@ export default function DashboardPage() {
   );
 }
 
-function StatCard({ title, value, icon, color }: any) {
-  const colors: any = {
+function StatCard({ title, value, icon, color }: { title: string; value: number | string; icon: React.ReactNode; color: string }) {
+  const colors: Record<string, string> = {
     blue: "bg-slate-900/70 text-emerald-200 ring-1 ring-emerald-500/40",
     orange: "bg-slate-900/70 text-amber-200 ring-1 ring-amber-500/40",
     green: "bg-slate-900/70 text-emerald-200 ring-1 ring-emerald-500/40",

@@ -6,60 +6,89 @@ import ApiErrorBoundary from "@/components/admin/ErrorBoundary/ApiErrorBoundary"
 import { Link2, Trash2, Plus } from "lucide-react";
 import { toast } from "sonner";
 
-const demoVehicles = [
-    { _id: "veh_1", vehicleNumber: "DL 10CK1840", model: "Camry" },
-    { _id: "veh_2", vehicleNumber: "PB 10AX2234", model: "Tata 407" },
-];
+import {
+  useGetDeviceMappingsQuery,
+  useAssignDeviceMutation,
+  useUnassignDeviceMutation,
+} from "@/redux/api/deviceMappingApi";
+import { useGetVehiclesQuery } from "@/redux/api/vehicleApi";
+import { useGetGpsDevicesQuery } from "@/redux/api/gpsDeviceApi";
 
-const demoDevices = [
-    { _id: "gps_1", imei: "86543210001" },
-    { _id: "gps_2", imei: "86543210002" },
-];
+interface VehicleMapping {
+  _id: string;
+  vehicleId: { _id: string; vehicleNumber: string; organizationId?: { name: string } } | null;
+  gpsDeviceId: { _id: string; imei: string } | null;
+  createdAt: string;
+}
 
-const demoMappings = [
-    { _id: "map_1", vehicleId: demoVehicles[0], deviceId: demoDevices[0], createdAt: new Date().toISOString() },
-];
+// Helper to filter items locally if API doesn't support 'available' filter
+const isAvailable = (id: string, mappings: VehicleMapping[], field: 'vehicleId' | 'gpsDeviceId') => {
+    return !mappings.some(m => m[field]?._id === id);
+};
 
 export default function DeviceMappingPage() {
-    const [mappings, setMappings] = useState(demoMappings);
-    const [vehicles] = useState(demoVehicles);
-    const [devices] = useState(demoDevices);
+    const { data: mappingsData, isLoading: isMappingsLoading } = useGetDeviceMappingsQuery({});
+    const { data: vehiclesData, isLoading: isVehiclesLoading } = useGetVehiclesQuery({});
+    const { data: devicesData, isLoading: isDevicesLoading } = useGetGpsDevicesQuery({});
+
+    const [assignDevice] = useAssignDeviceMutation();
+    const [unassignDevice] = useUnassignDeviceMutation();
+
+    const mappings: VehicleMapping[] = mappingsData?.docs || [];
+    const allVehicles = vehiclesData?.docs || [];
+    const allDevices = devicesData?.docs || [];
 
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [formData, setFormData] = useState({ vehicleId: "", deviceId: "" });
 
-    // Filter available vehicles and devices
-    const assignedVehicleIds = new Set(mappings?.map((m: any) => m.vehicleId?._id));
-    const assignedDeviceIds = new Set(mappings?.map((m: any) => m.deviceId?._id));
+    // Client-side filtering for available dropdowns
+    // Note: Ideally backend should provide endpoints for /vehicles/available and /gps-devices/available
+    // But for now we might need to rely on what lists we have.
+    // Assuming GET /vehicles and GET /gps-devices return ALL items, we filter out those in mappings.
+    const assignedVehicleIds = new Set(mappings.map(m => m.vehicleId?._id));
+    const assignedDeviceIds = new Set(mappings.map(m => m.gpsDeviceId?._id));
 
-    const availableVehicles = vehicles?.filter((v: any) => !assignedVehicleIds.has(v._id));
-    const availableDevices = devices?.filter((d: any) => !assignedDeviceIds.has(d._id));
+    const availableVehicles = allVehicles.filter((v: any) => !assignedVehicleIds.has(v._id));
+    // GPS devices usually have a 'status' or 'vehicleId' field we could check, 
+    // but strictly checking against active mappings is safest here if we lack a specific "available" API param.
+    // Also, the backend for GET /gps-devices might already support filtering, but let's do safe client-side filter
+    const availableDevices = allDevices.filter((d: any) => !assignedDeviceIds.has(d._id)); // && d.status === 'active'
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        const vehicle = vehicles.find((v: any) => v._id === formData.vehicleId);
-        const device = devices.find((d: any) => d._id === formData.deviceId);
-        if (!vehicle || !device) {
-            toast.error("Select both vehicle and device");
-            return;
+        try {
+            const vehicle = allVehicles.find((v: any) => v._id === formData.vehicleId);
+            if (!vehicle) {
+                 toast.error("Vehicle not found");
+                 return;
+            }
+
+            await assignDevice({
+                vehicleId: formData.vehicleId,
+                gpsDeviceId: formData.deviceId,
+                organizationId: vehicle.organizationId // Required by backend
+            }).unwrap();
+
+            toast.success("Device assigned successfully");
+            closeModal();
+        } catch (error: any) {
+            toast.error(error.data?.message || "Failed to assign device");
         }
-        setMappings((prev) => [
-            ...prev,
-            {
-                _id: `map_${Date.now()}`,
-                vehicleId: vehicle,
-                deviceId: device,
-                createdAt: new Date().toISOString(),
-            },
-        ]);
-        toast.success("Device assigned successfully");
-        closeModal();
     };
 
-    const handleUnassign = async (id: string) => {
+    const handleUnassign = async (mapping: VehicleMapping) => {
         if (confirm("Are you sure you want to unassign this device?")) {
-            setMappings((prev) => prev.filter((mapping: any) => mapping._id !== id));
-            toast.success("Device unassigned");
+            try {
+                // Backend expects body with IDs
+                 await unassignDevice({
+                    vehicleId: mapping.vehicleId?._id,
+                    gpsDeviceId: mapping.gpsDeviceId?._id,
+                    organizationId: (mapping.vehicleId?.organizationId as any)?._id || (mapping.vehicleId as any)?.organizationId // Handling populated structure nuances
+                 }).unwrap();
+                toast.success("Device unassigned");
+            } catch (error: any) {
+                toast.error(error.data?.message || "Failed to unassign device");
+            }
         }
     }
 
@@ -73,13 +102,13 @@ export default function DeviceMappingPage() {
     };
 
     const columns = [
-        { header: "Vehicle", accessor: (row: any) => row.vehicleId?.vehicleNumber || "Unknown" },
-        { header: "Organization", accessor: (row: any) => row.vehicleId?.organizationId?.name || "N/A" },
-        { header: "Device IMEI", accessor: (row: any) => row.deviceId?.imei || "Unknown" },
-        { header: "Assigned Date", accessor: (row: any) => new Date(row.createdAt).toLocaleDateString() },
+        { header: "Vehicle", accessor: (row: VehicleMapping) => row.vehicleId?.vehicleNumber || "Unknown" },
+        { header: "Organization", accessor: (row: VehicleMapping) => (row.vehicleId?.organizationId as any)?.name || "N/A" },
+        { header: "Device IMEI", accessor: (row: VehicleMapping) => row.gpsDeviceId?.imei || "Unknown" },
+        { header: "Assigned Date", accessor: (row: VehicleMapping) => new Date(row.createdAt).toLocaleDateString() },
         {
-            header: "Actions", accessor: (row: any) => (
-                <button onClick={() => handleUnassign(row._id)} className="inline-flex items-center gap-1 text-[11px] font-black uppercase tracking-widest text-rose-300 hover:text-rose-200">
+            header: "Actions", accessor: (row: VehicleMapping) => (
+                <button onClick={() => handleUnassign(row)} className="inline-flex items-center gap-1 text-[11px] font-black uppercase tracking-widest text-rose-300 hover:text-rose-200">
                     <Trash2 size={14} /> Unassign
                 </button>
             )
@@ -103,7 +132,7 @@ export default function DeviceMappingPage() {
                     </button>
                 </div>
 
-            <Table columns={columns} data={mappings} loading={false} variant="dark" />
+            <Table columns={columns} data={mappings} loading={isMappingsLoading} variant="dark" />
 
             {isModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">

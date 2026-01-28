@@ -14,10 +14,13 @@ const validateGpsLiveDataData = async (data) => {
 exports.create = async (req, res) => {
     try {
         await validateGpsLiveDataData(req.body);
-
         const { organizationId, vehicleId, gpsDeviceId, latitude, longitude, currentLocation, currentSpeed, fuelPercentage, currentMileage, engineStatus, ignitionStatus, movementStatus, batteryLevel, signalStrength, acStatus, temperature } = req.body;
 
-        const gpsLiveData = await GpsLiveData.create({
+        // Upsert live data by gpsDeviceId so there is one latest record per device
+        const prev = await GpsLiveData.findOne({ gpsDeviceId });
+        const now = new Date();
+
+        const update = {
             organizationId,
             vehicleId,
             gpsDeviceId,
@@ -29,13 +32,21 @@ exports.create = async (req, res) => {
             currentMileage: currentMileage || 0,
             engineStatus: engineStatus || false,
             ignitionStatus: ignitionStatus || false,
-            movementStatus: movementStatus || "stopped",
+            movementStatus: movementStatus || (currentSpeed && currentSpeed > 0 ? "moving" : "stopped"),
             batteryLevel: batteryLevel || 0,
             signalStrength: signalStrength || 0,
             acStatus: acStatus || false,
-            temperature,
-            lastIgnitionOn: ignitionStatus ? new Date() : null,
-        })
+            temperature
+        };
+
+        if (ignitionStatus && !(prev && prev.ignitionStatus)) update.lastIgnitionOn = now;
+        if (!ignitionStatus && prev && prev.ignitionStatus) update.lastIgnitionOff = now;
+
+        const gpsLiveData = await GpsLiveData.findOneAndUpdate(
+            { gpsDeviceId },
+            { $set: update },
+            { upsert: true, new: true }
+        );
         return res.status(201).json({
             status: true,
             message: "GPS Live Data Created Successfully",

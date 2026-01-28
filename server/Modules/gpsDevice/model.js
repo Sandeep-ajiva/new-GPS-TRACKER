@@ -10,14 +10,17 @@ const gpsDeviceSchema = {
     required: true,
     index: true
   },
-  vehicleId: { type: mongoose.Schema.Types.ObjectId, ref: "Vehicle", default: null },
+  vehicleId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Vehicle",
+    default: null
+  },
 
 
   // 📟 Core Device Identity
   imei: {
     type: String,
     required: true,
-    unique: true,
     trim: true
   },
 
@@ -72,9 +75,10 @@ const gpsDeviceSchema = {
     default: null
   },
 
-  status: { 
-    type: String, enum: ["active", "inactive"], 
-    default: "active" },
+  status: {
+    type: String, enum: ["active", "inactive"],
+    default: "active"
+  },
 
   // ⏱️ Timestamps
   createdAt: {
@@ -88,4 +92,4 @@ const gpsDeviceSchema = {
   }
 };
 
-module.exports = new ajModel("GpsDevice", gpsDeviceSchema).getModel();
+module.exports = new ajModel("GpsDevice", gpsDeviceSchema, null).getModel();
