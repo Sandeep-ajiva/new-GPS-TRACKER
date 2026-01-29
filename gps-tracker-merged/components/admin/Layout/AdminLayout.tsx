@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
+import { getSecureItem } from "@/app/admin/Helpers/encryptionHelper";
 
 interface AdminLayoutProps {
     children: React.ReactNode;
@@ -10,10 +11,16 @@ interface AdminLayoutProps {
 
 export default function AdminLayout({ children }: AdminLayoutProps) {
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+    const [userRole, setUserRole] = useState<string | null>(null);
+
+    useEffect(() => {
+        const role = getSecureItem("userRole");
+        setUserRole(role);
+    }, []);
 
     return (
         <div className="min-h-screen bg-slate-50">
-            <Sidebar className="hidden md:flex" />
+            <Sidebar className="hidden md:flex" role={userRole} />
             {isSidebarOpen && (
                 <div className="fixed inset-0 z-40 md:hidden">
                     <button
@@ -24,6 +31,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                     />
                     <Sidebar
                         className="relative z-50"
+                        role={userRole}
                         showClose
                         onNavigate={() => setIsSidebarOpen(false)}
                         onClose={() => setIsSidebarOpen(false)}

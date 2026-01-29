@@ -20,6 +20,7 @@ import { usePopups } from "../Helpers/PopupContext";
 import { capitalizeFirstLetter } from "../Helpers/CapitalizeFirstLetter";
 import { DynamicModal } from "@/components/common";
 import { FormField } from "@/lib/formTypes";
+import { getSecureItem } from "@/app/admin/Helpers/encryptionHelper";
 import {
   Building2,
   Car,
@@ -106,6 +107,10 @@ export default function VehiclesPage() {
     driverId: "",
     deviceAssigned: "",
   });
+  const userRole = getSecureItem("userRole");
+  const canCreateVehicle = userRole === "admin" || userRole === "manager";
+  const canEditVehicle = userRole === "admin" || userRole === "manager";
+  const canDeleteVehicle = userRole === "admin";
 
   const [editingVehicle, setEditingVehicle] = useState<Vehicle | null>(null);
 
@@ -473,13 +478,15 @@ export default function VehiclesPage() {
       header: "Actions",
       accessor: (row: Vehicle) => (
         <div className="flex gap-2">
-          <button
-            onClick={() => openEditModal(row)}
-            className="text-blue-600 hover:text-blue-800"
-          >
-            <Edit size={16} />
-          </button>
-          {!isCreating && !isUpdating && !isDeleting && (
+          {canEditVehicle && (
+            <button
+              onClick={() => openEditModal(row)}
+              className="text-blue-600 hover:text-blue-800"
+            >
+              <Edit size={16} />
+            </button>
+          )}
+          {canDeleteVehicle && !isCreating && !isUpdating && !isDeleting && (
             <button
               onClick={() => handleDelete(row._id)}
               className="text-red-500 hover:text-red-700"
@@ -519,12 +526,14 @@ export default function VehiclesPage() {
             >
               <Filter size={16} /> Filtered Vehicles
             </button>
-            <button
-              onClick={openCreateModal}
-              className="bg-blue-600 text-white px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 hover:bg-blue-700 transition-colors"
-            >
-              <Plus size={16} /> Add Vehicle
-            </button>
+            {canCreateVehicle && (
+              <button
+                onClick={openCreateModal}
+                className="bg-blue-600 text-white px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 hover:bg-blue-700 transition-colors"
+              >
+                <Plus size={16} /> Add Vehicle
+              </button>
+            )}
           </div>
         </div>
 
@@ -665,34 +674,36 @@ export default function VehiclesPage() {
 
         <Table columns={columns} data={filteredVehicles} loading={isLoading} />
 
-        <DynamicModal
-          isOpen={isPopupOpen("vehicleModal")}
-          onClose={closeModal}
-          title={editingVehicle ? "Edit Vehicle" : "New Vehicle"}
-          description="Configure vehicle details and fleet assignment."
-          fields={vehicleFormFields}
-          initialData={
-            editingVehicle
-              ? {
-                organizationId:
-                  typeof editingVehicle.organizationId === "object"
-                    ? editingVehicle.organizationId._id
-                    : editingVehicle.organizationId,
-                vehicleType: editingVehicle.vehicleType,
-                vehicleNumber: editingVehicle.vehicleNumber,
-                model: editingVehicle.model || "",
-                year: editingVehicle.year || "",
-                color: editingVehicle.color || "",
-                status: editingVehicle.status,
-                runningStatus: editingVehicle.runningStatus || "",
-                driverId: editingVehicle.driverId || "",
-                deviceId: editingVehicle.deviceId || "",
-              }
-              : undefined
-          }
-          onSubmit={handleSubmit}
-          submitLabel={editingVehicle ? "Update Vehicle" : "Create Vehicle"}
-        />
+        {canCreateVehicle && (
+          <DynamicModal
+            isOpen={isPopupOpen("vehicleModal")}
+            onClose={closeModal}
+            title={editingVehicle ? "Edit Vehicle" : "New Vehicle"}
+            description="Configure vehicle details and fleet assignment."
+            fields={vehicleFormFields}
+            initialData={
+              editingVehicle
+                ? {
+                  organizationId:
+                    typeof editingVehicle.organizationId === "object"
+                      ? editingVehicle.organizationId._id
+                      : editingVehicle.organizationId,
+                  vehicleType: editingVehicle.vehicleType,
+                  vehicleNumber: editingVehicle.vehicleNumber,
+                  model: editingVehicle.model || "",
+                  year: editingVehicle.year || "",
+                  color: editingVehicle.color || "",
+                  status: editingVehicle.status,
+                  runningStatus: editingVehicle.runningStatus || "",
+                  driverId: editingVehicle.driverId || "",
+                  deviceId: editingVehicle.deviceId || "",
+                }
+                : undefined
+            }
+            onSubmit={handleSubmit}
+            submitLabel={editingVehicle ? "Update Vehicle" : "Create Vehicle"}
+          />
+        )}
 
         {isPopupOpen("assignDeviceModal") && (
           <div className="fixed inset-0 bg-slate-950/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">

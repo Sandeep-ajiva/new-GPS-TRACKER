@@ -110,15 +110,11 @@ exports.getMe = async (req, res) => {
   try {
     const user = await User.findById(req.user._id)
       .select("-passwordHash")
-      .populate("organizationId", "name email phone");
-
-    if (!user) {
-      return res
-        .status(404)
-        .json({ status: false, message: "User not found" });
-    }
-
-    return res.status(200).json({ status: true, data: user });
+      .populate("organizationId", "name email phone")
+      .populate("assignedVehicleId", "vehicleNumber vehicleType model status runningStatus deviceId");
+    if (!user)
+      return res.status(404).json({ status: false, message: "User not found" });
+    return res.json({ status: true, data: user });
   } catch (error) {
     return res.status(500).json({ status: false, message: error.message });
   }

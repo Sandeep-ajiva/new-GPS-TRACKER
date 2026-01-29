@@ -1,13 +1,39 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
 import { Menu, Settings, MessageSquare, Bell, Calendar, Clock, Car, LogOut, Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import VehicleModal from "@/components/admin/Modals/VehicleModal"
 import type { Vehicle } from "@/types"
+import { getSecureItem } from "@/app/admin/Helpers/encryptionHelper"
+import { useGetMeQuery } from "@/redux/api/usersApi"
 
-export function Header({ onVehicleCreated }: { onVehicleCreated?: (vehicle: Vehicle) => void }) {
+const roleToDashboard = (role?: string | null) => {
+    if (role === "admin") return "/admin"
+    if (role === "manager") return "/admin"
+    if (role === "driver") return "/driver"
+    return "/dashboard"
+}
+
+export function Header({
+    onVehicleCreated,
+    vehicleSummary,
+}: {
+    onVehicleCreated?: (vehicle: Vehicle) => void
+    vehicleSummary?: { label: string; speed: number }
+}) {
     const [isVehicleModalOpen, setIsVehicleModalOpen] = useState(false)
+    const router = useRouter()
+    const userRole = getSecureItem("userRole")
+    const canCreateVehicle = userRole === "admin"
+    const { data: meData } = useGetMeQuery(undefined, { refetchOnMountOrArgChange: true })
+
+    const displayName = useMemo(() => {
+        const user = meData?.data
+        if (!user) return "User"
+        return [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email || "User"
+    }, [meData])
 
     return (
         <header className="relative flex h-16 items-center justify-between border-b border-white/10 bg-linear-to-r from-slate-950 via-slate-900 to-emerald-900/40 px-4 text-white shadow-[0_10px_30px_rgba(15,23,42,0.35)]">
@@ -43,18 +69,28 @@ export function Header({ onVehicleCreated }: { onVehicleCreated?: (vehicle: Vehi
                 <span className="h-4 w-px bg-white/30" />
                 <div className="flex items-center gap-2">
                     <Car className="h-4 w-4" />
-                    <span>Car 85 ; 15km/h</span>
+                    <span>
+                        {vehicleSummary?.label ? `${vehicleSummary.label} ; ${vehicleSummary.speed}km/h` : "Vehicle ; 0km/h"}
+                    </span>
                 </div>
             </div>
 
             <div className="relative z-10 flex items-center gap-1">
                 <div className="hidden items-center gap-2 md:flex">
                     <Button
-                        className="h-9 rounded-full bg-emerald-400 px-4 text-xs font-semibold uppercase tracking-wide text-slate-950 hover:bg-emerald-300"
-                        onClick={() => setIsVehicleModalOpen(true)}
+                        className="h-9 rounded-full bg-white/10 px-4 text-xs font-semibold uppercase tracking-wide text-white hover:bg-white/20"
+                        onClick={() => router.push(roleToDashboard(getSecureItem("userRole")))}
                     >
-                        <Plus className="mr-2 h-4 w-4" /> Add Vehicle
+                        Dashboard
                     </Button>
+                    {canCreateVehicle && (
+                        <Button
+                            className="h-9 rounded-full bg-emerald-400 px-4 text-xs font-semibold uppercase tracking-wide text-slate-950 hover:bg-emerald-300"
+                            onClick={() => setIsVehicleModalOpen(true)}
+                        >
+                            <Plus className="mr-2 h-4 w-4" /> Add Vehicle
+                        </Button>
+                    )}
                 </div>
                 <Button variant="ghost" size="icon" className="text-white hover:bg-white/10 relative">
                     <MessageSquare className="h-5 w-5" />
@@ -70,7 +106,7 @@ export function Header({ onVehicleCreated }: { onVehicleCreated?: (vehicle: Vehi
 
                 <div className="ml-3 flex items-center gap-2 border-l border-white/10 pl-3">
                     <div className="h-9 w-9 rounded-full bg-cyan-500/60 border border-white/20" />
-                    <div className="hidden text-sm font-semibold sm:block">Hi, Dave Mattew</div>
+                    <div className="hidden text-sm font-semibold sm:block">Hi, {displayName}</div>
                     <div className="flex items-center gap-2 text-sm font-semibold">
                         <Settings className="h-4 w-4" />
                         <span className="hidden sm:block">Setting</span>
@@ -81,11 +117,13 @@ export function Header({ onVehicleCreated }: { onVehicleCreated?: (vehicle: Vehi
                 </div>
             </div>
 
-            <VehicleModal
-                isOpen={isVehicleModalOpen}
-                onClose={() => setIsVehicleModalOpen(false)}
-                onCreated={onVehicleCreated}
-            />
+            {canCreateVehicle && (
+                <VehicleModal
+                    isOpen={isVehicleModalOpen}
+                    onClose={() => setIsVehicleModalOpen(false)}
+                    onCreated={onVehicleCreated}
+                />
+            )}
         </header>
     )
 }

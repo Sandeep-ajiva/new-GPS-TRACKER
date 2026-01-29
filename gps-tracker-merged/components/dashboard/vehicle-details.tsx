@@ -1,13 +1,15 @@
 import { MapPin, Navigation, Share2, User } from "lucide-react"
-import { vehicles } from "@/lib/vehicles"
+import type { Vehicle } from "@/lib/vehicles"
 import type { VehiclePositions } from "@/lib/use-vehicle-positions"
 
 export function VehicleDetails({
     vehicleId,
     positions,
+    vehicles = [],
 }: {
     vehicleId?: string | null
     positions: VehiclePositions
+    vehicles?: Vehicle[]
 }) {
     if (!vehicleId) return null
     const vehicle = vehicles.find((item) => item.id === vehicleId)
@@ -17,7 +19,15 @@ export function VehicleDetails({
     const endPoint = vehicle.route[vehicle.route.length - 1]
     const currentPoint = positions[vehicle.id] || endPoint
     const statusLabel =
-        vehicle.status === "running" ? "Running" : vehicle.status === "idle" ? "Idle" : "Stopped"
+        vehicle.status === "running"
+            ? "Running"
+            : vehicle.status === "idle"
+                ? "Idle"
+                : vehicle.status === "inactive"
+                    ? "Inactive"
+                    : vehicle.status === "nodata"
+                        ? "No Data"
+                        : "Stopped"
 
     return (
         <div className="grid h-full grid-cols-1 gap-2 overflow-hidden md:grid-cols-2 xl:grid-cols-4">
@@ -47,6 +57,7 @@ export function VehicleDetails({
                     <div className="rounded bg-emerald-400/20 px-2 py-0.5 text-[10px] font-semibold text-emerald-200">{statusLabel}</div>
                 </div>
                 <div className="mt-2 text-xs text-slate-300">
+                    <div className="text-[10px] text-slate-400">Vehicle: {vehicle.vehicleNumber || vehicle.id}</div>
                     <div className="flex items-center gap-2">
                         <Navigation className="h-3.5 w-3.5 text-slate-400" />
                         <span>{vehicle.speed} km/h</span>

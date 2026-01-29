@@ -19,6 +19,7 @@ import { usePopups } from "../Helpers/PopupContext";
 import { capitalizeFirstLetter } from "../Helpers/CapitalizeFirstLetter";
 import { DynamicModal } from "@/components/common";
 import { FormField } from "@/lib/formTypes";
+import { getSecureItem } from "@/app/admin/Helpers/encryptionHelper";
 import {
   User as UserIcon,
   Mail,
@@ -44,6 +45,10 @@ export default function UsersPage() {
   const { openPopup, closePopup, isPopupOpen } = usePopups();
 
   const [showFilters, setShowFilters] = useState(false);
+  const userRole = getSecureItem("userRole");
+  const canCreateUser = userRole === "admin" || userRole === "manager";
+  const canEditUser = userRole === "admin" || userRole === "manager";
+  const canDeleteUser = userRole === "admin";
   const [filters, setFilters] = useState({
     role: "",
     organizationId: "",
@@ -282,13 +287,16 @@ export default function UsersPage() {
       header: "Actions",
       accessor: (row: User) => (
         <div className="flex gap-2">
-          <button
-            onClick={() => openEditModal(row)}
-            className="text-slate-700 hover:text-slate-900"
-          >
-            <Edit size={16} />
-          </button>
-          {!isCreating &&
+          {canEditUser && (
+            <button
+              onClick={() => openEditModal(row)}
+              className="text-slate-700 hover:text-slate-900"
+            >
+              <Edit size={16} />
+            </button>
+          )}
+          {canDeleteUser &&
+            !isCreating &&
             !isUpdating &&
             !isDeleting &&
             row.role !== "superadmin" && (
@@ -423,35 +431,37 @@ export default function UsersPage() {
 
         <Table columns={columns} data={filteredUsers} loading={isLoading} />
 
-        <DynamicModal
-          isOpen={isPopupOpen("userModal")}
-          onClose={closeModal}
-          title={editingUser ? "Edit User" : "New User"}
-          description="Define roles and assign organization scope."
-          fields={userFormFields}
-          initialData={
-            editingUser
-              ? {
-                firstName: editingUser.firstName,
-                lastName: editingUser.lastName,
-                email: editingUser.email,
-                mobile: editingUser.mobile,
-                role:
-                  editingUser.role === "superadmin" ||
-                    editingUser.role === "driver"
-                    ? "admin"
-                    : editingUser.role,
-                organizationId:
-                  typeof editingUser.organizationId === "object"
-                    ? editingUser.organizationId._id
-                    : editingUser.organizationId || "",
-                status: editingUser.status,
-              }
-              : undefined
-          }
-          onSubmit={handleSubmit}
-          submitLabel={editingUser ? "Update User" : "Create User"}
-        />
+        {canCreateUser && (
+          <DynamicModal
+            isOpen={isPopupOpen("userModal")}
+            onClose={closeModal}
+            title={editingUser ? "Edit User" : "New User"}
+            description="Define roles and assign organization scope."
+            fields={userFormFields}
+            initialData={
+              editingUser
+                ? {
+                  firstName: editingUser.firstName,
+                  lastName: editingUser.lastName,
+                  email: editingUser.email,
+                  mobile: editingUser.mobile,
+                  role:
+                    editingUser.role === "superadmin" ||
+                      editingUser.role === "driver"
+                      ? "admin"
+                      : editingUser.role,
+                  organizationId:
+                    typeof editingUser.organizationId === "object"
+                      ? editingUser.organizationId._id
+                      : editingUser.organizationId || "",
+                  status: editingUser.status,
+                }
+                : undefined
+            }
+            onSubmit={handleSubmit}
+            submitLabel={editingUser ? "Update User" : "Create User"}
+          />
+        )}
       </div>
     </ApiErrorBoundary>
   );

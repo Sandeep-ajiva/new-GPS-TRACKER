@@ -24,6 +24,7 @@ import { usePopups } from "../Helpers/PopupContext";
 import { capitalizeFirstLetter } from "../Helpers/CapitalizeFirstLetter";
 import { DynamicModal } from "@/components/common";
 import { FormField } from "@/lib/formTypes";
+import { getSecureItem } from "@/app/admin/Helpers/encryptionHelper";
 
 import {
   Cpu,
@@ -117,6 +118,10 @@ export default function GpsDevicesPage() {
     vehicleNumber: "",
     warrantyExpiry: "",
   });
+  const userRole = getSecureItem("userRole");
+  const canCreateDevice = userRole === "admin";
+  const canEditDevice = userRole === "admin";
+  const canDeleteDevice = userRole === "admin";
 
   const [editingDevice, setEditingDevice] = useState<GPSDevice | null>(null);
   const [selectedDeviceForAssignment, setSelectedDeviceForAssignment] =
@@ -381,8 +386,8 @@ export default function GpsDevicesPage() {
       header: "Actions",
       accessor: (row: GPSDevice) => (
         <div className="flex gap-2">
-          <Edit onClick={() => openEditModal(row)} size={16} />
-          <Trash2 onClick={() => handleDelete(row._id)} size={16} />
+          {canEditDevice && <Edit onClick={() => openEditModal(row)} size={16} />}
+          {canDeleteDevice && <Trash2 onClick={() => handleDelete(row._id)} size={16} />}
         </div>
       ),
     },
@@ -416,12 +421,14 @@ export default function GpsDevicesPage() {
             >
               <Filter size={16} /> Filters
             </button>
-            <button
-              onClick={openCreateModal}
-              className="bg-blue-600 text-white px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 hover:bg-blue-700 transition-colors"
-            >
-              <Plus size={16} /> Add Device
-            </button>
+            {canCreateDevice && (
+              <button
+                onClick={openCreateModal}
+                className="bg-blue-600 text-white px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 hover:bg-blue-700 transition-colors"
+              >
+                <Plus size={16} /> Add Device
+              </button>
+            )}
           </div>
         </div>
 
@@ -573,34 +580,36 @@ export default function GpsDevicesPage() {
         </div>
       </div>
 
-      <DynamicModal
-        isOpen={isPopupOpen("deviceModal")}
-        onClose={closeModal}
-        title={editingDevice ? "Edit Device" : "New Device"}
-        fields={deviceFormFields}
-        initialData={
-          editingDevice
-            ? {
-              organizationId: typeof editingDevice.organizationId === "object"
-                ? editingDevice.organizationId._id
-                : editingDevice.organizationId,
-              imei: editingDevice.imei,
-              simNumber: editingDevice.simNumber || "",
-              deviceModel: editingDevice.deviceModel,
-              manufacturer: editingDevice.manufacturer || "",
-              serialNumber: editingDevice.serialNumber || "",
-              firmwareVersion: editingDevice.firmwareVersion || "",
-              hardwareVersion: editingDevice.hardwareVersion || "",
-              warrantyExpiry: editingDevice.warrantyExpiry
-                ? editingDevice.warrantyExpiry.split("T")[0]
-                : "",
-              connectionStatus: editingDevice.connectionStatus,
-              status: editingDevice.status,
-            }
-            : undefined
-        }
-        onSubmit={handleSubmit}
-      />
+      {canCreateDevice && (
+        <DynamicModal
+          isOpen={isPopupOpen("deviceModal")}
+          onClose={closeModal}
+          title={editingDevice ? "Edit Device" : "New Device"}
+          fields={deviceFormFields}
+          initialData={
+            editingDevice
+              ? {
+                organizationId: typeof editingDevice.organizationId === "object"
+                  ? editingDevice.organizationId._id
+                  : editingDevice.organizationId,
+                imei: editingDevice.imei,
+                simNumber: editingDevice.simNumber || "",
+                deviceModel: editingDevice.deviceModel,
+                manufacturer: editingDevice.manufacturer || "",
+                serialNumber: editingDevice.serialNumber || "",
+                firmwareVersion: editingDevice.firmwareVersion || "",
+                hardwareVersion: editingDevice.hardwareVersion || "",
+                warrantyExpiry: editingDevice.warrantyExpiry
+                  ? editingDevice.warrantyExpiry.split("T")[0]
+                  : "",
+                connectionStatus: editingDevice.connectionStatus,
+                status: editingDevice.status,
+              }
+              : undefined
+          }
+          onSubmit={handleSubmit}
+        />
+      )}
     </ApiErrorBoundary>
   );
 }

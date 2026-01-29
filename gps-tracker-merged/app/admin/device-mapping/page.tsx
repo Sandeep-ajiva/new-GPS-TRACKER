@@ -12,6 +12,7 @@ import {
 } from "@/redux/api/deviceMappingApi";
 import { useGetVehiclesQuery } from "@/redux/api/vehicleApi";
 import { useGetGpsDevicesQuery } from "@/redux/api/gpsDeviceApi";
+import { getSecureItem } from "@/app/admin/Helpers/encryptionHelper";
 
 export default function DeviceMappingPage() {
     // API Hooks
@@ -26,6 +27,9 @@ export default function DeviceMappingPage() {
     const mappings = mappingData?.data || [];
     const vehicles = vehData?.data || [];
     const devices = devData?.data || [];
+    const userRole = getSecureItem("userRole");
+    const canAssign = userRole === "admin";
+    const canUnassign = userRole === "admin";
 
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [formData, setFormData] = useState({ vehicleId: "", deviceId: "" });
@@ -59,6 +63,10 @@ export default function DeviceMappingPage() {
     };
 
     const handleUnassign = async (id: string) => {
+        if (!canUnassign) {
+            toast.error("You do not have permission to unassign devices.");
+            return;
+        }
         if (confirm("Are you sure you want to unassign this device?")) {
             try {
                 // unassignDevice endpoint usually expects mappingId or vehicle/deviceId combo.
@@ -117,7 +125,7 @@ export default function DeviceMappingPage() {
             header: "Actions", accessor: (row: any) => (
                 <button
                     onClick={() => handleUnassign(row._id)}
-                    disabled={isUnassigning}
+                    disabled={!canUnassign || isUnassigning}
                     className="inline-flex items-center gap-1 text-[11px] font-black uppercase tracking-widest text-rose-600 hover:text-rose-700 disabled:opacity-50"
                 >
                     <Trash2 size={14} /> Unassign
@@ -147,7 +155,8 @@ export default function DeviceMappingPage() {
                     </div>
                     <button
                         onClick={openCreateModal}
-                        className="rounded-xl bg-blue-600 px-4 py-2 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-blue-200 transition hover:bg-blue-700"
+                        className="rounded-xl bg-blue-600 px-4 py-2 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-blue-200 transition hover:bg-blue-700 disabled:opacity-60"
+                        disabled={!canAssign}
                     >
                         <span className="inline-flex items-center gap-2"><Link2 size={16} /> Assign Device</span>
                     </button>
@@ -186,7 +195,7 @@ export default function DeviceMappingPage() {
 
                                 <div className="flex gap-3 mt-6">
                                     <button type="button" onClick={closeModal} className="flex-1 rounded-xl bg-slate-100 py-2.5 text-[11px] font-black uppercase tracking-widest text-slate-700 hover:bg-slate-200">Cancel</button>
-                                    <button type="submit" disabled={!formData.vehicleId || !formData.deviceId || isAssigning} className="flex-1 rounded-xl bg-blue-600 py-2.5 text-[11px] font-black uppercase tracking-widest text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                                    <button type="submit" disabled={!canAssign || !formData.vehicleId || !formData.deviceId || isAssigning} className="flex-1 rounded-xl bg-blue-600 py-2.5 text-[11px] font-black uppercase tracking-widest text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed">
                                         {isAssigning ? "Assigning..." : "Assign"}
                                     </button>
                                 </div>

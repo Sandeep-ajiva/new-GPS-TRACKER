@@ -1,6 +1,23 @@
-import { Share2, Gauge, AlertCircle, Battery } from "lucide-react"
+import { Gauge } from "lucide-react"
+import type { Vehicle } from "@/lib/vehicles"
 
-export function ActivityStats() {
+export function ActivityStats({ vehicles = [], alertCount = 0 }: { vehicles?: Vehicle[]; alertCount?: number }) {
+    const speeds = vehicles.map((vehicle) => vehicle.speed).filter((speed) => Number.isFinite(speed))
+    const avgSpeed = speeds.length ? Math.round(speeds.reduce((acc, speed) => acc + speed, 0) / speeds.length) : 0
+    const maxSpeed = speeds.length ? Math.max(...speeds) : 0
+
+    const statusTotals = vehicles.reduce(
+        (acc, vehicle) => {
+            acc.total += 1
+            if (vehicle.status === "running") acc.running += 1
+            if (vehicle.status === "idle") acc.idle += 1
+            if (vehicle.status === "stopped") acc.stopped += 1
+            if (vehicle.status === "inactive") acc.inactive += 1
+            return acc
+        },
+        { running: 0, idle: 0, stopped: 0, inactive: 0, total: 0 }
+    )
+
     return (
         <div className="grid grid-cols-3 gap-4 h-full">
             {/* 1. Gauge / Average Speed */}
@@ -11,11 +28,11 @@ export function ActivityStats() {
                 <div className="space-y-2">
                     <div className="flex justify-between items-center text-sm font-medium">
                         <span className="text-slate-200">Avg Speed</span>
-                        <span className="text-slate-100 text-lg">20 km/h</span>
+                        <span className="text-slate-100 text-lg">{avgSpeed} km/h</span>
                     </div>
                     <div className="flex justify-between items-center text-sm font-medium">
                         <span className="text-amber-300">Max Speed</span>
-                        <span className="text-amber-300 text-lg">60 km/h</span>
+                        <span className="text-amber-300 text-lg">{maxSpeed} km/h</span>
                     </div>
                 </div>
             </div>
@@ -26,22 +43,22 @@ export function ActivityStats() {
                 <div className="p-3 space-y-2 text-xs text-slate-200">
                     <div className="flex justify-between border-b border-white/10 border-dashed pb-2">
                         <div className="flex items-center gap-2">
-                            <div className="h-2 w-2 rounded-full bg-emerald-400"></div> 17 km
+                            <div className="h-2 w-2 rounded-full bg-emerald-400"></div> {statusTotals.total} total
                         </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-y-1">
                         <span className="text-slate-200">Running</span>
-                        <span className="text-right text-emerald-300">00:54 hrs</span>
+                        <span className="text-right text-emerald-300">{statusTotals.running}</span>
 
                         <span className="text-slate-200 w-full">Idle</span>
-                        <span className="text-right text-amber-300">00:57 hrs</span>
+                        <span className="text-right text-amber-300">{statusTotals.idle}</span>
 
                         <span className="text-slate-200">Stop</span>
-                        <span className="text-right text-red-400">09:55 hrs</span>
+                        <span className="text-right text-red-400">{statusTotals.stopped}</span>
 
                         <span className="text-slate-200">Inactive</span>
-                        <span className="text-right text-cyan-300">00:00 hrs</span>
+                        <span className="text-right text-cyan-300">{statusTotals.inactive}</span>
                     </div>
                 </div>
             </div>
@@ -54,16 +71,20 @@ export function ActivityStats() {
                     <div className="p-2 space-y-1 text-xs text-slate-200">
                         <div className="flex justify-between">
                             <span className="text-emerald-300 font-bold">Total</span>
-                            <span className="text-emerald-300 font-bold">25</span>
+                            <span className="text-emerald-300 font-bold">{alertCount}</span>
                         </div>
                         <div className="text-red-300 font-medium">Recent alerts</div>
                         <div className="space-y-1">
-                            {[1, 2, 3].map(i => (
-                                <div key={i} className="flex justify-between text-[10px]">
-                                    <span className="text-cyan-300">ignition</span>
-                                    <span className="text-red-300">{i * 7} min ago</span>
-                                </div>
-                            ))}
+                            {alertCount ? (
+                                [1, 2, 3].slice(0, Math.min(3, alertCount)).map((i) => (
+                                    <div key={i} className="flex justify-between text-[10px]">
+                                        <span className="text-cyan-300">alert</span>
+                                        <span className="text-red-300">{i * 5} min ago</span>
+                                    </div>
+                                ))
+                            ) : (
+                                <div className="text-[10px] text-slate-400">No alerts yet</div>
+                            )}
                         </div>
                     </div>
                 </div>

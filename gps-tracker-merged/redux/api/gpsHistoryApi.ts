@@ -4,7 +4,7 @@ export const gpsHistoryApi = baseApi.injectEndpoints({
     endpoints: (builder) => ({
         getVehicleHistory: builder.query({
             query: ({ vehicleId, from, to }) => ({
-                url: "/gps-history",
+                url: "/gpshistory",
                 params: { vehicleId, from, to },
             }),
             providesTags: ["History"],

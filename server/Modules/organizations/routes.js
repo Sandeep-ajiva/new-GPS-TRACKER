@@ -39,7 +39,7 @@ router.post(
 router.get(
   "/",
   requireAuth,
-  checkAuthorization(["superadmin", "admin"], "organizations", "read"),
+  checkAuthorization(["superadmin", "admin", "manager"], "organizations", "read"),
   checkOrganization,
   Controller.getAll
 );
@@ -48,7 +48,7 @@ router.get(
 router.get(
   "/sub",
   requireAuth,
-  checkAuthorization(["superadmin", "admin"], "organizations", "read"),
+  checkAuthorization(["superadmin", "admin", "manager"], "organizations", "read"),
   checkOrganization,
   Controller.getSubOrganizations
 );

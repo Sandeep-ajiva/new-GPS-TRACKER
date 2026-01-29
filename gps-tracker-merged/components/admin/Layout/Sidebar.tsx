@@ -21,31 +21,31 @@ const menuGroups = [
     {
         title: "System",
         items: [
-            { name: "Dashboard", icon: LayoutDashboard, href: "/admin", exact: true },
-            { name: "Live Tracking", icon: Map, href: "/admin/live-tracking" },
+            { name: "Dashboard", icon: LayoutDashboard, href: "/admin", exact: true, roles: ["admin", "manager"] },
+            { name: "Live Tracking", icon: Map, href: "/admin/live-tracking", roles: ["admin", "manager"] },
         ]
     },
     {
         title: "Management",
         items: [
-            { name: "Organizations", icon: Building2, href: "/admin/organizations" },
-            { name: "Vehicles", icon: Car, href: "/admin/vehicles" },
-            { name: "GPS Devices", icon: Radio, href: "/admin/gps-devices" },
-            { name: "Users", icon: Users, href: "/admin/users" },
+            { name: "Organizations", icon: Building2, href: "/admin/organizations", roles: ["admin"] },
+            { name: "Vehicles", icon: Car, href: "/admin/vehicles", roles: ["admin", "manager"] },
+            { name: "GPS Devices", icon: Radio, href: "/admin/gps-devices", roles: ["admin", "manager"] },
+            { name: "Users", icon: Users, href: "/admin/users", roles: ["admin", "manager"] },
         ]
     },
     {
         title: "Operations",
         items: [
-            { name: "Device Mapping", icon: LinkIcon, href: "/admin/device-mapping" },
-            { name: "History Playback", icon: History, href: "/admin/history" },
+            { name: "Device Mapping", icon: LinkIcon, href: "/admin/device-mapping", roles: ["admin", "manager"] },
+            { name: "History Playback", icon: History, href: "/admin/history", roles: ["admin", "manager"] },
         ]
     },
     {
         title: "Config",
         items: [
-            { name: "Settings", icon: Settings, href: "/admin/settings" },
-            { name: "Permissions", icon: Settings, href: "/admin/permissions" },
+            { name: "Settings", icon: Settings, href: "/admin/settings", roles: ["admin"] },
+            { name: "Permissions", icon: Settings, href: "/admin/permissions", roles: ["admin"] },
         ]
     }
 ];
@@ -55,9 +55,10 @@ type SidebarProps = {
     showClose?: boolean;
     onClose?: () => void;
     onNavigate?: () => void;
+    role?: string | null;
 };
 
-export default function Sidebar({ className, showClose, onClose, onNavigate }: SidebarProps) {
+export default function Sidebar({ className, showClose, onClose, onNavigate, role }: SidebarProps) {
     const pathname = usePathname();
     const router = useRouter();
     const [rootOrg, setRootOrgState] = useState(getRootOrganization());
@@ -70,6 +71,16 @@ export default function Sidebar({ className, showClose, onClose, onNavigate }: S
         }, 500);
         return () => clearInterval(interval);
     }, []);
+
+    const visibleGroups = menuGroups
+        .map((group) => ({
+            ...group,
+            items: group.items.filter((item: any) => {
+                if (!item.roles) return true;
+                return item.roles.includes(role || "admin");
+            }),
+        }))
+        .filter((group) => group.items.length > 0);
 
     return (
         <aside className={`w-64 bg-white border-r border-slate-200 h-screen fixed left-0 top-0 flex flex-col z-50 ${className || ""}`}>
@@ -93,7 +104,7 @@ export default function Sidebar({ className, showClose, onClose, onNavigate }: S
             {/* Navigation */}
             <nav className="flex-1 overflow-y-auto py-6">
                 <div className="space-y-6 px-4">
-                    {menuGroups.map((group) => (
+                    {visibleGroups.map((group) => (
                         <div key={group.title}>
                             <h3 className="px-1 mb-2 text-[10px] font-black uppercase text-slate-400 tracking-[0.35em]">
                                 {group.title}

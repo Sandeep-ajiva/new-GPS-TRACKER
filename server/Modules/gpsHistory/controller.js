@@ -50,22 +50,24 @@ exports.create = async (req, res) => {
 
 exports.getAll = async (req, res) => {
     try {
-        const { page, limit, search, tripId } = req.query;
-        
         const filter = {};
-        if (tripId) filter.tripId = tripId;
-
-        const result = await paginate(
-            GpsHistory,
-            filter,
-            page,
-            limit,
-            ['organizationId', 'vehicleId', 'gpsDeviceId', 'driverId', 'tripId'],
-            [],
-            search
-        );
-
-        return res.status(200).json(result);
+        if (req.user?.organizationId && req.user.role !== "superadmin") {
+            filter.organizationId = req.user.organizationId;
+        }
+        if (req.query.vehicleId) {
+            filter.vehicleId = req.query.vehicleId;
+        }
+        const gpsHistories = await GpsHistory.find(filter)
+            .populate('organizationId')
+            .populate('vehicleId')
+            .populate('gpsDeviceId')
+            .populate('driverId')
+            .populate('tripId');
+        return res.status(200).json({
+            status: true,
+            message: "GPS Histories Fetched Successfully",
+            data: gpsHistories
+        });
     } catch (error) {
         return res.status(500).json({ status: false, message: error.message });
     }

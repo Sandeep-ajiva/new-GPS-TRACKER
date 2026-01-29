@@ -100,6 +100,8 @@ export function MapView({
   const statusColor = (status: string) => {
     if (status === "running") return "#34d399"
     if (status === "idle") return "#fbbf24"
+    if (status === "inactive") return "#22d3ee"
+    if (status === "nodata") return "#64748b"
     return "#ef4444"
   }
 
@@ -169,6 +171,14 @@ export function MapView({
         <div className="mt-1 flex items-center gap-2">
           <span className="h-2 w-2 rounded-full bg-red-500" />
           <span>Stopped</span>
+        </div>
+        <div className="mt-1 flex items-center gap-2">
+          <span className="h-2 w-2 rounded-full bg-cyan-400" />
+          <span>Inactive</span>
+        </div>
+        <div className="mt-1 flex items-center gap-2">
+          <span className="h-2 w-2 rounded-full bg-slate-400" />
+          <span>No Data</span>
         </div>
       </div>
     </div>

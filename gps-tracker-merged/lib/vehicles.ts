@@ -1,4 +1,4 @@
-export type VehicleStatus = "running" | "idle" | "stopped"
+export type VehicleStatus = "running" | "idle" | "stopped" | "inactive" | "nodata"
 
 export type VehicleRoutePoint = {
   lat: number
@@ -7,6 +7,8 @@ export type VehicleRoutePoint = {
 
 export type Vehicle = {
   id: string
+  vehicleNumber?: string
+  organizationId?: string
   driver: string
   date: string
   speed: number
@@ -21,4 +23,3 @@ export type Vehicle = {
 }
 
 export const vehicles: Vehicle[] = []
-

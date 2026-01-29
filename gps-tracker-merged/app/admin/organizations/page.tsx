@@ -6,6 +6,7 @@ import Table from "@/components/ui/Table";
 import ApiErrorBoundary from "@/components/admin/ErrorBoundary/ApiErrorBoundary";
 import { Plus, Edit, Trash2, Loader2, Eye, Filter } from "lucide-react";
 import { toast } from "sonner";
+import { getSecureItem } from "@/app/admin/Helpers/encryptionHelper";
 
 import {
   useGetOrganizationsQuery,
@@ -98,6 +99,10 @@ export default function OrganizationsPage() {
     type: "",
     status: "",
   });
+  const userRole = getSecureItem("userRole");
+  const canCreateOrg = userRole === "admin";
+  const canEditOrg = userRole === "admin";
+  const canDeleteOrg = userRole === "admin";
 
   const filteredOrganizations = useMemo(() => {
     const nameFilter = filters.name.trim().toLowerCase();
@@ -212,11 +217,10 @@ export default function OrganizationsPage() {
       header: "Status",
       accessor: (row: Organization) => (
         <span
-          className={`px-2 py-1 rounded text-xs font-bold ${
-            row.status === "active"
+          className={`px-2 py-1 rounded text-xs font-bold ${row.status === "active"
               ? "bg-green-100 text-green-700"
               : "bg-red-100 text-red-700"
-          }`}
+            }`}
         >
           {row.status}
         </span>
@@ -231,12 +235,16 @@ export default function OrganizationsPage() {
           >
             <Eye size={16} />
           </button>
-          <button onClick={() => openEditModal(row)}>
-            <Edit size={16} />
-          </button>
-          <button onClick={() => handleDelete(row._id)}>
-            <Trash2 size={16} className="text-red-500" />
-          </button>
+          {canEditOrg && (
+            <button onClick={() => openEditModal(row)}>
+              <Edit size={16} />
+            </button>
+          )}
+          {canDeleteOrg && (
+            <button onClick={() => handleDelete(row._id)}>
+              <Trash2 size={16} className="text-red-500" />
+            </button>
+          )}
         </div>
       ),
     },
@@ -271,16 +279,27 @@ export default function OrganizationsPage() {
   return (
     <ApiErrorBoundary hasError={false}>
       <div className="space-y-6">
-        <div className="flex justify-between">
-          <h1 className="text-2xl font-black">
-            Sub Organizations (Parent: {parentOrg?.name})
-          </h1>
-          <button
-            onClick={openCreateModal}
-            className="bg-blue-600 text-white px-4 py-2 rounded-xl text-xs font-black flex items-center gap-2"
-          >
-            <Plus size={14} /> Add Sub Organization
-          </button>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-2xl font-black">Sub Organizations</h1>
+            <p className="text-sm text-slate-500">Parent: {parentOrg?.name}</p>
+          </div>
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <button
+              onClick={() => setShowFilters(!showFilters)}
+              className="bg-slate-100 text-slate-700 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 hover:bg-slate-200 transition-colors"
+            >
+              <Filter size={14} /> Filter
+            </button>
+            {canCreateOrg && (
+              <button
+                onClick={openCreateModal}
+                className="bg-blue-600 text-white px-4 py-2 rounded-xl text-xs font-black uppercase flex items-center gap-2 hover:bg-blue-700 transition-colors"
+              >
+                <Plus size={14} /> Add Sub Organization
+              </button>
+            )}
+          </div>
         </div>
 
         <Table columns={columns} data={filteredOrganizations} />
@@ -297,16 +316,16 @@ export default function OrganizationsPage() {
           initialData={
             editingOrg
               ? {
-                  name: editingOrg.name,
-                  organizationType: editingOrg.organizationType,
-                  email: editingOrg.email,
-                  phone: editingOrg.phone,
-                  addressLine: editingOrg.address?.addressLine || "",
-                  city: editingOrg.address?.city || "",
-                  state: editingOrg.address?.state || "",
-                  country: editingOrg.address?.country || "",
-                  pincode: editingOrg.address?.pincode || "",
-                }
+                name: editingOrg.name,
+                organizationType: editingOrg.organizationType,
+                email: editingOrg.email,
+                phone: editingOrg.phone,
+                addressLine: editingOrg.address?.addressLine || "",
+                city: editingOrg.address?.city || "",
+                state: editingOrg.address?.state || "",
+                country: editingOrg.address?.country || "",
+                pincode: editingOrg.address?.pincode || "",
+              }
               : undefined
           }
           onSubmit={handleSubmit}

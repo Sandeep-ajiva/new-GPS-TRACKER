@@ -1,14 +1,16 @@
 import { Car, Clock, AlertOctagon, PowerOff, Database } from "lucide-react"
-import { vehicles } from "@/lib/vehicles"
+import type { Vehicle } from "@/lib/vehicles"
 
 export type VehicleStatusFilter = "running" | "idle" | "stopped" | "inactive" | "nodata" | "total" | "active"
 
 export function StatusCards({
     activeFilter = "total",
     onFilterChange,
+    vehicles = [],
 }: {
     activeFilter?: VehicleStatusFilter
     onFilterChange?: (filter: VehicleStatusFilter) => void
+    vehicles?: Vehicle[]
 }) {
     const totals = vehicles.reduce(
         (acc, vehicle) => {
@@ -16,6 +18,8 @@ export function StatusCards({
             if (vehicle.status === "running") acc.running += 1
             if (vehicle.status === "idle") acc.idle += 1
             if (vehicle.status === "stopped") acc.stopped += 1
+            if (vehicle.status === "inactive") acc.inactive += 1
+            if (vehicle.status === "nodata") acc.nodata += 1
             return acc
         },
         { running: 0, idle: 0, stopped: 0, inactive: 0, nodata: 0, total: 0 }

@@ -1,6 +1,7 @@
 import { Search, Info, Power, Zap, Fan, Signal, Pencil, Trash2, Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import type { Vehicle } from "@/lib/vehicles"
+import { getSecureItem } from "@/app/admin/Helpers/encryptionHelper"
 
 export function VehicleSidebar({
     vehicles,
@@ -15,6 +16,8 @@ export function VehicleSidebar({
     isFullWidth?: boolean,
     statusFilter?: "running" | "idle" | "stopped" | "inactive" | "nodata" | "total" | "active"
 }) {
+    const userRole = getSecureItem("userRole")
+    const canEdit = userRole === "admin"
     const filteredVehicles = vehicles.filter((vehicle) => {
         if (statusFilter === "total") return true
         if (statusFilter === "active") return vehicle.status === "running" || vehicle.status === "idle"
@@ -27,16 +30,18 @@ export function VehicleSidebar({
                 <div className="flex items-center justify-between">
                     <h2 className="text-xl font-bold text-emerald-200">Ajiva Tracker</h2>
                     <div className="flex items-center gap-2">
-                        <Button size="icon" variant="outline" className="h-8 w-8 rounded-full border-white/20 bg-white/5">
-                            <Plus className="h-4 w-4 text-slate-200" />
-                        </Button>
+                        {canEdit && (
+                            <Button size="icon" variant="outline" className="h-8 w-8 rounded-full border-white/20 bg-white/5">
+                                <Plus className="h-4 w-4 text-slate-200" />
+                            </Button>
+                        )}
                         <Button size="icon" className="bg-emerald-400 hover:bg-emerald-300 h-8 w-8 rounded-full text-slate-900">
                             <Search className="h-4 w-4 text-white" />
                         </Button>
                     </div>
                 </div>
                 <div className="text-sm text-slate-300">
-                    <span className="font-bold text-emerald-300">{vehicles.length} Car</span> in my tracker
+                    <span className="font-bold text-emerald-300">{vehicles.length} Vehicles</span> in my tracker
                 </div>
 
                 <div className="flex gap-2">
@@ -76,8 +81,19 @@ export function VehicleSidebar({
                     >
                         <div>
                             <div className="font-bold text-slate-100 flex items-center gap-1">
-                                <span className={`h-2 w-2 rounded-full ${v.status === 'running' ? 'bg-emerald-400' : v.status === 'stopped' ? 'bg-red-500' : 'bg-amber-400'}`} />
-                                {v.id}
+                                <span
+                                    className={`h-2 w-2 rounded-full ${v.status === 'running'
+                                        ? 'bg-emerald-400'
+                                        : v.status === 'idle'
+                                            ? 'bg-amber-400'
+                                            : v.status === 'inactive'
+                                                ? 'bg-cyan-400'
+                                                : v.status === 'nodata'
+                                                    ? 'bg-slate-400'
+                                                    : 'bg-red-500'
+                                        }`}
+                                />
+                                {v.vehicleNumber || v.id}
                             </div>
                             <div className="text-[10px] text-slate-400">{v.date}</div>
                         </div>
@@ -121,20 +137,24 @@ export function VehicleSidebar({
                                 >
                                     <Info className={`h-4 w-4 ${selectedId === v.id ? 'text-emerald-300' : 'text-emerald-400'}`} />
                                 </button>
-                                <button
-                                    className="rounded p-1 hover:bg-white/10"
-                                    title="Edit"
-                                    onClick={(event) => event.stopPropagation()}
-                                >
-                                    <Pencil className="h-4 w-4 text-slate-400 hover:text-emerald-300" />
-                                </button>
-                                <button
-                                    className="rounded p-1 hover:bg-white/10"
-                                    title="Delete"
-                                    onClick={(event) => event.stopPropagation()}
-                                >
-                                    <Trash2 className="h-4 w-4 text-slate-400 hover:text-red-400" />
-                                </button>
+                                {canEdit && (
+                                    <>
+                                        <button
+                                            className="rounded p-1 hover:bg-white/10"
+                                            title="Edit"
+                                            onClick={(event) => event.stopPropagation()}
+                                        >
+                                            <Pencil className="h-4 w-4 text-slate-400 hover:text-emerald-300" />
+                                        </button>
+                                        <button
+                                            className="rounded p-1 hover:bg-white/10"
+                                            title="Delete"
+                                            onClick={(event) => event.stopPropagation()}
+                                        >
+                                            <Trash2 className="h-4 w-4 text-slate-400 hover:text-red-400" />
+                                        </button>
+                                    </>
+                                )}
                             </div>
                         </div>
                     </div>

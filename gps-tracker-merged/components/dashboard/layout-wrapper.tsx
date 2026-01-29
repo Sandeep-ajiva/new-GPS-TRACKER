@@ -17,7 +17,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <div className="flex min-h-screen flex-col bg-slate-950 font-sans text-slate-100 overflow-hidden">
             <Header />
             <div className="shrink-0 border-b border-white/10 bg-slate-950/80 shadow-sm">
-                <StatusCards />
+                <StatusCards vehicles={seedVehicles} />
             </div>
 
             <div className="flex flex-1 min-h-0 flex-col overflow-hidden lg:flex-row">

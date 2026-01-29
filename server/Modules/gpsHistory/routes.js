@@ -9,7 +9,7 @@ const checkAuthorization = require("../../middleware/checkAuthorization");
 router.get(
   "/",
   requireAuth,
-  checkAuthorization(["admin", "superadmin"], "gpsHistory", "read"),
+  checkAuthorization(["admin", "superadmin", "manager", "driver"], "gpsHistory", "read"),
   Controller.getAll
 );
 
