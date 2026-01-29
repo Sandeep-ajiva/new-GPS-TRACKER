@@ -1,5 +1,5 @@
 const mongoose = require("mongoose");
-require("dotenv").config();
+require("dotenv").config({ quiet: true });
 
 const connectDB = async () => {
   try {
@@ -11,6 +11,5 @@ const connectDB = async () => {
     process.exit(1);
   }
 };
-
 
 module.exports = connectDB;

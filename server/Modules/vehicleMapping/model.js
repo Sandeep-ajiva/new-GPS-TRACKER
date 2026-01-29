@@ -6,23 +6,21 @@ const vehicleMappingSchema = {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Organization",
     required: true,
-    index: true
+    index: true,
   },
-  vehicleId:
-  {
+  vehicleId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Vehicle",
-    required: true
+    required: true,
   },
   gpsDeviceId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "GpsDevice",
-    required: true
+    required: true,
   },
-  assignedAt:
-  {
+  assignedAt: {
     type: Date,
-    default: Date.now
+    default: Date.now,
   },
   unassignedAt: {
     type: Date,
@@ -30,9 +28,15 @@ const vehicleMappingSchema = {
   },
 };
 
-const VehicleDeviceMappingModel = new ajModel(
-  "VehicleDeviceMapping",
-  vehicleMappingSchema
-).getModel();
+const instance = new ajModel("VehicleDeviceMapping", vehicleMappingSchema);
+instance.index(
+  { vehicleId: 1 },
+  { unique: true, partialFilterExpression: { unassignedAt: null } },
+);
 
-module.exports = VehicleDeviceMappingModel;
+instance.index(
+  { gpsDeviceId: 1 },
+  { unique: true, partialFilterExpression: { unassignedAt: null } },
+);
+
+module.exports = instance.getModel();

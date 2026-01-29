@@ -3,77 +3,41 @@ const VehicleModel = require("./model");
 const paginate = require("../../helpers/limitoffset");
 const Validator = require("../../helpers/validators");
 
-const validateCreateVehicle = async (data, user) => {
-  const rules = {
-    vehicleType: "required|in:car,bus,truck,bike,other",
-    model: "string",
-    // make: "string",
-    color: "string",
-    status: "in:active,inactive",
-  };
+/* -------------------------------------------------------------------------- */
+/*                               VALIDATION RULES                              */
+/* -------------------------------------------------------------------------- */
 
-  if (["car", "bus", "truck", "bike"].includes(data.vehicleType)) {
-    rules.vehicleNumber = "required|string";
-  }
-
-  if (user.role === "superadmin") {
-    rules.organizationId = "required|string";
-  }
-
-  const validator = new Validator(data, rules);
-  await validator.validate();
+const VEHICLE_RULES = {
+  vehicleType: "in:car,bus,truck,bike,other",
+  vehicleNumber: "string",
+  make: "string",
+  model: "string",
+  year: "numeric",
+  color: "string",
+  // ais140Compliant: "boolean",
+  // ais140CertificateNumber: "string",
+  status: "in:active,inactive,maintenance,decommissioned",
+  runningStatus: "in:running,idle,stopped,inactive",
+  // image: "string",
 };
 
-const validateUpdateVehicle = async (data) => {
-  const rules = {};
-
-  if (data.vehicleType !== undefined) rules.vehicleType = "in:car,bus,truck,bike,other";
-  if (data.vehicleNumber !== undefined) rules.vehicleNumber = "string";
-  if (data.make !== undefined) rules.make = "string";
-  if (data.model !== undefined) rules.model = "string";
-  if (data.year !== undefined) rules.year = "string"; // ✅ number rule not defined, use string
-  if (data.color !== undefined) rules.color = "string";
-  if (data.status !== undefined) rules.status = "in:active,inactive";
-  if (data.runningStatus !== undefined)
-    rules.runningStatus = "in:running,idle,stopped,inactive";
-  if (data.deviceId !== undefined) rules.deviceId = "string";
-  if (data.driverId !== undefined) rules.driverId = "string";
-  if (data.image !== undefined) rules.image = "string";
-
-  // Remove empty strings from validation
-  Object.keys(data).forEach((key) => {
-    if (data[key] === "") {
-      delete rules[key];
-    }
-  });
-
-  const validator = new Validator(data, rules);
-  await validator.validate();
-
-  // ✅ Convert year to number if provided
-  if (data.year !== undefined) data.year = Number(data.year);
-};
+/* -------------------------------------------------------------------------- */
+/*                                   CREATE                                   */
+/* -------------------------------------------------------------------------- */
 
 exports.create = async (req, res) => {
   try {
-    await validateCreateVehicle(req.body, req.user);
+    const rules = {
+      ...VEHICLE_RULES,
+      vehicleType: "required|in:car,bus,truck,bike,other",
+      vehicleNumber: "required|string",
+    };
 
-    const {
-      vehicleType,
-      vehicleNumber,
-      make,
-      model,
-      year,
-      color,
-      deviceId,
-      driverId,
-      status,
-    } = req.body;
+    if (req.user.role === "superadmin") {
+      rules.organizationId = "required|string";
+    }
 
-    // Handle image upload - use uploaded file path if available, otherwise use from body
-    const image = req.file
-      ? `/uploads/vehicles/${req.file.filename}`
-      : req.body.image || null;
+    await new Validator(req.body, rules).validate();
 
     const organizationId =
       req.user.role === "superadmin" ? req.body.organizationId : req.orgId;
@@ -85,15 +49,7 @@ exports.create = async (req, res) => {
       });
     }
 
-    if (
-      ["car", "bus", "truck", "bike"].includes(vehicleType) &&
-      !vehicleNumber
-    ) {
-      return res.status(400).json({
-        status: false,
-        message: "Vehicle number is required",
-      });
-    }
+    const vehicleNumber = req.body.vehicleNumber.toUpperCase().trim();
 
     const exists = await VehicleModel.findOne({
       organizationId,
@@ -103,22 +59,17 @@ exports.create = async (req, res) => {
     if (exists) {
       return res.status(409).json({
         status: false,
-        message: "Vehicle with this number already exists in this organization",
+        message: "Vehicle already exists in this organization",
       });
     }
 
+    const image = req.file ? `/uploads/vehicles/${req.file.filename}` : null;
+
     const vehicle = await VehicleModel.create({
       organizationId,
-      vehicleType,
-      vehicleNumber: vehicleNumber ? vehicleNumber.toUpperCase().trim() : null,
-      make: make || null,
-      model: model || null,
-      year: year || null,
-      color: color || null,
-      image: image || null,
-      deviceId: deviceId || null,
-      driverId: driverId || null,
-      status: status || "active",
+      ...req.body,
+      vehicleNumber,
+      image,
       runningStatus: "inactive",
       createdBy: req.user._id,
     });
@@ -137,85 +88,14 @@ exports.create = async (req, res) => {
   }
 };
 
-/**
- * =========================
- * GET ALL VEHICLES
- * =========================
- */
-exports.getAll = async (req, res) => {
-  try {
-    const { vehicleType, status, page, limit, search } = req.query;
-
-    const filter = {};
-
-    if (req.user.role !== "superadmin") {
-      filter.organizationId = req.orgId;
-    }
-
-    if (vehicleType) filter.vehicleType = vehicleType;
-    if (status) filter.status = status;
-
-    const result = await paginate(
-      VehicleModel,
-      filter,
-      page,
-      limit,
-      ["createdBy"],
-      ["vehicleNumber", "model", "vehicleType"],
-      search,
-    );
-
-    return res.status(200).json(result);
-  } catch (error) {
-    return res.status(500).json({
-      status: false,
-      message: error.message,
-    });
-  }
-};
-
-/**
- * =========================
- * GET VEHICLE BY ID
- * =========================
- */
-exports.getById = async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    if (!mongoose.isValidObjectId(id)) {
-      return res.status(400).json({ message: "Invalid ID" });
-    }
-
-    const vehicle = await VehicleModel.findById(id);
-
-    if (!vehicle) {
-      return res.status(404).json({ message: "Vehicle not found" });
-    }
-
-    if (
-      req.user.role !== "superadmin" &&
-      vehicle.organizationId.toString() !== req.orgId.toString()
-    ) {
-      return res.status(403).json({ message: "Forbidden" });
-    }
-
-    return res.json({
-      status: true,
-      data: vehicle,
-    });
-  } catch (error) {
-    return res.status(error.status || 500).json({
-      status: false,
-      message: error.message,
-      errors: error.errors || null,
-    });
-  }
-};
+/* -------------------------------------------------------------------------- */
+/*                                   UPDATE                                   */
+/* -------------------------------------------------------------------------- */
 
 exports.update = async (req, res) => {
   try {
-    await validateUpdateVehicle(req.body);
+    // SAME RULES, NO MODIFICATION
+    await new Validator(req.body, VEHICLE_RULES).validate();
 
     const vehicle = await VehicleModel.findById(req.params.id);
 
@@ -236,30 +116,31 @@ exports.update = async (req, res) => {
       });
     }
 
-    // Check for duplicate vehicle number if updating it
     if (req.body.vehicleNumber) {
+      const formattedVehicleNumber = req.body.vehicleNumber
+        .toUpperCase()
+        .trim();
+
       const duplicate = await VehicleModel.findOne({
         organizationId: vehicle.organizationId,
-        vehicleNumber: req.body.vehicleNumber.toUpperCase().trim(),
+        vehicleNumber: formattedVehicleNumber,
         _id: { $ne: vehicle._id },
       });
 
       if (duplicate) {
         return res.status(409).json({
           status: false,
-          message: "Vehicle number already exists in this organization",
+          message: "Vehicle number already exists",
         });
       }
 
-      req.body.vehicleNumber = req.body.vehicleNumber.toUpperCase().trim();
+      req.body.vehicleNumber = formattedVehicleNumber;
     }
 
-    // Handle image upload - use uploaded file path if available, otherwise keep existing or use from body
     if (req.file) {
       req.body.image = `/uploads/vehicles/${req.file.filename}`;
     }
 
-    // Update with new fields
     Object.assign(vehicle, req.body);
     vehicle.updatedAt = new Date();
     await vehicle.save();
@@ -274,69 +155,47 @@ exports.update = async (req, res) => {
     return res.status(error.status || 500).json({
       status: false,
       message: error.message || "Internal server error",
-      errors: error.errors || null,
     });
   }
 };
 
-exports.deactivate = async (req, res) => {
+/* -------------------------------------------------------------------------- */
+/*                                   GET ALL                                  */
+/* -------------------------------------------------------------------------- */
+
+exports.getAll = async (req, res) => {
   try {
-    const vehicle = await VehicleModel.findById(req.params.id);
+    const filter = {};
 
-    if (!vehicle) {
-      return res.status(404).json({ message: "Vehicle not found" });
+    if (req.user.role !== "superadmin") {
+      filter.organizationId = req.orgId;
     }
 
-    if (
-      req.user.role !== "superadmin" &&
-      vehicle.organizationId.toString() !== req.orgId.toString()
-    ) {
-      return res.status(403).json({ message: "Forbidden" });
-    }
+    const result = await paginate(
+      VehicleModel,
+      filter,
+      req.query.page,
+      req.query.limit,
+      ["createdBy"],
+      ["vehicleNumber", "model", "vehicleType"],
+      req.query.search,
+    );
 
-    vehicle.status = "inactive";
-    await vehicle.save();
-
-    return res.json({
-      status: true,
-      message: "Vehicle deactivated",
-    });
+    return res.status(200).json(result);
   } catch (error) {
-    return res.status(error.status || 500).json({
+    return res.status(500).json({
       status: false,
       message: error.message,
-      errors: error.errors || null,
     });
   }
 };
 
-/**
- * =========================
- * UPDATE VEHICLE STATUS
- * =========================
- */
-exports.updateStatus = async (req, res) => {
+/* -------------------------------------------------------------------------- */
+/*                                   GET BY ID                                */
+/* -------------------------------------------------------------------------- */
+
+exports.getById = async (req, res) => {
   try {
-    const { status, runningStatus } = req.body;
-
-    if (status && !["active", "inactive"].includes(status)) {
-      return res.status(400).json({
-        status: false,
-        message: "Invalid status. Must be 'active' or 'inactive'",
-      });
-    }
-
-    if (
-      runningStatus &&
-      !["running", "idle", "stopped", "inactive"].includes(runningStatus)
-    ) {
-      return res.status(400).json({
-        status: false,
-        message:
-          "Invalid running status. Must be 'running', 'idle', 'stopped', or 'inactive'",
-      });
-    }
-
     const vehicle = await VehicleModel.findById(req.params.id);
 
     if (!vehicle) {
@@ -346,117 +205,11 @@ exports.updateStatus = async (req, res) => {
       });
     }
 
-    if (
-      req.user.role !== "superadmin" &&
-      vehicle.organizationId.toString() !== req.orgId.toString()
-    ) {
-      return res.status(403).json({
-        status: false,
-        message: "Forbidden",
-      });
-    }
-
-    if (status) vehicle.status = status;
-    if (runningStatus) vehicle.runningStatus = runningStatus;
-    vehicle.updatedAt = new Date();
-    await vehicle.save();
-
     return res.json({
       status: true,
-      message: "Vehicle status updated successfully",
       data: vehicle,
     });
   } catch (error) {
-    console.error("Update Status Error:", error);
-    return res.status(error.status || 500).json({
-      status: false,
-      message: error.message || "Internal server error",
-      errors: error.errors || null,
-    });
-  }
-};
-
-/**
- * =========================
- * HARD DELETE (SUPERADMIN)
- * =========================
- */
-exports.remove = async (req, res) => {
-  try {
-    const vehicle = await VehicleModel.findById(req.params.id);
-
-    if (!vehicle) {
-      return res.status(404).json({ message: "Vehicle not found" });
-    }
-
-    if (
-      req.user.role !== "superadmin" &&
-      vehicle.organizationId.toString() !== req.orgId.toString()
-    ) {
-      return res.status(403).json({ message: "Forbidden" });
-    }
-
-    await vehicle.deleteOne();
-
-    return res.json({
-      status: true,
-      message: "Vehicle deleted successfully",
-    });
-  } catch (error) {
-    return res.status(error.status || 500).json({
-      status: false,
-      message: error.message,
-      errors: error.errors || null
-    });
-  }
-};
-
-/**
- * =========================
- * GET VEHICLES BY SUBORGANIZATION
- * =========================
- */
-exports.getBySuborganization = async (req, res) => {
-  try {
-    const { suborganizationId } = req.params;
-    const { vehicleType, status, page, limit, search } = req.query;
-
-    // Validate suborganization ID
-    if (!mongoose.isValidObjectId(suborganizationId)) {
-      return res.status(400).json({
-        status: false,
-        message: "Invalid suborganization ID"
-      });
-    }
-
-    // Check if suborganization belongs to user's organization
-    if (req.user.role !== "admin" && suborganizationId !== req.orgId.toString()) {
-      return res.status(403).json({
-        status: false,
-        message: "Forbidden: Cannot access vehicles from other suborganizations"
-      });
-    }
-
-    const filter = {
-      organizationId: mongoose.Types.ObjectId(suborganizationId)
-    };
-
-    if (vehicleType) filter.vehicleType = vehicleType;
-    if (status) filter.status = status;
-
-    const result = await paginate(
-      VehicleModel,
-      filter,
-      page,
-      limit,
-      ["createdBy"],
-      ["vehicleNumber", "model", "vehicleType"],
-      search
-    );
-
-    return res.status(200).json(result);
-  } catch (error) {
-    console.error("Get By Suborganization Error:", error);
     return res.status(500).json({
       status: false,
       message: error.message,

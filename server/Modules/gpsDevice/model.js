@@ -2,94 +2,189 @@ const { ajModel } = require("../../common/classes/Model");
 const mongoose = require("mongoose");
 
 const gpsDeviceSchema = {
-
-  // 🔗 Organization Mapping
-  organizationId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "Organization",
-    required: true,
-    index: true
-  },
-  vehicleId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "Vehicle",
-    default: null
-  },
-
-
-  // 📟 Core Device Identity
+  // Device Identification
   imei: {
     type: String,
     required: true,
-    trim: true
+    unique: true,
+    length: 15,
+    index: true,
   },
 
-  deviceModel: {
+  // Organization & Vehicle Mapping
+  organizationId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Organization",
+    index: true,
+  },
+
+  vehicleId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Vehicle",
+    default: null,
+    index: true,
+  },
+
+  // AIS-140 Mandatory Fields
+  vendorId: {
     type: String,
-    trim: true,
-    default: null
+    default: "ROADRPA",
+    maxlength: 10,
   },
 
-  manufacturer: {
+  softwareVersion: {
     type: String,
-    trim: true,
-    default: null
+    required: true,
+    maxlength: 20,
   },
 
-  // 📡 SIM & Hardware Info
-  simNumber: {
+  vehicleRegistrationNumber: {
     type: String,
-    trim: true,
-    default: null
+    uppercase: true,
+    index: true,
   },
 
-  serialNumber: {
-    type: String,
-    trim: true,
-    default: null
+  // Connection Status
+  isOnline: {
+    type: Boolean,
+    default: false,
   },
 
-  firmwareVersion: {
-    type: String,
-    trim: true,
-    default: null
-  },
-
-  hardwareVersion: {
-    type: String,
-    trim: true,
-    default: null
-  },
-
-  // 🔌 Device Status
-  connectionStatus: {
-    type: String,
-    enum: ["online", "offline"],
-    default: "offline",
-    index: true
-  },
-
-  // 🛡 Warranty Information
-  warrantyExpiry: {
+  lastSeen: {
     type: Date,
-    default: null
+    default: null,
   },
 
+  lastLoginTime: {
+    type: Date,
+    default: null,
+  },
+
+  // Configuration Settings (as per AIS-140 commands)
+  configuration: {
+    // Server Settings
+    primaryIP: String,
+    primaryPort: Number,
+    secondaryIP: String,
+    secondaryPort: Number,
+    emergencyIP: String,
+    emergencyPort: Number,
+
+    // Network Settings
+    apn: {
+      type: String,
+      default: "auto",
+    },
+
+    // Update Rates (in seconds/minutes)
+    updateRateIgnitionOn: {
+      type: Number,
+      default: 60, // seconds
+      min: 5,
+    },
+
+    updateRateIgnitionOff: {
+      type: Number,
+      default: 60, // seconds
+    },
+
+    updateRateSleepMode: {
+      type: Number,
+      default: 60, // minutes
+    },
+
+    updateRateEmergency: {
+      type: Number,
+      default: 60, // seconds
+      min: 5,
+    },
+
+    updateRateHealth: {
+      type: Number,
+      default: 60, // minutes
+    },
+
+    // Alert Thresholds
+    speedLimit: {
+      type: Number,
+      default: 70, // km/h
+    },
+
+    harshBrakeThreshold: {
+      type: Number,
+      default: 0.55, // g (m/s²)
+    },
+
+    harshAccelerationThreshold: {
+      type: Number,
+      default: 0.43, // g (m/s²)
+    },
+
+    rashTurningThreshold: {
+      type: Number,
+      default: 30, // km/h
+    },
+
+    lowBatteryThreshold: {
+      type: Number,
+      default: 20, // percentage
+    },
+
+    tiltAngle: {
+      type: Number,
+      default: 45, // degrees
+    },
+
+    sleepTime: {
+      type: Number,
+      default: 3, // minutes
+    },
+
+    // Feature Flags
+    turnByTurnTracking: {
+      type: Boolean,
+      default: false,
+    },
+
+    relayEnabled: {
+      type: Boolean,
+      default: false,
+    },
+
+    boxEventDisabled: {
+      type: Boolean,
+      default: false,
+    },
+
+    smsEnabled: {
+      type: Boolean,
+      default: true,
+    },
+  },
+
+  // Contact Numbers
+  emergencyNumber: String, // M0
+  userMobile1: String, // M1
+  userMobile2: String, // M2
+  userMobile3: String, // M3
+
+  // Device Password
+  password: {
+    type: String,
+    default: "rpointais",
+  },
+
+  // Status
   status: {
-    type: String, enum: ["active", "inactive"],
-    default: "active"
+    type: String,
+    enum: ["active", "inactive", "suspended"],
+    default: "active",
   },
 
-  // ⏱️ Timestamps
-  createdAt: {
-    type: Date,
-    default: Date.now
+  createdBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
   },
-
-  updatedAt: {
-    type: Date,
-    default: Date.now
-  }
 };
 
-module.exports = new ajModel("GpsDevice", gpsDeviceSchema, null).getModel();
+module.exports = new ajModel("GpsDevice", gpsDeviceSchema).getModel();

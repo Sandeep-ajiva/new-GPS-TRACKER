@@ -46,40 +46,40 @@ router.put(
   Controller.update,
 );
 
-// deactivate vehicle
-router.patch(
-  "/:id/deactivate",
-  verifyToken,
-  checkAuthorization(["admin", "superadmin"], "vehicle", "update"),
-  checkOrganization,
-  Controller.deactivate,
-);
+// // deactivate vehicle
+// router.patch(
+//   "/:id/deactivate",
+//   verifyToken,
+//   checkAuthorization(["admin", "superadmin"], "vehicle", "update"),
+//   checkOrganization,
+//   Controller.deactivate,
+// );
 
-// activate vehicle (MISSING AUTH ❌)
-router.patch(
-  "/:id/active",
-  verifyToken,
-  checkAuthorization(["admin", "superadmin"], "vehicle", "update"),
-  checkOrganization,
-  Controller.updateStatus,
-);
+// // activate vehicle (MISSING AUTH ❌)
+// router.patch(
+//   "/:id/active",
+//   verifyToken,
+//   checkAuthorization(["admin", "superadmin"], "vehicle", "update"),
+//   checkOrganization,
+//   Controller.updateStatus,
+// );
 
-// hard delete (superadmin only)
-router.delete(
-  "/:id",
-  verifyToken,
-  checkAuthorization(["superadmin", "admin"], "vehicle", "delete"),
-  checkOrganization,
-  Controller.remove,
-);
+// // hard delete (superadmin only)
+// router.delete(
+//   "/:id",
+//   verifyToken,
+//   checkAuthorization(["superadmin", "admin"], "vehicle", "delete"),
+//   checkOrganization,
+//   Controller.remove,
+// );
 
 // get vehicles by suborganization
-router.get(
-  "/suborganization/:suborganizationId",
-  verifyToken,
-  checkAuthorization(["admin", "superadmin", "manager"], "vehicle", "read"),
-  checkOrganization,
-  Controller.getBySuborganization
-);
+// router.get(
+//   "/suborganization/:suborganizationId",
+//   verifyToken,
+//   checkAuthorization(["admin", "superadmin", "manager"], "vehicle", "read"),
+//   checkOrganization,
+//   Controller.getBySuborganization,
+// );
 
 module.exports = router;

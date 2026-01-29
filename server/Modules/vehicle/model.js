@@ -17,51 +17,74 @@ const vehicleSchema = {
 
   vehicleNumber: {
     type: String,
-    required: function () {
-      return ["car", "bus", "truck", "bike"].includes(this.vehicleType);
-    },
+    required: true,
     trim: true,
     uppercase: true,
-    minlength: 2,
+    index: true,
   },
+
+  // AIS-140 specific
+  ais140Compliant: {
+    type: Boolean,
+    default: false,
+  },
+
+  ais140CertificateNumber: String,
 
   make: String,
   model: String,
-
   year: {
     type: Number,
     min: 1900,
     max: new Date().getFullYear() + 1,
   },
-
   color: String,
   image: String,
 
+  // Device Assignment
   deviceId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "GpsDevice",
     default: null,
+    index: true,
   },
 
+  deviceImei: String, // Denormalized for quick access
+
+  // Driver Assignment
   driverId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Driver",
     default: null,
   },
 
+  // Status
   status: {
     type: String,
-    enum: ["active", "inactive"],
+    enum: ["active", "inactive", "maintenance", "decommissioned"],
     default: "active",
     index: true,
   },
 
   runningStatus: {
-    
     type: String,
     enum: ["running", "idle", "stopped", "inactive"],
     default: "inactive",
+    index: true,
   },
+
+  // Current Stats (denormalized from live data)
+  currentLocation: {
+    latitude: Number,
+    longitude: Number,
+    address: String,
+    coordinates: {
+      type: [Number],
+      index: "2dsphere",
+    },
+  },
+
+  lastUpdated: Date,
 
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
@@ -70,12 +93,7 @@ const vehicleSchema = {
   },
 };
 
-const VehicleModel = new ajModel("Vehicle", vehicleSchema).getModel();
+const instance = new ajModel("Vehicle", vehicleSchema);
+instance.index({ organizationId: 1, vehicleNumber: 1 }, { unique: true });
 
-// Then add indexes manually:
-VehicleModel.schema.index(
-  { organizationId: 1, vehicleNumber: 1 },
-  { unique: true },
-);
-
-module.exports = VehicleModel;
+module.exports = instance.getModel();

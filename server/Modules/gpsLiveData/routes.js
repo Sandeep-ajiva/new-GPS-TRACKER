@@ -2,17 +2,13 @@ const express = require("express");
 const router = express.Router();
 const controller = require("./controller");
 
-router.get(
-  "/",
-  controller.getLiveData,
-);  
-router.get(
-  "/vehicle/:vehicleId",
-  controller.getLiveDataByVehicle,
-);  
+// Ingest AIS-140 packet / JSON
+router.post("/ingest", controller.ingestData);
 
-// const GpsLiveDataController = require("./controller");
-
-// router.post("/ingest", GpsLiveDataController.ingestData);
+// Fetch live data
+router.get("/", controller.getLiveData);
+router.get("/vehicle/:vehicleId", controller.getByVehicle);
+router.get("/device/:gpsDeviceId", controller.getByDevice);
+router.get("/imei/:imei", controller.getByImei);
 
 module.exports = router;

@@ -1,19 +1,17 @@
-const GpsDevice = require('./model');
-const Validator = require('../../helpers/validators');
-const mongoose = require('mongoose');
+const GpsDevice = require("./model");
+const Validator = require("../../helpers/validators");
+const mongoose = require("mongoose");
 const paginate = require("../../helpers/limitoffset");
+
+/* -------------------------------------------------------------------------- */
+/*                               VALIDATIONS                                  */
+/* -------------------------------------------------------------------------- */
 
 const validateCreateGpsDevice = async (data, user) => {
   const rules = {
-    imei: "required|string",
-    deviceModel: "required|string",
-    manufacturer: "string",
-    simNumber: "string",
-    serialNumber: "string",
-    firmwareVersion: "string",
-    hardwareVersion: "string",
-    warrantyExpiry: "date",
-    status: "in:active,inactive",
+    imei: "required|string|size:15",
+    softwareVersion: "required|string",
+    status: "in:active,inactive,suspended",
   };
 
   if (user.role === "superadmin") {
@@ -26,42 +24,18 @@ const validateCreateGpsDevice = async (data, user) => {
 
 const validateUpdateGpsDevice = async (data, user) => {
   const rules = {
-    imei: "string",
-    deviceModel: "string",
-    manufacturer: "string",
-    simNumber: "string",
-    serialNumber: "string",
-    firmwareVersion: "string",
-    hardwareVersion: "string",
-    warrantyExpiry: "date",
-    status: "in:active,inactive",
-    connectionStatus: "in:online,offline",
-    organizationId: "string", // <-- allow it
+    imei: "string|size:15",
+    softwareVersion: "string",
+    vehicleRegistrationNumber: "string",
+    status: "in:active,inactive,suspended",
+    isOnline: "boolean",
+    organizationId: "string",
+    vehicleId: "string",
+    configuration: "object",
   };
 
-  // Fields allowed to be empty
-  const optionalFields = [
-    "manufacturer",
-    "simNumber",
-    "serialNumber",
-    "firmwareVersion",
-    "hardwareVersion",
-    "warrantyExpiry",
-    "organizationId", // <-- optional
-  ];
-
-  // Empty string check only for non-optional fields
-  Object.keys(data).forEach((key) => {
-    if (!optionalFields.includes(key) && data[key] === "") {
-      throw {
-        status: 400,
-        message: `${key} cannot be empty`,
-      };
-    }
-  });
-
-  // Allowed fields only
   const allowedFields = Object.keys(rules);
+
   Object.keys(data).forEach((key) => {
     if (!allowedFields.includes(key)) {
       throw {
@@ -75,21 +49,13 @@ const validateUpdateGpsDevice = async (data, user) => {
   await validator.validate();
 };
 
+/* -------------------------------------------------------------------------- */
+/*                                   CREATE                                   */
+/* -------------------------------------------------------------------------- */
+
 exports.create = async (req, res) => {
   try {
     await validateCreateGpsDevice(req.body, req.user);
-
-    const {
-      imei,
-      deviceModel,
-      manufacturer,
-      simNumber,
-      serialNumber,
-      firmwareVersion,
-      hardwareVersion,
-      warrantyExpiry,
-      status,
-    } = req.body;
 
     const organizationId =
       req.user.role === "superadmin" ? req.body.organizationId : req.orgId;
@@ -101,37 +67,28 @@ exports.create = async (req, res) => {
       });
     }
 
-    const existingDevice = await GpsDevice.findOne({
-      imei: imei.trim(),
-      organizationId,
+    const existing = await GpsDevice.findOne({
+      imei: req.body.imei.trim(),
     });
 
-    if (existingDevice) {
+    if (existing) {
       return res.status(409).json({
         status: false,
-        message:
-          "GPS Device with this IMEI already exists in this organization",
+        message: "GPS Device with this IMEI already exists",
       });
     }
 
-    const gpsDevice = await GpsDevice.create({
+    const device = await GpsDevice.create({
+      ...req.body,
+      imei: req.body.imei.trim(),
       organizationId,
-      imei: imei.trim(),
-      deviceModel: deviceModel.trim(),
-      manufacturer: manufacturer?.trim() || null,
-      simNumber: simNumber?.trim() || null,
-      serialNumber: serialNumber?.trim() || null,
-      firmwareVersion: firmwareVersion?.trim() || null,
-      hardwareVersion: hardwareVersion?.trim() || null,
-      connectionStatus: "offline",
-      warrantyExpiry: warrantyExpiry || null,
-      status: status || "active",
+      createdBy: req.user._id,
     });
 
     return res.status(201).json({
       status: true,
       message: "GPS Device created successfully",
-      data: gpsDevice,
+      data: device,
     });
   } catch (error) {
     console.error("Create GPS Device Error:", error);
@@ -142,9 +99,13 @@ exports.create = async (req, res) => {
   }
 };
 
+/* -------------------------------------------------------------------------- */
+/*                                   GET ALL                                  */
+/* -------------------------------------------------------------------------- */
+
 exports.getAll = async (req, res) => {
   try {
-    const { status, connectionStatus, page, limit, search } = req.query;
+    const { status, isOnline, page, limit, search } = req.query;
 
     const filter = {};
 
@@ -153,15 +114,15 @@ exports.getAll = async (req, res) => {
     }
 
     if (status) filter.status = status;
-    if (connectionStatus) filter.connectionStatus = connectionStatus;
+    if (isOnline !== undefined) filter.isOnline = isOnline === "true";
 
     const result = await paginate(
       GpsDevice,
       filter,
       page,
       limit,
-      ["organizationId"],
-      ["imei", "deviceModel", "manufacturer"],
+      ["organizationId", "vehicleId"],
+      ["imei", "vehicleRegistrationNumber", "softwareVersion"],
       search,
     );
 
@@ -175,6 +136,10 @@ exports.getAll = async (req, res) => {
   }
 };
 
+/* -------------------------------------------------------------------------- */
+/*                                GET BY ID                                   */
+/* -------------------------------------------------------------------------- */
+
 exports.getById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -186,7 +151,9 @@ exports.getById = async (req, res) => {
       });
     }
 
-    const device = await GpsDevice.findById(id).populate("organizationId");
+    const device = await GpsDevice.findById(id)
+      .populate("organizationId")
+      .populate("vehicleId");
 
     if (!device) {
       return res.status(404).json({
@@ -197,7 +164,7 @@ exports.getById = async (req, res) => {
 
     if (
       req.user.role !== "superadmin" &&
-      device.organizationId.toString() !== req.orgId.toString()
+      device.organizationId._id.toString() !== req.orgId.toString()
     ) {
       return res.status(403).json({
         status: false,
@@ -211,17 +178,20 @@ exports.getById = async (req, res) => {
     });
   } catch (error) {
     console.error("Get GPS Device By ID Error:", error);
-    return res.status(error.status || 500).json({
+    return res.status(500).json({
       status: false,
       message: error.message || "Internal server error",
-      errors: error.errors || null,
     });
   }
 };
 
+/* -------------------------------------------------------------------------- */
+/*                                   UPDATE                                   */
+/* -------------------------------------------------------------------------- */
+
 exports.update = async (req, res) => {
   try {
-    await validateUpdateGpsDevice(req.body);
+    await validateUpdateGpsDevice(req.body, req.user);
 
     const device = await GpsDevice.findById(req.params.id);
 
@@ -242,46 +212,26 @@ exports.update = async (req, res) => {
       });
     }
 
-    // Check for duplicate IMEI if updating it
     if (req.body.imei) {
       const duplicate = await GpsDevice.findOne({
         imei: req.body.imei.trim(),
-        organizationId: device.organizationId,
         _id: { $ne: device._id },
       });
 
       if (duplicate) {
         return res.status(409).json({
           status: false,
-          message:
-            "GPS Device with this IMEI already exists in this organization",
+          message: "Duplicate IMEI not allowed",
         });
       }
 
       req.body.imei = req.body.imei.trim();
     }
 
-    // Trim string fields
-    const stringFields = [
-      "deviceModel",
-      "manufacturer",
-      "simNumber",
-      "serialNumber",
-      "firmwareVersion",
-      "hardwareVersion",
-    ];
-    stringFields.forEach((field) => {
-      if (req.body[field]) {
-        req.body[field] = req.body[field].trim();
-      }
-    });
-
-    // Update with new fields
     Object.assign(device, req.body);
-    device.updatedAt = new Date();
     await device.save();
 
-    await device.populate("organizationId");
+    await device.populate("organizationId vehicleId");
 
     return res.json({
       status: true,
@@ -293,10 +243,94 @@ exports.update = async (req, res) => {
     return res.status(error.status || 500).json({
       status: false,
       message: error.message || "Internal server error",
-      errors: error.errors || null,
     });
   }
 };
+
+/* -------------------------------------------------------------------------- */
+/*                             UPDATE ONLINE STATUS                            */
+/* -------------------------------------------------------------------------- */
+
+exports.updateConnectionStatus = async (req, res) => {
+  try {
+    const { isOnline } = req.body;
+
+    if (typeof isOnline !== "boolean") {
+      return res.status(400).json({
+        status: false,
+        message: "isOnline must be boolean",
+      });
+    }
+
+    const device = await GpsDevice.findById(req.params.id);
+
+    if (!device) {
+      return res.status(404).json({
+        status: false,
+        message: "GPS Device not found",
+      });
+    }
+
+    if (
+      req.user.role !== "superadmin" &&
+      device.organizationId.toString() !== req.orgId.toString()
+    ) {
+      return res.status(403).json({
+        status: false,
+        message: "Forbidden",
+      });
+    }
+
+    device.isOnline = isOnline;
+    device.lastSeen = isOnline ? new Date() : device.lastSeen;
+    await device.save();
+
+    return res.json({
+      status: true,
+      message: "Device connection status updated",
+      data: device,
+    });
+  } catch (error) {
+    console.error("Update Connection Status Error:", error);
+    return res.status(500).json({
+      status: false,
+      message: error.message || "Internal server error",
+    });
+  }
+};
+
+/* -------------------------------------------------------------------------- */
+/*                                  AVAILABLE                                 */
+/* -------------------------------------------------------------------------- */
+
+exports.getAvailable = async (req, res) => {
+  try {
+    const filter = { isOnline: true };
+
+    if (req.user.role !== "superadmin") {
+      filter.organizationId = req.orgId;
+    }
+
+    const devices = await GpsDevice.find(filter)
+      .populate("organizationId")
+      .populate("vehicleId");
+
+    return res.json({
+      status: true,
+      data: devices,
+    });
+  } catch (error) {
+    console.error("Get Available Devices Error:", error);
+    return res.status(500).json({
+      status: false,
+      message: error.message || "Internal server error",
+    });
+  }
+};
+
+/* -------------------------------------------------------------------------- */
+/*                                   DELETE                                   */
+/* -------------------------------------------------------------------------- */
 
 exports.delete = async (req, res) => {
   try {
@@ -311,11 +345,11 @@ exports.delete = async (req, res) => {
 
     if (
       req.user.role !== "superadmin" &&
-      device.organizationId.toString() !== req.user.organizationId.toString()
+      device.organizationId.toString() !== req.orgId.toString()
     ) {
       return res.status(403).json({
         status: false,
-        message: "You are not allowed to delete this device",
+        message: "Forbidden",
       });
     }
 
@@ -327,88 +361,9 @@ exports.delete = async (req, res) => {
     });
   } catch (error) {
     console.error("Delete GPS Device Error:", error);
-    return res.status(error.status || 500).json({
-      status: false,
-      message: error.message || "Internal server error",
-      errors: error.errors || null,
-    });
-  }
-};
-
-exports.getAvailable = async (req, res) => {
-  try {
-    const filter = { connectionStatus: "online" };
-
-    if (req.user.role !== "superadmin") {
-      filter.organizationId = req.orgId;
-    }
-
-    const devices = await GpsDevice.find(filter).populate("organizationId");
-
-    return res.status(200).json({
-      status: true,
-      message: "Available GPS Devices fetched successfully",
-      data: devices,
-    });
-  } catch (error) {
-    console.error("Get Available GPS Devices Error:", error);
     return res.status(500).json({
       status: false,
       message: error.message || "Internal server error",
-    });
-  }
-};
-
-exports.updateConnectionStatus = async (req, res) => {
-  try {
-    const { connectionStatus } = req.body;
-
-    if (
-      !connectionStatus ||
-      !["online", "offline"].includes(connectionStatus)
-    ) {
-      return res.status(400).json({
-        status: false,
-        message: "Invalid connection status. Must be 'online' or 'offline'",
-      });
-    }
-
-    const device = await GpsDevice.findById(req.params.id);
-
-    if (!device) {
-      return res.status(404).json({
-        status: false,
-        message: "GPS Device not found",
-      });
-    }
-
-    if (
-      req.user.role !== "superadmin" &&
-      device.organizationId.toString() !== req.orgId.toString()
-    ) {
-      return res.status(403).json({
-        status: false,
-        message: "Forbidden",
-      });
-    }
-
-    device.connectionStatus = connectionStatus;
-    device.updatedAt = new Date();
-    await device.save();
-
-    await device.populate("organizationId");
-
-    return res.json({
-      status: true,
-      message: "GPS Device connection status updated successfully",
-      data: device,
-    });
-  } catch (error) {
-    console.error("Update Connection Status Error:", error);
-    return res.status(error.status || 500).json({
-      status: false,
-      message: error.message || "Internal server error",
-      errors: error.errors || null,
     });
   }
 };

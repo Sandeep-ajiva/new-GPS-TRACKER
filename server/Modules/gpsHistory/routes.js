@@ -1,24 +1,57 @@
 const express = require("express");
 const router = express.Router();
+
 const Controller = require("./controller");
-
-const requireAuth = require("../../middleware/verifyToken");
+const verifyToken = require("../../middleware/verifyToken");
 const checkAuthorization = require("../../middleware/checkAuthorization");
+const checkOrganization = require("../../middleware/checkOrganization");
 
-// Get History (Replay path)
+// GET ALL / REPLAY
 router.get(
   "/",
-  requireAuth,
-  checkAuthorization(["admin", "superadmin", "manager", "driver"], "gpsHistory", "read"),
-  Controller.getAll
+  verifyToken,
+  checkAuthorization(
+    ["admin", "superadmin", "manager", "driver"],
+    "gpsHistory",
+    "read",
+  ),
+  checkOrganization,
+  Controller.getAll,
 );
 
-// Clear History (Cleanup)
+// GET BY VEHICLE
+router.get(
+  "/vehicle/:vehicleId",
+  verifyToken,
+  checkAuthorization(
+    ["admin", "superadmin", "manager", "driver"],
+    "gpsHistory",
+    "read",
+  ),
+  checkOrganization,
+  Controller.getByVehicle,
+);
+
+// GET BY DEVICE
+router.get(
+  "/device/:gpsDeviceId",
+  verifyToken,
+  checkAuthorization(
+    ["admin", "superadmin", "manager", "driver"],
+    "gpsHistory",
+    "read",
+  ),
+  checkOrganization,
+  Controller.getByDevice,
+);
+
+// CLEAR HISTORY (SUPERADMIN ONLY)
 router.delete(
   "/",
-  requireAuth,
+  verifyToken,
   checkAuthorization(["superadmin"], "gpsHistory", "delete"),
-  Controller.deleteHistory
+  checkOrganization,
+  Controller.deleteHistory,
 );
 
 module.exports = router;
