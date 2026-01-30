@@ -1,5 +1,5 @@
 const net = require("net");
-const packetRouter = require('./packetrouter')
+const packetRouter = require("./packetRouter");
 
 const TCP_PORT = process.env.TCP_PORT || 6000;
 
@@ -9,7 +9,7 @@ const TCP_PORT = process.env.TCP_PORT || 6000;
 
 const server = net.createServer((socket) => {
   console.log(
-    `📡 Device connected from ${socket.remoteAddress}:${socket.remotePort}`
+    `📡 Device connected from ${socket.remoteAddress}:${socket.remotePort}`,
   );
 
   // 🔹 Every socket gets its own buffer
@@ -58,7 +58,7 @@ const server = net.createServer((socket) => {
   // ─────────────────────────────────────────
   socket.on("close", () => {
     console.log(
-      `📴 Device disconnected ${socket.imei ? `IMEI: ${socket.imei}` : ""}`
+      `📴 Device disconnected ${socket.imei ? `IMEI: ${socket.imei}` : ""}`,
     );
   });
 

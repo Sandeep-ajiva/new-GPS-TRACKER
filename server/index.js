@@ -59,6 +59,4 @@ const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 
 // Start TCP Server
-const startTcpServer = require("./tcp/index");
-const TCP_PORT = process.env.TCP_PORT || 6000;
-startTcpServer.start();
+require("./tcp/server");

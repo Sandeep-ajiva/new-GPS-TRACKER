@@ -1,0 +1,45 @@
+const express = require("express");
+const router = express.Router();
+
+const verifyToken = require("../../middleware/verifyToken");
+const checkOrganization = require("../../middleware/checkOrganization");
+const checkAuthorization = require("../../middleware/checkAuthorization");
+
+const controller = require("./controller");
+
+// test route
+router.get("/", verifyToken, (req, res) => {
+  res.json({
+    status: true,
+    message: "HealthMonitoring API is running",
+  });
+});
+
+// latest by IMEI
+router.get(
+  "/imei/:imei/latest",
+  verifyToken,
+  checkAuthorization(["admin", "superadmin", "manager"], "health", "read"),
+  checkOrganization,
+  controller.getLatestByImei,
+);
+
+// history by IMEI
+router.get(
+  "/imei/:imei/history",
+  verifyToken,
+  checkAuthorization(["admin", "superadmin", "manager"], "health", "read"),
+  checkOrganization,
+  controller.getHistoryByImei,
+);
+
+// latest by vehicle
+router.get(
+  "/vehicle/:vehicleId/latest",
+  verifyToken,
+  checkAuthorization(["admin", "superadmin", "manager"], "health", "read"),
+  checkOrganization,
+  controller.getLatestByVehicle,
+);
+
+module.exports = router;

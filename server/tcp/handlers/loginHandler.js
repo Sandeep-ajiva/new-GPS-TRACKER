@@ -3,6 +3,8 @@ const VehicleDeviceMapping = require("../../Modules/vehicleMapping/model");
 
 module.exports = async function loginHandler(socket, packet) {
   try {
+    console.log("🔥 LOGIN HANDLER HIT");
+
     const clean = packet.replace("*", "");
     const parts = clean.split(",");
 
@@ -16,9 +18,31 @@ module.exports = async function loginHandler(socket, packet) {
       return socket.end();
     }
 
+    console.log("🧪 LOGIN RAW PACKET:", packet);
+    console.log("🧪 PARSED PARTS:", parts);
+    console.log("🧪 IMEI EXTRACTED:", imei);
+
     const device = await GpsDevice.findOne({ imei });
 
-    if (!device || device.status !== "active") {
+    console.log(
+      "🧪 DEVICE FOUND:",
+      device
+        ? {
+            imei: device.imei,
+            status: device.status, // ✅ Fixed: was device.configuration?.status
+            organizationId: device.organizationId,
+          }
+        : "❌ NULL - Device not in database",
+    );
+
+    if (!device) {
+      console.log("❌ Device not found for IMEI:", imei);
+      socket.write("DENY\n");
+      return socket.end();
+    }
+
+    if (device.status !== "active") {
+      console.log("❌ Device not active. Status:", device.status);
       socket.write("DENY\n");
       return socket.end();
     }

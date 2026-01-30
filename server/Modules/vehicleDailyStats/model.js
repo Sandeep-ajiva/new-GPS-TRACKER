@@ -2,7 +2,7 @@ const { ajModel } = require("../../common/classes/Model");
 const mongoose = require("mongoose");
 
 const vehicleDailyStatsSchema = {
-  // 🔗 Relations
+  // Relations
   organizationId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Organization",
@@ -19,18 +19,20 @@ const vehicleDailyStatsSchema = {
 
   gpsDeviceId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: "GpsLiveData",
+    ref: "GpsDevice",
     required: true,
   },
 
-  // 📅 Date for which stats are calculated
+  imei: String,
+
+  // Date
   date: {
     type: Date,
     required: true,
     index: true,
   },
 
-  // 📏 Distance & Speed (units assumed: km & km/h)
+  // Distance & Speed
   totalDistance: {
     type: Number,
     default: 0,
@@ -49,7 +51,7 @@ const vehicleDailyStatsSchema = {
     min: 0,
   },
 
-  // ⏱ Time metrics (stored in seconds)
+  // Time metrics (seconds)
   runningTime: {
     type: Number,
     default: 0,
@@ -68,26 +70,73 @@ const vehicleDailyStatsSchema = {
     min: 0,
   },
 
-  // 🔑 Ignition Events
-  firstIgnitionOn: {
-    type: Date,
-    default: null,
+  // Ignition Events
+  firstIgnitionOn: Date,
+  lastIgnitionOff: Date,
+
+  ignitionOnCount: {
+    type: Number,
+    default: 0,
   },
 
-  lastIgnitionOff: {
+  // AIS-140 Specific Alerts Count
+  alertCounts: {
+    overspeedCount: { type: Number, default: 0 },
+    harshBrakingCount: { type: Number, default: 0 },
+    harshAccelerationCount: { type: Number, default: 0 },
+    rashTurningCount: { type: Number, default: 0 },
+    tamperAlertCount: { type: Number, default: 0 },
+    emergencyCount: { type: Number, default: 0 },
+  },
+
+  // Fuel & Battery
+  fuelConsumed: Number,
+  avgBatteryVoltage: Number,
+
+  // Stops
+  totalStops: {
+    type: Number,
+    default: 0,
+  },
+
+  stops: [
+    {
+      latitude: Number,
+      longitude: Number,
+      startTime: Date,
+      endTime: Date,
+      duration: Number, // seconds
+    },
+  ],
+
+  // Trip Summary
+  totalTrips: {
+    type: Number,
+    default: 0,
+  },
+
+  // Odometer
+  startOdometer: Number,
+  endOdometer: Number,
+
+  // Network Quality
+  avgGsmSignalStrength: Number,
+  gpsFixPercentage: Number,
+
+  // Last updated
+  lastCalculatedAt: {
     type: Date,
-    default: null,
+    default: Date.now,
   },
 };
 
-// 🚀 Optional but highly recommended
-// // Prevent duplicate daily records for same vehicle
-// vehicleDailyStatsSchema.index(
-//   { vehicleId: 1, date: 1 },
-//   { unique: true }
-// );
+// Unique constraint
 
-module.exports = new ajModel(
-  "VehicleDailyStats",
-  vehicleDailyStatsSchema
-).getModel();
+module.exports = new ajModel("VehicleDailyStats", vehicleDailyStatsSchema)
+
+  // ✅ yahin compound index lagta hai
+  .index({ vehicleId: 1, date: 1 })
+  .index({ organizationId: 1, date: 1 })
+
+  // 🚨 LAST LINE ALWAYS
+  .getModel();

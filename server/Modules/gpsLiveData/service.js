@@ -7,6 +7,8 @@ const { getIo } = require("../../socket");
 const VehicleDailyStats = require("../vehicleDailyStats/model");
 const Alert = require("../alerts/model");
 const Organization = require("../organizations/model");
+const EmergencyEvent = require("../emergencyEvents/model");
+const { calculateDistance, mapAlertType } = require("../../common/utils");
 
 const Service = {
   /**
@@ -146,6 +148,29 @@ const Service = {
         ignitionStatus: ignition,
         movementStatus,
         updatedAt: timestamp,
+
+        // Additional fields from parser
+        heading: data.heading ?? null,
+        numberOfSatellites: data.numberOfSatellites ?? null,
+        currentMileage: data.currentMileage ?? null,
+        gpsDate: data.gpsDate ?? null,
+        gpsTime: data.gpsTime ?? null,
+        packetType: data.packetType ?? "NR",
+        altitude: data.altitude ?? null,
+
+        // Status fields
+        emergencyStatus: data.emergencyStatus ?? false,
+        tamperAlert: data.tamperAlert ?? "C",
+
+        // Power fields
+        mainPowerStatus: data.mainPowerStatus ?? null,
+        mainInputVoltage: data.mainInputVoltage ?? null,
+        internalBatteryVoltage: data.internalBatteryVoltage ?? null,
+        batteryLevel: data.batteryLevel ?? null,
+
+        // Network fields
+        gsmSignalStrength: data.gsmSignalStrength ?? null,
+        operatorName: data.operatorName ?? null,
       };
 
       if (ignition && !(prev && prev.ignitionStatus)) {
@@ -178,12 +203,28 @@ const Service = {
           longitude,
           speed,
           gpsTimestamp: timestamp,
+
+          // Additional fields
+          heading: data.heading ?? null,
+          altitude: data.altitude ?? null,
+          numberOfSatellites: data.numberOfSatellites ?? null,
+          packetType: data.packetType ?? null,
+          ignitionStatus: ignition,
+          emergencyStatus: data.emergencyStatus ?? false,
+          tamperAlert: data.tamperAlert ?? null,
+          mainPowerStatus: data.mainPowerStatus ?? null,
+          mainInputVoltage: data.mainInputVoltage ?? null,
+          internalBatteryVoltage: data.internalBatteryVoltage ?? null,
+          odometer: data.currentMileage ?? null,
+          gsmSignalStrength: data.gsmSignalStrength ?? null,
+          operatorName: data.operatorName ?? null,
+          frameNumber: data.frameNumber ?? null,
         });
         await redisClient.set(historyKey, Date.now());
       }
 
       /* ------------------------------------------------------------------ */
-      /* 7️⃣ VEHICLE DAILY STATS                                               */
+      /* 7️⃣ VEHICLE DAILY STATS (WITH DISTANCE CALCULATION)                   */
       /* ------------------------------------------------------------------ */
 
       const day = new Date();
@@ -194,13 +235,30 @@ const Service = {
         date: day,
       });
 
+      // Calculate distance from previous point
+      let distanceIncrement = 0;
+      if (prev && prev.latitude && prev.longitude) {
+        distanceIncrement = calculateDistance(
+          prev.latitude,
+          prev.longitude,
+          latitude,
+          longitude,
+        );
+
+        // Ignore unrealistic jumps (>5km in 4 seconds = GPS error)
+        if (distanceIncrement > 5) {
+          distanceIncrement = 0;
+        }
+      }
+
       if (!stats) {
         stats = await VehicleDailyStats.create({
           organizationId,
           vehicleId,
           gpsDeviceId,
+          imei,
           date: day,
-          totalDistance: 0,
+          totalDistance: distanceIncrement,
           maxSpeed: speed,
           avgSpeed: 0,
           runningTime: movementStatus === "running" ? 1 : 0,
@@ -209,7 +267,7 @@ const Service = {
           firstIgnitionOn: ignition ? timestamp : null,
         });
       } else {
-        const inc = {};
+        const inc = { totalDistance: distanceIncrement };
         if (movementStatus === "running") inc.runningTime = 1;
         if (movementStatus === "idle") inc.idleTime = 1;
         if (movementStatus === "stopped") inc.stoppedTime = 1;
@@ -224,7 +282,7 @@ const Service = {
       }
 
       /* ------------------------------------------------------------------ */
-      /* 8️⃣ ALERTS (OVERSPEED / BATTERY / IGNITION)                          */
+      /* 8️⃣ ALERTS (OVERSPEED / BATTERY / IGNITION) + ALERT COUNTS            */
       /* ------------------------------------------------------------------ */
 
       try {
@@ -244,32 +302,118 @@ const Service = {
         const SPEED_LIMIT = orgSettings.speedLimit ?? 80;
         const LOW_BATTERY = orgSettings.lowBatteryThreshold ?? 20;
 
-        if (speed > SPEED_LIMIT) {
+        // Helper function to create alert and increment count
+        const createAlertAndCount = async (
+          alertType,
+          message,
+          severity = "warning",
+        ) => {
+          const alertMapping = mapAlertType(alertType);
+
           await Alert.create({
             organizationId,
             gpsDeviceId,
             vehicleId,
-            type: "overspeed",
-            message: `Speed ${speed} km/h exceeded ${SPEED_LIMIT}`,
+            imei,
+            alertId: alertMapping.alertId,
+            alertName: alertMapping.alertName,
+            packetType: alertMapping.packetType,
+            severity,
+            latitude,
+            longitude,
             locationCoordinates: [longitude, latitude],
+            gpsTimestamp: timestamp,
+            speed,
+            heading: data.heading ?? null,
+            ignitionStatus: ignition,
+            mainPowerStatus: data.mainPowerStatus ?? null,
+            mainInputVoltage: data.mainInputVoltage ?? null,
+            internalBatteryVoltage: data.internalBatteryVoltage ?? null,
+            gsmSignalStrength: data.gsmSignalStrength ?? null,
+            operatorName: data.operatorName ?? null,
+            odometer: data.currentMileage ?? null,
           });
+
+          // Increment alert count in VehicleDailyStats
+          const countField = `alertCounts.${alertType}Count`;
+          await VehicleDailyStats.updateOne(
+            { vehicleId, date: day },
+            { $inc: { [countField]: 1 } },
+          );
+        };
+
+        // Overspeed Alert
+        if (speed > SPEED_LIMIT) {
+          await createAlertAndCount(
+            "overspeed",
+            `Speed ${speed} km/h exceeded ${SPEED_LIMIT}`,
+            "warning",
+          );
         }
 
+        // Low Battery Alert
         if (
           typeof data.batteryLevel === "number" &&
           data.batteryLevel <= LOW_BATTERY
         ) {
-          await Alert.create({
-            organizationId,
-            gpsDeviceId,
-            vehicleId,
-            type: "low_battery",
-            message: `Battery low: ${data.batteryLevel}%`,
-            locationCoordinates: [longitude, latitude],
-          });
+          await createAlertAndCount(
+            "low_battery",
+            `Battery low: ${data.batteryLevel}%`,
+            "warning",
+          );
         }
       } catch (e) {
         console.error("Alert error:", e);
+      }
+
+      /* ------------------------------------------------------------------ */
+      /* 9️⃣ EMERGENCY EVENTS (EA PACKETS)                                     */
+      /* ------------------------------------------------------------------ */
+
+      try {
+        if (data.emergencyStatus === true || data.packetType === "EA") {
+          // Check if there's already an active emergency for this vehicle
+          const existingEmergency = await EmergencyEvent.findOne({
+            vehicleId,
+            status: "active",
+          }).sort({ gpsTimestamp: -1 });
+
+          if (!existingEmergency) {
+            // Create new emergency event
+            await EmergencyEvent.create({
+              organizationId,
+              vehicleId,
+              gpsDeviceId,
+              imei,
+              eventType: "emergency_on",
+              latitude,
+              longitude,
+              locationCoordinates: [longitude, latitude],
+              gpsTimestamp: timestamp,
+              speed,
+              heading: data.heading ?? null,
+              altitude: data.altitude ?? null,
+              ignitionStatus: ignition,
+              mainPowerStatus: data.mainPowerStatus ?? null,
+              mainInputVoltage: data.mainInputVoltage ?? null,
+              internalBatteryVoltage: data.internalBatteryVoltage ?? null,
+              gsmSignalStrength: data.gsmSignalStrength ?? null,
+              operatorName: data.operatorName ?? null,
+              odometer: data.currentMileage ?? null,
+              status: "active",
+            });
+
+            // Increment emergency count in daily stats
+            await VehicleDailyStats.updateOne(
+              { vehicleId, date: day },
+              { $inc: { "alertCounts.emergencyCount": 1 } },
+            );
+
+            console.log(`🚨 Emergency event created for vehicle ${vehicleId}`);
+          }
+        }
+      } catch (e) {
+        console.error("Emergency event error:", e);
       }
 
       return { success: true, message: "GPS data processed", status: 200 };

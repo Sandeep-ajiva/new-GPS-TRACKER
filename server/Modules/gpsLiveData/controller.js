@@ -160,10 +160,6 @@ const GpsLiveDataController = {
 
       const result = await Service.processGpsData(parsed);
 
-      if (result.success) {
-        await GpsLiveDataController.storeFullPacketData(parsed);
-      }
-
       return res.json({ status: result.success, data: parsed });
     } catch (e) {
       console.error("Ingest Data Error:", e);
