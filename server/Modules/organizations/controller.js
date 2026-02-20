@@ -390,9 +390,6 @@ exports.delete = async (req, res) => {
    CREATE SUB-ORG + MANAGER (TRANSACTION)
 ====================================================== */
 exports.createSubOrganizationWithManager = async (req, res) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
-
   try {
     parseJsonFields(req.body, [
       "organizationData.address",
@@ -420,7 +417,6 @@ exports.createSubOrganizationWithManager = async (req, res) => {
         message: "You are not allowed to create sub-organization under this organization",
       });
     }
-
 
     // parent org check
     const parentOrg = await Organization.findById(parentOrganizationId);
@@ -458,50 +454,36 @@ exports.createSubOrganizationWithManager = async (req, res) => {
       : null;
 
     // 1️⃣ create sub-organization
-    const [subOrganization] = await Organization.create(
-      [
-        {
-          name: organizationData.name.trim(),
-          organizationType: organizationData.organizationType,
-          email: organizationData.email.toLowerCase().trim(),
-          phone: organizationData.phone.trim(),
-          logo,
-          address: organizationData.address || {},
-          geo: organizationData.geo || { timezone: "Asia/Kolkata" },
-          settings: organizationData.settings || {},
-          parentOrganizationId,
-          path,
-          status: "active",
-          createdBy: adminUser._id,
-          adminUser: adminUser._id, // ✅ ownership stays with existing admin
-        },
-      ],
-      { session },
-    );
+    const subOrganization = await Organization.create({
+      name: organizationData.name.trim(),
+      organizationType: organizationData.organizationType,
+      email: organizationData.email.toLowerCase().trim(),
+      phone: organizationData.phone.trim(),
+      logo,
+      address: organizationData.address || {},
+      geo: organizationData.geo || { timezone: "Asia/Kolkata" },
+      settings: organizationData.settings || {},
+      parentOrganizationId,
+      path,
+      status: "active",
+      createdBy: adminUser._id,
+      adminUser: adminUser._id, // ✅ ownership stays with existing admin
+    });
 
     // 2️⃣ create manager
-    // 🔥 email & phone SAME as organization
     const passwordHash = await bcrypt.hash(managerData.password, 10);
 
-    const [manager] = await User.create(
-      [
-        {
-          organizationId: subOrganization._id,
-          firstName: managerData.firstName.trim(),
-          lastName: managerData.lastName.trim(),
-          email: organizationData.email.toLowerCase().trim(), // ✅ SAME
-          mobile: organizationData.phone.trim(),              // ✅ SAME
-          passwordHash,
-          role: "manager",
-          status: "active",
-          createdBy: adminUser._id,
-        },
-      ],
-      { session },
-    );
-
-    await session.commitTransaction();
-    session.endSession();
+    const manager = await User.create({
+      organizationId: subOrganization._id,
+      firstName: managerData.firstName.trim(),
+      lastName: managerData.lastName.trim(),
+      email: managerData.email.toLowerCase().trim(),
+      mobile: managerData.mobile.trim(),
+      passwordHash,
+      role: "manager",
+      status: "active",
+      createdBy: adminUser._id,
+    });
 
     return res.status(201).json({
       status: true,
@@ -512,9 +494,6 @@ exports.createSubOrganizationWithManager = async (req, res) => {
       },
     });
   } catch (error) {
-    await session.abortTransaction();
-    session.endSession();
-
     console.error("Create Sub Organization With Manager Error:", error);
     return res.status(500).json({
       status: false,
