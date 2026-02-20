@@ -5,23 +5,42 @@ module.exports = async function loginHandler(socket, packet) {
   try {
     console.log("🔥 LOGIN HANDLER HIT");
 
-    const clean = packet.replace("*", "");
+    // ─────────────────────────────────────────────
+    // 1️⃣ CLEAN & PARSE PACKET
+    // ─────────────────────────────────────────────
+    const clean = packet.replace("*", "").trim();
     const parts = clean.split(",");
 
-    const deviceIdFromPacket = parts[1];
+    /**
+     * Expected LOGIN packet format (example):
+     * $LGN,TS09ER1234,123456789012345,2.5AIS
+     *
+     * parts[0] → $LGN
+     * parts[1] → vehicleRegNo / deviceCode
+     * parts[2] → IMEI
+     * parts[3] → softwareVersion
+     */
+
+    const vehicleRegNo = parts[1];
     const imei = parts[2];
     const softwareVersion = parts[3];
-    const vehicleRegNo = parts[1]; // agar packet me hai
-
-    if (!imei || imei.length !== 15) {
-      socket.write("DENY\n");
-      return socket.end();
-    }
 
     console.log("🧪 LOGIN RAW PACKET:", packet);
     console.log("🧪 PARSED PARTS:", parts);
     console.log("🧪 IMEI EXTRACTED:", imei);
 
+    // ─────────────────────────────────────────────
+    // 2️⃣ BASIC VALIDATION
+    // ─────────────────────────────────────────────
+    if (!imei || imei.length !== 15) {
+      console.log("❌ Invalid IMEI:", imei);
+      socket.write("DENY\r\n");
+      return socket.end();
+    }
+
+    // ─────────────────────────────────────────────
+    // 3️⃣ FIND DEVICE
+    // ─────────────────────────────────────────────
     const device = await GpsDevice.findOne({ imei });
 
     console.log(
@@ -29,40 +48,47 @@ module.exports = async function loginHandler(socket, packet) {
       device
         ? {
             imei: device.imei,
-            status: device.status, // ✅ Fixed: was device.configuration?.status
+            status: device.status,
             organizationId: device.organizationId,
           }
         : "❌ NULL - Device not in database",
     );
 
     if (!device) {
-      console.log("❌ Device not found for IMEI:", imei);
-      socket.write("DENY\n");
+      socket.write("DENY\r\n");
       return socket.end();
     }
 
     if (device.status !== "active") {
       console.log("❌ Device not active. Status:", device.status);
-      socket.write("DENY\n");
+      socket.write("DENY\r\n");
       return socket.end();
     }
 
-    // 🔥 Bind socket context (VERY IMPORTANT)
+    // ─────────────────────────────────────────────
+    // 4️⃣ BIND SOCKET CONTEXT (🔥 MOST IMPORTANT 🔥)
+    // ─────────────────────────────────────────────
+    socket.isLoggedIn = true; // ✅ THIS FIXES YOUR ISSUE
     socket.imei = imei;
     socket.gpsDeviceId = device._id;
     socket.organizationId = device.organizationId;
     socket.vehicleId = device.vehicleId || null;
 
-    // Optional: resolve vehicle from mapping
+    // ─────────────────────────────────────────────
+    // 5️⃣ RESOLVE VEHICLE (IF NOT DIRECTLY ATTACHED)
+    // ─────────────────────────────────────────────
     if (!socket.vehicleId) {
       const mapping = await VehicleDeviceMapping.findOne({
         gpsDeviceId: device._id,
         unassignedAt: null,
       });
+
       socket.vehicleId = mapping?.vehicleId || null;
     }
 
-    // 🔥 Update GpsDevice metadata
+    // ─────────────────────────────────────────────
+    // 6️⃣ UPDATE DEVICE METADATA
+    // ─────────────────────────────────────────────
     await GpsDevice.updateOne(
       { _id: device._id },
       {
@@ -76,14 +102,18 @@ module.exports = async function loginHandler(socket, packet) {
       },
     );
 
-    console.log("✅ DEVICE LOGGED IN", {
+    console.log("✅ DEVICE LOGGED IN SUCCESSFULLY", {
       imei,
       org: device.organizationId,
+      vehicleId: socket.vehicleId,
     });
 
-    socket.write("ON\n"); // AIS-140 safe ACK
+    // ─────────────────────────────────────────────
+    // 7️⃣ SEND LOGIN ACK (AIS-140 SAFE)
+    // ─────────────────────────────────────────────
+    socket.write("ON\r\n");
   } catch (err) {
-    console.error("❌ Login handler error:", err);
-    socket.write("ERROR\n");
+    console.error("❌ LOGIN HANDLER ERROR:", err);
+    socket.write("ERROR\r\n");
   }
 };

@@ -74,7 +74,13 @@ const server = net.createServer((socket) => {
   // SOCKET ERROR
   // ─────────────────────────────────────────
   socket.on("error", (err) => {
-    console.error("❌ Socket error:", err.message);
+    if (err.code === "ECONNRESET") {
+      console.log(
+        `⚠️ Device disconnected abruptly (ECONNRESET) ${socket.imei || ""}`,
+      );
+    } else {
+      console.error("❌ Socket error:", err.message);
+    }
   });
 });
 
