@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Menu, Settings, MessageSquare, Bell, Calendar, Clock, Car, LogOut, Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -19,11 +19,16 @@ const roleToDashboard = (role?: string | null) => {
 export function Header({
     onVehicleCreated,
     vehicleSummary,
+    messageCount = 0,
+    notificationCount = 0,
 }: {
     onVehicleCreated?: (vehicle: Vehicle) => void
     vehicleSummary?: { label: string; speed: number }
+    messageCount?: number
+    notificationCount?: number
 }) {
     const [isVehicleModalOpen, setIsVehicleModalOpen] = useState(false)
+    const [now, setNow] = useState(() => new Date())
     const router = useRouter()
     const userRole = getSecureItem("userRole")
     const canCreateVehicle = userRole === "admin"
@@ -34,6 +39,32 @@ export function Header({
         if (!user) return "User"
         return [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email || "User"
     }, [meData])
+
+    useEffect(() => {
+        const interval = setInterval(() => setNow(new Date()), 1000)
+        return () => clearInterval(interval)
+    }, [])
+
+    const dateLabel = useMemo(
+        () =>
+            now.toLocaleDateString("en-GB", {
+                weekday: "short",
+                day: "2-digit",
+                month: "long",
+                year: "numeric",
+            }),
+        [now],
+    )
+    const timeLabel = useMemo(
+        () =>
+            now.toLocaleTimeString("en-GB", {
+                hour: "2-digit",
+                minute: "2-digit",
+                second: "2-digit",
+                hour12: true,
+            }),
+        [now],
+    )
 
     return (
         <header className="relative flex h-16 items-center justify-between border-b border-white/10 bg-linear-to-r from-slate-950 via-slate-900 to-emerald-900/40 px-4 text-white shadow-[0_10px_30px_rgba(15,23,42,0.35)]">
@@ -59,12 +90,12 @@ export function Header({
             <div className="relative z-10 hidden items-center gap-3 rounded-full border border-white/10 bg-white/5 px-5 py-2 text-xs font-semibold shadow-sm lg:flex text-slate-100">
                 <div className="flex items-center gap-2">
                     <Calendar className="h-4 w-4" />
-                    <span>Fri, 22 December 2023</span>
+                    <span>{dateLabel}</span>
                 </div>
                 <span className="h-4 w-px bg-white/30" />
                 <div className="flex items-center gap-2">
                     <Clock className="h-4 w-4" />
-                    <span>11 : 58 : 17 AM</span>
+                    <span>{timeLabel}</span>
                 </div>
                 <span className="h-4 w-px bg-white/30" />
                 <div className="flex items-center gap-2">
@@ -94,11 +125,11 @@ export function Header({
                 </div>
                 <Button variant="ghost" size="icon" className="text-white hover:bg-white/10 relative">
                     <MessageSquare className="h-5 w-5" />
-                    <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px]">15</span>
+                    <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px]">{messageCount}</span>
                 </Button>
                 <Button variant="ghost" size="icon" className="text-white hover:bg-white/10 relative">
                     <Bell className="h-5 w-5" />
-                    <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-blue-500 text-[10px]">3</span>
+                    <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-blue-500 px-1 text-[10px]">{notificationCount}</span>
                 </Button>
                 <Button variant="ghost" size="icon" className="text-white hover:bg-white/10">
                     <Settings className="h-5 w-5" />

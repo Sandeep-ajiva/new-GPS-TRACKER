@@ -26,7 +26,7 @@ async function checkDevice() {
     } else {
       console.log("✅ Device found!");
       console.log(JSON.stringify(device, null, 2));
-      console.log("\nStatus:", device.configuration?.status);
+      console.log("\nStatus:", device.status);
       console.log("Organization:", device.organizationId);
       console.log("Vehicle:", device.vehicleId);
     }

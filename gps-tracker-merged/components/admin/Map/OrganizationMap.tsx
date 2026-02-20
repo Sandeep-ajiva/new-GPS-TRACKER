@@ -1,7 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
-import { GoogleMap, Marker, InfoWindow, useLoadScript } from "@react-google-maps/api";
+import { useMemo } from "react";
+import { DivIcon, LatLngExpression, latLngBounds } from "leaflet";
+import { MapContainer, Marker, Popup, TileLayer, useMap } from "react-leaflet";
+import "leaflet/dist/leaflet.css";
+import "leaflet-defaulticon-compatibility/dist/leaflet-defaulticon-compatibility.css";
+import "leaflet-defaulticon-compatibility";
 
 type MapPoint = {
   id: string;
@@ -30,36 +34,37 @@ type OrganizationMapProps = {
   onVehicleSelect?: (vehicleId: string) => void;
 };
 
-const mapStyles: google.maps.MapTypeStyle[] = [
-  { elementType: "geometry", stylers: [{ color: "#f8fafc" }] },
-  { elementType: "labels.text.stroke", stylers: [{ color: "#ffffff" }] },
-  { elementType: "labels.text.fill", stylers: [{ color: "#64748b" }] },
-  { featureType: "administrative", elementType: "geometry", stylers: [{ color: "#e2e8f0" }] },
-  { featureType: "poi", elementType: "geometry", stylers: [{ color: "#eef2f7" }] },
-  { featureType: "poi", elementType: "labels.text.fill", stylers: [{ color: "#64748b" }] },
-  { featureType: "road", elementType: "geometry", stylers: [{ color: "#ffffff" }] },
-  { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#e2e8f0" }] },
-  { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#94a3b8" }] },
-  { featureType: "transit", elementType: "geometry", stylers: [{ color: "#e2e8f0" }] },
-  { featureType: "water", elementType: "geometry", stylers: [{ color: "#dbeafe" }] },
-  { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#3b82f6" }] },
-];
+function FitBounds({
+  points,
+}: {
+  points: Array<{ lat: number; lng: number }>;
+}) {
+  const map = useMap();
+  const valid = points.filter(
+    (p) => Number.isFinite(p.lat) && Number.isFinite(p.lng),
+  );
 
-const createCircleIcon = (color: string, scale: number) => ({
-  path: google.maps.SymbolPath.CIRCLE,
-  fillColor: color,
-  fillOpacity: 1,
-  strokeColor: "#e2e8f0",
-  strokeOpacity: 0.9,
-  strokeWeight: 2,
-  scale,
-});
+  if (valid.length) {
+    const bounds = latLngBounds(valid.map((p) => [p.lat, p.lng]));
+    map.fitBounds(bounds, { padding: [70, 70] });
+  }
+
+  return null;
+}
 
 const statusColor = (status: VehiclePoint["status"]) => {
   if (status === "running") return "#34d399";
   if (status === "idle") return "#fbbf24";
   return "#ef4444";
 };
+
+const markerIcon = (color: string, size = 14) =>
+  new DivIcon({
+    className: "org-map-marker",
+    html: `<div style="width:${size}px;height:${size}px;background:${color};border:2px solid #fff;border-radius:9999px;box-shadow:0 0 0 2px rgba(15,23,42,.18)"></div>`,
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+  });
 
 export default function OrganizationMap({
   organizations,
@@ -70,12 +75,6 @@ export default function OrganizationMap({
   onOrgSelect,
   onVehicleSelect,
 }: OrganizationMapProps) {
-  const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
-  const { isLoaded, loadError } = useLoadScript({
-    googleMapsApiKey: apiKey || "",
-  });
-  const mapRef = useRef<google.maps.Map | null>(null);
-
   const visibleOrgPoints = useMemo(() => {
     if (selectedOrgId) {
       return organizations.filter((org) => org.id === selectedOrgId);
@@ -85,13 +84,13 @@ export default function OrganizationMap({
 
   const extraOrgPoints = useMemo(
     () => secondaryOrganizations.filter((org) => org.id !== selectedOrgId),
-    [secondaryOrganizations, selectedOrgId]
+    [secondaryOrganizations, selectedOrgId],
   );
 
   const visibleVehicles = useMemo(() => {
     if (!selectedOrgId) return [];
     const scoped = vehicles.filter((vehicle) =>
-      selectedOrgId ? vehicle.id.startsWith(`${selectedOrgId}:`) : true
+      vehicle.id.startsWith(`${selectedOrgId}:`),
     );
     if (selectedVehicleId) {
       return scoped.filter((vehicle) => vehicle.id === selectedVehicleId);
@@ -99,142 +98,114 @@ export default function OrganizationMap({
     return scoped;
   }, [vehicles, selectedOrgId, selectedVehicleId]);
 
-  useEffect(() => {
-    if (!mapRef.current) return;
-    const bounds = new google.maps.LatLngBounds();
-    const points = selectedOrgId ? visibleVehicles : visibleOrgPoints;
-    const hasPoints = points.length > 0;
-
-    points.forEach((point) => bounds.extend(point.position));
-    if (selectedOrgId) {
-      const orgPoint = organizations.find((org) => org.id === selectedOrgId);
-      if (orgPoint) {
-        bounds.extend(orgPoint.position);
-      }
-      extraOrgPoints.forEach((org) => bounds.extend(org.position));
-    }
-
-    if (!hasPoints && !selectedOrgId) return;
-    if (!bounds.isEmpty()) {
-      mapRef.current.fitBounds(bounds, 80);
-    }
-  }, [organizations, extraOrgPoints, visibleOrgPoints, visibleVehicles, selectedOrgId]);
-
-  if (!apiKey) {
-    return (
-      <div className="flex h-full w-full items-center justify-center bg-slate-50 text-slate-500">
-        Add `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` to load Google Maps.
-      </div>
-    );
-  }
-
-  if (loadError) {
-    return (
-      <div className="flex h-full w-full items-center justify-center bg-slate-50 text-slate-500">
-        Unable to load Google Maps. Check the API key and billing settings.
-      </div>
-    );
-  }
-
-  if (!isLoaded) {
-    return (
-      <div className="flex h-full w-full items-center justify-center bg-slate-50 text-slate-500">
-        Loading Google Maps...
-      </div>
-    );
-  }
-
-  const center = visibleOrgPoints[0]?.position || { lat: 28.6139, lng: 77.209 };
-  const selectedVehicle = selectedVehicleId
-    ? visibleVehicles.find((vehicle) => vehicle.id === selectedVehicleId)
-    : null;
   const activeOrg = selectedOrgId
     ? organizations.find((org) => org.id === selectedOrgId)
     : null;
+  const selectedVehicle = selectedVehicleId
+    ? visibleVehicles.find((vehicle) => vehicle.id === selectedVehicleId)
+    : null;
+
+  const pointsForBounds = selectedOrgId
+    ? [
+        ...(activeOrg ? [activeOrg.position] : []),
+        ...extraOrgPoints.map((p) => p.position),
+        ...visibleVehicles.map((v) => v.position),
+      ]
+    : visibleOrgPoints.map((p) => p.position);
+
+  const center = (visibleOrgPoints[0]?.position || {
+    lat: 28.6139,
+    lng: 77.209,
+  }) as LatLngExpression;
 
   return (
-    <div className="relative h-full w-full bg-slate-50">
-      <GoogleMap
-        mapContainerStyle={{ width: "100%", height: "100%" }}
-        zoom={6}
-        center={center}
-        onLoad={(map) => {
-          mapRef.current = map;
-        }}
-        options={{
-          styles: mapStyles,
-          disableDefaultUI: true,
-          zoomControl: true,
-          fullscreenControl: false,
-          streetViewControl: false,
-          mapTypeControl: false,
-        }}
-      >
+    <div className="relative h-full w-full overflow-hidden rounded-xl bg-slate-50">
+      <MapContainer center={center} zoom={6} className="h-full w-full">
+        <TileLayer
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        />
+        <FitBounds points={pointsForBounds} />
+
         {activeOrg && (
           <Marker
-            key={activeOrg.id}
             position={activeOrg.position}
-            label={{
-              text: activeOrg.name,
-              color: "#0f172a",
-              fontSize: "12px",
-              fontWeight: "700",
-            }}
-            icon={createCircleIcon("#38bdf8", 8)}
-          />
+            icon={markerIcon("#38bdf8", 16)}
+            eventHandlers={{ click: () => onOrgSelect?.(activeOrg.id) }}
+          >
+            <Popup>
+              <p className="font-semibold">{activeOrg.name}</p>
+            </Popup>
+          </Marker>
         )}
+
         {extraOrgPoints.map((org) => (
           <Marker
             key={org.id}
             position={org.position}
-            label={{
-              text: org.name,
-              color: "#0f172a",
-              fontSize: "11px",
-              fontWeight: "600",
-            }}
-            icon={createCircleIcon("#22d3ee", 6)}
-            onClick={() => onOrgSelect?.(org.id)}
-          />
+            icon={markerIcon("#22d3ee")}
+            eventHandlers={{ click: () => onOrgSelect?.(org.id) }}
+          >
+            <Popup>
+              <p className="font-semibold">{org.name}</p>
+            </Popup>
+          </Marker>
         ))}
+
         {selectedOrgId
           ? visibleVehicles.map((vehicle) => (
               <Marker
                 key={vehicle.id}
                 position={vehicle.position}
-                icon={createCircleIcon(statusColor(vehicle.status), selectedVehicleId ? 9 : 7)}
-                onClick={() => onVehicleSelect?.(vehicle.id)}
-              />
+                icon={markerIcon(
+                  statusColor(vehicle.status),
+                  selectedVehicleId ? 16 : 13,
+                )}
+                eventHandlers={{ click: () => onVehicleSelect?.(vehicle.id) }}
+              >
+                <Popup>
+                  <p className="font-semibold">{vehicle.label || "Vehicle"}</p>
+                  <p className="text-xs text-slate-600">
+                    Driver: {vehicle.driverName || "Unassigned"}
+                  </p>
+                </Popup>
+              </Marker>
             ))
           : visibleOrgPoints.map((org) => (
               <Marker
                 key={org.id}
                 position={org.position}
-                label={{
-                  text: org.name,
-                  color: "white",
-                  fontSize: "12px",
-                  fontWeight: "700",
-                }}
-                icon={createCircleIcon("#38bdf8", selectedOrgId ? 9 : 7)}
-                onClick={() => onOrgSelect?.(org.id)}
-              />
+                icon={markerIcon("#38bdf8")}
+                eventHandlers={{ click: () => onOrgSelect?.(org.id) }}
+              >
+                <Popup>
+                  <p className="font-semibold">{org.name}</p>
+                </Popup>
+              </Marker>
             ))}
+
         {selectedVehicle && (
-          <InfoWindow
+          <Marker
             position={selectedVehicle.position}
-            onCloseClick={() => onVehicleSelect?.("")}
+            icon={markerIcon(statusColor(selectedVehicle.status), 17)}
           >
-            <div className="text-slate-900 text-sm font-semibold">
-              <p className="font-black text-slate-900">{selectedVehicle.label || "Vehicle"}</p>
-              <p className="text-xs text-slate-600">Driver: {selectedVehicle.driverName || "Unassigned"}</p>
-              <p className="text-xs text-slate-600">Speed: {selectedVehicle.speed ?? 0} km/h</p>
-              <p className="text-xs text-slate-600">Last: {selectedVehicle.lastUpdated || "Just now"}</p>
-              <p className="text-xs text-slate-600">Location: {selectedVehicle.location || "Unknown"}</p>
-            </div>
-          </InfoWindow>
+            <Popup>
+              <p className="font-semibold">
+                {selectedVehicle.label || "Vehicle"}
+              </p>
+              <p className="text-xs text-slate-600">
+                Speed: {selectedVehicle.speed ?? 0} km/h
+              </p>
+              <p className="text-xs text-slate-600">
+                Last: {selectedVehicle.lastUpdated || "Just now"}
+              </p>
+              <p className="text-xs text-slate-600">
+                Location: {selectedVehicle.location || "Unknown"}
+              </p>
+            </Popup>
+          </Marker>
         )}
-      </GoogleMap>
+      </MapContainer>
     </div>
   );
 }

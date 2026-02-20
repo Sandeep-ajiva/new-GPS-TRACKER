@@ -1,73 +1,40 @@
 "use client";
 
-import { GoogleMap, Marker, useLoadScript } from "@react-google-maps/api";
+import { DivIcon, LatLngExpression } from "leaflet";
+import { MapContainer, Marker, Popup, TileLayer } from "react-leaflet";
+import "leaflet/dist/leaflet.css";
+import "leaflet-defaulticon-compatibility/dist/leaflet-defaulticon-compatibility.css";
+import "leaflet-defaulticon-compatibility";
 
 type SinglePointMapProps = {
   position: { lat: number; lng: number };
   label?: string;
 };
 
-const mapStyles: google.maps.MapTypeStyle[] = [
-  { elementType: "geometry", stylers: [{ color: "#f8fafc" }] },
-  { elementType: "labels.text.stroke", stylers: [{ color: "#ffffff" }] },
-  { elementType: "labels.text.fill", stylers: [{ color: "#64748b" }] },
-  { featureType: "administrative", elementType: "geometry", stylers: [{ color: "#e2e8f0" }] },
-  { featureType: "poi", elementType: "geometry", stylers: [{ color: "#eef2f7" }] },
-  { featureType: "poi", elementType: "labels.text.fill", stylers: [{ color: "#64748b" }] },
-  { featureType: "road", elementType: "geometry", stylers: [{ color: "#ffffff" }] },
-  { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#e2e8f0" }] },
-  { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#94a3b8" }] },
-  { featureType: "water", elementType: "geometry", stylers: [{ color: "#dbeafe" }] },
-  { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#3b82f6" }] },
-];
+const markerIcon = new DivIcon({
+  className: "single-point-marker",
+  html: `<div style="width:16px;height:16px;background:#0ea5e9;border:2px solid #fff;border-radius:9999px;box-shadow:0 0 0 2px rgba(15,23,42,.18)"></div>`,
+  iconSize: [16, 16],
+  iconAnchor: [8, 8],
+});
 
 export default function SinglePointMap({ position, label }: SinglePointMapProps) {
-  const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
-  const { isLoaded, loadError } = useLoadScript({
-    googleMapsApiKey: apiKey || "",
-  });
-
-  if (!apiKey) {
-    return (
-      <div className="flex h-full w-full items-center justify-center bg-slate-50 text-slate-500">
-        Add `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` to load Google Maps.
-      </div>
-    );
-  }
-
-  if (loadError) {
-    return (
-      <div className="flex h-full w-full items-center justify-center bg-slate-50 text-slate-500">
-        Unable to load Google Maps. Check the API key and billing settings.
-      </div>
-    );
-  }
-
-  if (!isLoaded) {
-    return (
-      <div className="flex h-full w-full items-center justify-center bg-slate-50 text-slate-500">
-        Loading Google Maps...
-      </div>
-    );
-  }
-
+  const center = position as LatLngExpression;
   return (
-    <div className="relative h-full w-full bg-slate-50">
-      <GoogleMap
-        mapContainerStyle={{ width: "100%", height: "100%" }}
-        zoom={12}
-        center={position}
-        options={{
-          styles: mapStyles,
-          disableDefaultUI: true,
-          zoomControl: true,
-          fullscreenControl: false,
-          streetViewControl: false,
-          mapTypeControl: false,
-        }}
-      >
-        <Marker position={position} label={label ? { text: label, color: "#0f172a" } : undefined} />
-      </GoogleMap>
+    <div className="relative h-full w-full overflow-hidden rounded-xl bg-slate-50">
+      <MapContainer center={center} zoom={12} className="h-full w-full">
+        <TileLayer
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        />
+        <Marker position={position} icon={markerIcon}>
+          {label ? (
+            <Popup>
+              <p className="font-semibold">{label}</p>
+            </Popup>
+          ) : null}
+        </Marker>
+      </MapContainer>
     </div>
   );
 }

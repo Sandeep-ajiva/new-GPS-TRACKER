@@ -56,19 +56,30 @@ export function useVehiclePositions(vehicles: Vehicle[]) {
     const interval = setInterval(() => {
       setPositions((prev) => {
         const next: VehiclePositions = { ...prev }
+        let changed = false
         vehicles.forEach((vehicle) => {
           if (vehicle.status !== "running") return
           const currentIndex = prev[vehicle.id]?.index ?? 0
           const nextIndex = (currentIndex + 1) % vehicle.route.length
           const point = vehicle.route[nextIndex]
+          const prevPoint = prev[vehicle.id]
+          if (
+            prevPoint &&
+            prevPoint.index === nextIndex &&
+            prevPoint.lat === point.lat &&
+            prevPoint.lng === point.lng
+          ) {
+            return
+          }
           next[vehicle.id] = { index: nextIndex, lat: point.lat, lng: point.lng }
+          changed = true
         })
-        return next
+        return changed ? next : prev
       })
     }, 1500)
 
     return () => clearInterval(interval)
-  }, [])
+  }, [vehicles])
 
   return positions
 }

@@ -1,10 +1,75 @@
 import { Gauge } from "lucide-react"
 import type { Vehicle } from "@/lib/vehicles"
 
-export function ActivityStats({ vehicles = [], alertCount = 0 }: { vehicles?: Vehicle[]; alertCount?: number }) {
+type AlertItem = {
+    _id?: string
+    vehicleId?: string | { _id?: string }
+    alertName?: string
+    severity?: string
+    gpsTimestamp?: string
+    receivedAt?: string
+    createdAt?: string
+}
+
+type DailyStats = {
+    totalDistance?: number
+    maxSpeed?: number
+    avgSpeed?: number
+    runningTime?: number
+    idleTime?: number
+    stoppedTime?: number
+}
+
+const toVehicleId = (item: AlertItem) => {
+    if (typeof item.vehicleId === "string") return item.vehicleId
+    return item.vehicleId?._id || null
+}
+
+const toRelativeTime = (value?: string) => {
+    if (!value) return "just now"
+    const ts = new Date(value).getTime()
+    if (Number.isNaN(ts)) return "just now"
+    const diffMins = Math.max(0, Math.floor((Date.now() - ts) / 60000))
+    if (diffMins < 1) return "just now"
+    if (diffMins < 60) return `${diffMins} min ago`
+    const hours = Math.floor(diffMins / 60)
+    if (hours < 24) return `${hours} h ago`
+    const days = Math.floor(hours / 24)
+    return `${days} d ago`
+}
+
+export function ActivityStats({
+    vehicles = [],
+    alertCount = 0,
+    alerts = [],
+    selectedVehicleId,
+    compact = false,
+    dailyStats,
+}: {
+    vehicles?: Vehicle[]
+    alertCount?: number
+    alerts?: AlertItem[]
+    selectedVehicleId?: string | null
+    compact?: boolean
+    dailyStats?: DailyStats | null
+}) {
     const speeds = vehicles.map((vehicle) => vehicle.speed).filter((speed) => Number.isFinite(speed))
-    const avgSpeed = speeds.length ? Math.round(speeds.reduce((acc, speed) => acc + speed, 0) / speeds.length) : 0
-    const maxSpeed = speeds.length ? Math.max(...speeds) : 0
+    const computedAvgSpeed = speeds.length ? Math.round(speeds.reduce((acc, speed) => acc + speed, 0) / speeds.length) : 0
+    const computedMaxSpeed = speeds.length ? Math.max(...speeds) : 0
+    const avgSpeed = Number.isFinite(Number(dailyStats?.avgSpeed)) ? Math.round(Number(dailyStats?.avgSpeed)) : computedAvgSpeed
+    const maxSpeed = Number.isFinite(Number(dailyStats?.maxSpeed)) ? Math.round(Number(dailyStats?.maxSpeed)) : computedMaxSpeed
+    const selectedVehicle = selectedVehicleId ? vehicles.find((item) => item.id === selectedVehicleId) : vehicles[0]
+
+    const filteredAlerts = selectedVehicleId
+        ? alerts.filter((item) => toVehicleId(item) === selectedVehicleId)
+        : alerts
+    const recentAlerts = [...filteredAlerts]
+        .sort((a, b) => {
+            const at = new Date(a.gpsTimestamp || a.receivedAt || a.createdAt || 0).getTime()
+            const bt = new Date(b.gpsTimestamp || b.receivedAt || b.createdAt || 0).getTime()
+            return bt - at
+        })
+        .slice(0, 3)
 
     const statusTotals = vehicles.reduce(
         (acc, vehicle) => {
@@ -17,48 +82,99 @@ export function ActivityStats({ vehicles = [], alertCount = 0 }: { vehicles?: Ve
         },
         { running: 0, idle: 0, stopped: 0, inactive: 0, total: 0 }
     )
+    const statusFromDaily =
+        dailyStats &&
+        (Number(dailyStats.runningTime || 0) > 0 ||
+            Number(dailyStats.idleTime || 0) > 0 ||
+            Number(dailyStats.stoppedTime || 0) > 0)
+            ? {
+                ...statusTotals,
+                running: Number(dailyStats.runningTime || 0),
+                idle: Number(dailyStats.idleTime || 0),
+                stopped: Number(dailyStats.stoppedTime || 0),
+                total:
+                    Number(dailyStats.runningTime || 0) +
+                    Number(dailyStats.idleTime || 0) +
+                    Number(dailyStats.stoppedTime || 0),
+            }
+            : statusTotals
+
+    if (compact) {
+        return (
+            <div className="grid h-full min-h-0 grid-cols-1 gap-2">
+                <div className="rounded-lg border border-white/10 bg-slate-900/70 p-2 text-xs text-slate-100">
+                    <div className="flex items-center justify-between">
+                        <span>Avg Speed</span>
+                        <span className="font-semibold">{avgSpeed} km/h</span>
+                    </div>
+                    <div className="mt-1 flex items-center justify-between">
+                        <span className="text-amber-300">Max Speed</span>
+                        <span className="font-semibold text-amber-300">{maxSpeed} km/h</span>
+                    </div>
+                </div>
+                <div className="rounded-lg border border-white/10 bg-slate-900/70 p-2 text-xs text-slate-100">
+                    <div className="font-semibold text-emerald-200">Today Activity</div>
+                    <div className="mt-1 grid grid-cols-2 gap-y-1">
+                        <span>Run/Idle</span>
+                        <span className="text-right">{statusFromDaily.running}/{statusFromDaily.idle}</span>
+                        <span>Stop/Inact</span>
+                        <span className="text-right">{statusFromDaily.stopped}/{statusFromDaily.inactive}</span>
+                    </div>
+                </div>
+                <div className="rounded-lg border border-white/10 bg-slate-900/70 p-2 text-xs text-slate-100">
+                    <div className="flex items-center justify-between">
+                        <span className="font-semibold text-red-200">Alerts</span>
+                        <span className="font-semibold">{alertCount}</span>
+                    </div>
+                    <div className="mt-1 truncate text-[10px] text-slate-300">
+                        {recentAlerts[0]?.alertName || "No recent alerts"}
+                    </div>
+                </div>
+            </div>
+        )
+    }
 
     return (
-        <div className="grid grid-cols-3 gap-4 h-full">
+        <div className="grid h-full grid-cols-3 gap-2">
             {/* 1. Gauge / Average Speed */}
-            <div className="flex flex-col justify-between rounded-lg bg-slate-900/70 p-4 shadow-[0_10px_30px_rgba(15,23,42,0.25)] border border-white/10 text-slate-100">
-                <div className="flex justify-center py-4">
-                    <Gauge className="h-16 w-16 text-emerald-300" />
+            <div className="flex flex-col justify-between rounded-lg bg-slate-900/70 p-3 shadow-[0_10px_30px_rgba(15,23,42,0.25)] border border-white/10 text-slate-100">
+                <div className="flex justify-center py-2">
+                    <Gauge className="h-12 w-12 text-emerald-300" />
                 </div>
-                <div className="space-y-2">
-                    <div className="flex justify-between items-center text-sm font-medium">
+                <div className="space-y-1.5">
+                    <div className="flex justify-between items-center text-xs font-medium">
                         <span className="text-slate-200">Avg Speed</span>
-                        <span className="text-slate-100 text-lg">{avgSpeed} km/h</span>
+                        <span className="text-slate-100 text-xl font-semibold">{avgSpeed} km/h</span>
                     </div>
-                    <div className="flex justify-between items-center text-sm font-medium">
+                    <div className="flex justify-between items-center text-xs font-medium">
                         <span className="text-amber-300">Max Speed</span>
-                        <span className="text-amber-300 text-lg">{maxSpeed} km/h</span>
+                        <span className="text-amber-300 text-base font-semibold">{maxSpeed} km/h</span>
                     </div>
                 </div>
             </div>
 
             {/* 2. Today Activity */}
             <div className="flex flex-col rounded-lg bg-slate-900/70 shadow-[0_10px_30px_rgba(15,23,42,0.25)] overflow-hidden border border-white/10">
-                <div className="bg-emerald-400/20 px-3 py-1 text-sm font-bold text-emerald-100">Today Activity</div>
-                <div className="p-3 space-y-2 text-xs text-slate-200">
+                <div className="bg-emerald-400/20 px-3 py-1 text-xs font-bold text-emerald-100">Today Activity</div>
+                <div className="p-2.5 space-y-1.5 text-xs text-slate-200">
                     <div className="flex justify-between border-b border-white/10 border-dashed pb-2">
                         <div className="flex items-center gap-2">
-                            <div className="h-2 w-2 rounded-full bg-emerald-400"></div> {statusTotals.total} total
+                            <div className="h-2 w-2 rounded-full bg-emerald-400"></div> {statusFromDaily.total} total
                         </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-y-1">
                         <span className="text-slate-200">Running</span>
-                        <span className="text-right text-emerald-300">{statusTotals.running}</span>
+                        <span className="text-right text-emerald-300">{statusFromDaily.running}</span>
 
                         <span className="text-slate-200 w-full">Idle</span>
-                        <span className="text-right text-amber-300">{statusTotals.idle}</span>
+                        <span className="text-right text-amber-300">{statusFromDaily.idle}</span>
 
                         <span className="text-slate-200">Stop</span>
-                        <span className="text-right text-red-400">{statusTotals.stopped}</span>
+                        <span className="text-right text-red-400">{statusFromDaily.stopped}</span>
 
                         <span className="text-slate-200">Inactive</span>
-                        <span className="text-right text-cyan-300">{statusTotals.inactive}</span>
+                        <span className="text-right text-cyan-300">{statusFromDaily.inactive}</span>
                     </div>
                 </div>
             </div>
@@ -67,19 +183,19 @@ export function ActivityStats({ vehicles = [], alertCount = 0 }: { vehicles?: Ve
             <div className="flex gap-4">
                 {/* Alert Column */}
                 <div className="flex-1 flex flex-col rounded-lg bg-slate-900/70 shadow-[0_10px_30px_rgba(15,23,42,0.25)] overflow-hidden border border-white/10">
-                    <div className="bg-red-500/20 px-3 py-1 text-sm font-bold text-red-200">Alert</div>
-                    <div className="p-2 space-y-1 text-xs text-slate-200">
+                <div className="bg-red-500/20 px-3 py-1 text-xs font-bold text-red-200">Alert</div>
+                    <div className="p-2 space-y-0.5 text-xs text-slate-200">
                         <div className="flex justify-between">
                             <span className="text-emerald-300 font-bold">Total</span>
                             <span className="text-emerald-300 font-bold">{alertCount}</span>
                         </div>
                         <div className="text-red-300 font-medium">Recent alerts</div>
                         <div className="space-y-1">
-                            {alertCount ? (
-                                [1, 2, 3].slice(0, Math.min(3, alertCount)).map((i) => (
-                                    <div key={i} className="flex justify-between text-[10px]">
-                                        <span className="text-cyan-300">alert</span>
-                                        <span className="text-red-300">{i * 5} min ago</span>
+                            {recentAlerts.length ? (
+                                recentAlerts.map((item) => (
+                                    <div key={item._id || item.alertName} className="flex justify-between gap-1 text-[10px]">
+                                        <span className="truncate text-cyan-300">{item.alertName || "Alert"}</span>
+                                        <span className="text-red-300">{toRelativeTime(item.gpsTimestamp || item.receivedAt || item.createdAt)}</span>
                                     </div>
                                 ))
                             ) : (
@@ -91,19 +207,25 @@ export function ActivityStats({ vehicles = [], alertCount = 0 }: { vehicles?: Ve
 
                 {/* GPS Params Column */}
                 <div className="flex-1 flex flex-col rounded-lg bg-slate-900/70 shadow-[0_10px_30px_rgba(15,23,42,0.25)] overflow-hidden border border-white/10">
-                    <div className="bg-cyan-500/20 px-3 py-1 text-sm font-bold text-cyan-100">GPS Device Parameters</div>
-                    <div className="p-3 text-xs space-y-2 text-slate-200">
+                    <div className="bg-cyan-500/20 px-3 py-1 text-xs font-bold text-cyan-100">GPS Device Parameters</div>
+                    <div className="p-2.5 text-xs space-y-1.5 text-slate-200">
                         <div className="flex justify-between">
                             <span className="text-slate-200">Int Battery</span>
-                            <span className="text-slate-100">NA</span>
+                            <span className="text-slate-100">
+                                {selectedVehicle?.batteryVoltage != null ? `${selectedVehicle.batteryVoltage}V` : "NA"}
+                            </span>
                         </div>
                         <div className="flex justify-between">
                             <span className="text-slate-200">Satellite</span>
-                            <span className="text-cyan-300 font-bold">6</span>
+                            <span className="text-cyan-300 font-bold">
+                                {selectedVehicle?.satelliteCount ?? "NA"}
+                            </span>
                         </div>
                         <div className="flex justify-between">
                             <span className="text-slate-200">Int Battery %</span>
-                            <span className="text-slate-100">100.00</span>
+                            <span className="text-slate-100">
+                                {selectedVehicle?.batteryPercent != null ? Number(selectedVehicle.batteryPercent).toFixed(2) : "NA"}
+                            </span>
                         </div>
                     </div>
                 </div>

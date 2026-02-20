@@ -18,6 +18,10 @@ export function VehicleDetails({
     const startPoint = vehicle.route[0]
     const endPoint = vehicle.route[vehicle.route.length - 1]
     const currentPoint = positions[vehicle.id] || endPoint
+    const batteryPercent =
+        vehicle.batteryPercent != null
+            ? Math.max(0, Math.min(100, Math.round(vehicle.batteryPercent)))
+            : null
     const statusLabel =
         vehicle.status === "running"
             ? "Running"
@@ -30,8 +34,8 @@ export function VehicleDetails({
                         : "Stopped"
 
     return (
-        <div className="grid h-full grid-cols-1 gap-2 overflow-hidden md:grid-cols-2 xl:grid-cols-4">
-            <div className="rounded border border-white/10 bg-slate-900/70 p-3 text-slate-100">
+        <div className="grid w-full grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-4">
+            <div className="rounded border border-white/10 bg-slate-900/70 p-2.5 text-slate-100">
                 <div className="flex items-center gap-3">
                     <div className="h-12 w-12 rounded-full bg-emerald-400/20" />
                     <div>
@@ -45,13 +49,16 @@ export function VehicleDetails({
                         <span>{vehicle.location}</span>
                     </div>
                     <div className="mt-2 h-2 w-full overflow-hidden rounded bg-slate-800">
-                        <div className="h-full w-1/2 bg-emerald-400" />
+                        <div
+                            className="h-full bg-emerald-400"
+                            style={{ width: `${batteryPercent ?? 0}%` }}
+                        />
                     </div>
-                    <div className="mt-1 text-[10px] text-slate-400">50%</div>
+                    <div className="mt-1 text-[10px] text-slate-400">{batteryPercent != null ? `${batteryPercent}%` : "NA"}</div>
                 </div>
             </div>
 
-            <div className="rounded border border-white/10 bg-slate-900/70 p-3 text-slate-100">
+            <div className="rounded border border-white/10 bg-slate-900/70 p-2.5 text-slate-100">
                 <div className="flex items-center justify-between">
                     <div className="text-sm font-semibold text-slate-100">Current Trip</div>
                     <div className="rounded bg-emerald-400/20 px-2 py-0.5 text-[10px] font-semibold text-emerald-200">{statusLabel}</div>
@@ -69,17 +76,17 @@ export function VehicleDetails({
                 </button>
             </div>
 
-            <div className="rounded border border-white/10 bg-slate-900/70 p-3 text-slate-100">
+            <div className="rounded border border-white/10 bg-slate-900/70 p-2.5 text-slate-100">
                 <div className="flex items-center gap-2 text-sm font-semibold text-slate-100">
                     <MapPin className="h-4 w-4 text-slate-400" />
                     Route Snapshot
                 </div>
-                <div className="mt-2 text-xs text-slate-300">
-                    Start: {startPoint.lat}, {startPoint.lng}
-                    <div className="mt-1 text-[10px] text-slate-400">
+                <div className="mt-2 space-y-1 text-xs text-slate-300">
+                    <div className="truncate">Start: {startPoint.lat}, {startPoint.lng}</div>
+                    <div className="truncate text-[10px] text-slate-400">
                         Current: {currentPoint.lat}, {currentPoint.lng}
                     </div>
-                    <div className="mt-1 text-[10px] text-slate-400">End: {endPoint.lat}, {endPoint.lng}</div>
+                    <div className="truncate text-[10px] text-slate-400">End: {endPoint.lat}, {endPoint.lng}</div>
                 </div>
                 <div className="mt-3 flex items-center gap-2 text-[10px] text-slate-400">
                     <span className="rounded border border-white/10 px-2 py-0.5">Add Geofence</span>
@@ -87,23 +94,23 @@ export function VehicleDetails({
                 </div>
             </div>
 
-            <div className="rounded border border-white/10 bg-slate-900/70 p-3 text-slate-100">
+            <div className="rounded border border-white/10 bg-slate-900/70 p-2.5 text-slate-100">
                 <div className="flex items-center gap-2 text-sm font-semibold text-slate-100">
                     <User className="h-4 w-4 text-slate-400" />
                     Nearby POI
                 </div>
                 <div className="mt-2 grid grid-cols-3 gap-2 text-center text-[10px] text-slate-300">
                     <div className="rounded border border-white/10 px-2 py-1">
-                        <div className="font-semibold text-slate-100">Gas</div>
-                        <div className="text-[9px] text-slate-400">5 km</div>
+                        <div className="font-semibold text-slate-100">GPS</div>
+                        <div className="text-[9px] text-slate-400">{vehicle.gps ? "Connected" : "Disconnected"}</div>
                     </div>
                     <div className="rounded border border-white/10 px-2 py-1">
-                        <div className="font-semibold text-slate-100">Food</div>
-                        <div className="text-[9px] text-slate-400">1 km</div>
+                        <div className="font-semibold text-slate-100">Signal</div>
+                        <div className="text-[9px] text-slate-400">{vehicle.gsmSignal ?? "NA"}</div>
                     </div>
                     <div className="rounded border border-white/10 px-2 py-1">
-                        <div className="font-semibold text-slate-100">Zoo</div>
-                        <div className="text-[9px] text-slate-400">3 km</div>
+                        <div className="font-semibold text-slate-100">Sat</div>
+                        <div className="text-[9px] text-slate-400">{vehicle.satelliteCount ?? "NA"}</div>
                     </div>
                 </div>
             </div>

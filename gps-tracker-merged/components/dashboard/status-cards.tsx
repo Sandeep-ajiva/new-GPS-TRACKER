@@ -35,16 +35,16 @@ export function StatusCards({
     ]
 
     return (
-        <div className="grid grid-cols-2 gap-3 p-3 sm:grid-cols-3 lg:grid-cols-6">
-            {stats.map((stat, i) => (
+        <div className="grid grid-cols-2 gap-2 p-2 sm:grid-cols-3 lg:grid-cols-6">
+            {stats.map((stat) => (
                 <div
                     key={stat.label}
                     onClick={() => onFilterChange?.(stat.filter)}
-                    className={`${stat.color} ${stat.textColor || 'text-white'} flex flex-col items-center justify-center rounded-xl border border-white/10 py-2 shadow-[0_10px_30px_rgba(15,23,42,0.25)] relative overflow-hidden group h-28 transition-all hover:brightness-105 cursor-pointer ${activeFilter === stat.filter ? "ring-2 ring-emerald-200/60" : ""}`}
+                    className={`${stat.color} ${stat.textColor || 'text-white'} flex flex-col items-center justify-center rounded-lg border border-white/10 py-1 shadow-[0_10px_30px_rgba(15,23,42,0.25)] relative overflow-hidden group h-18 transition-all hover:brightness-105 cursor-pointer ${activeFilter === stat.filter ? "ring-2 ring-emerald-200/60" : ""}`}
                 >
-                    {stat.icon && <stat.icon className="h-6 w-6 mb-1 opacity-80" />}
-                    <span className="text-2xl font-bold leading-none">{stat.count}</span>
-                    <span className="text-[11px] font-semibold uppercase tracking-wide">{stat.label}</span>
+                    {stat.icon && <stat.icon className="h-4 w-4 mb-0.5 opacity-80" />}
+                    <span className="text-lg font-bold leading-none">{stat.count}</span>
+                    <span className="text-[9px] font-semibold uppercase tracking-wide">{stat.label}</span>
                 </div>
             ))}
         </div>

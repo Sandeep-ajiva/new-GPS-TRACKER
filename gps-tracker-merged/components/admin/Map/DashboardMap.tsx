@@ -1,77 +1,44 @@
 "use client";
 
-import { GoogleMap, InfoWindow, Marker, useLoadScript } from "@react-google-maps/api";
-import { useState } from "react";
+import { DivIcon } from "leaflet";
+import { MapContainer, Marker, Popup, TileLayer } from "react-leaflet";
+import "leaflet/dist/leaflet.css";
+import "leaflet-defaulticon-compatibility/dist/leaflet-defaulticon-compatibility.css";
+import "leaflet-defaulticon-compatibility";
 
-export default function DashboardMap() {
-    const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
-    const { isLoaded, loadError } = useLoadScript({
-        googleMapsApiKey: apiKey || "",
-    });
-    const [showInfo, setShowInfo] = useState(true);
+type Props = {
+  center?: [number, number];
+  zoom?: number;
+};
 
-    if (!apiKey) {
-        return (
-            <div className="flex h-full w-full items-center justify-center bg-slate-50 text-slate-500">
-                Add `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` to load Google Maps.
+const markerIcon = new DivIcon({
+  className: "dashboard-map-marker",
+  html: `<div style="width:16px;height:16px;background:#22c55e;border:2px solid #fff;border-radius:9999px;box-shadow:0 0 0 2px rgba(15,23,42,.18)"></div>`,
+  iconSize: [16, 16],
+  iconAnchor: [8, 8],
+});
+
+export default function DashboardMap({ center, zoom = 12 }: Props) {
+  const markerPosition = center
+    ? { lat: center[1], lng: center[0] }
+    : { lat: 28.6139, lng: 77.209 };
+
+  return (
+    <div className="relative h-full w-full overflow-hidden bg-slate-50">
+      <MapContainer center={markerPosition} zoom={zoom} className="h-full w-full">
+        <TileLayer
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        />
+        <Marker position={markerPosition} icon={markerIcon}>
+          <Popup>
+            <div className="text-sm font-semibold text-slate-900">
+              <p className="font-black text-slate-900">KA-01-AB-1234</p>
+              <p className="text-xs text-slate-600">Location marker</p>
             </div>
-        );
-    }
-
-    if (loadError) {
-        return (
-            <div className="flex h-full w-full items-center justify-center bg-slate-50 text-slate-500">
-                Unable to load Google Maps. Check the API key and billing settings.
-            </div>
-        );
-    }
-
-    if (!isLoaded) {
-        return <div className="h-full w-full animate-pulse rounded-xl bg-slate-100" />;
-    }
-
-    const mapStyles: google.maps.MapTypeStyle[] = [
-        { elementType: "geometry", stylers: [{ color: "#f8fafc" }] },
-        { elementType: "labels.text.stroke", stylers: [{ color: "#ffffff" }] },
-        { elementType: "labels.text.fill", stylers: [{ color: "#64748b" }] },
-        { featureType: "administrative", elementType: "geometry", stylers: [{ color: "#e2e8f0" }] },
-        { featureType: "poi", elementType: "geometry", stylers: [{ color: "#eef2f7" }] },
-        { featureType: "poi", elementType: "labels.text.fill", stylers: [{ color: "#64748b" }] },
-        { featureType: "road", elementType: "geometry", stylers: [{ color: "#ffffff" }] },
-        { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#e2e8f0" }] },
-        { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#94a3b8" }] },
-        { featureType: "water", elementType: "geometry", stylers: [{ color: "#dbeafe" }] },
-        { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#3b82f6" }] },
-    ];
-
-    const markerPosition = { lat: 28.6139, lng: 77.209 };
-
-    return (
-        <div className="relative h-full w-full bg-slate-50">
-            <GoogleMap
-                mapContainerStyle={{ width: "100%", height: "100%" }}
-                zoom={5}
-                center={{ lat: 20.5937, lng: 78.9629 }}
-                options={{
-                    styles: mapStyles,
-                    disableDefaultUI: true,
-                    zoomControl: true,
-                    fullscreenControl: false,
-                    streetViewControl: false,
-                    mapTypeControl: false,
-                }}
-            >
-                <Marker position={markerPosition} onClick={() => setShowInfo(true)} />
-                {showInfo && (
-                    <InfoWindow position={markerPosition} onCloseClick={() => setShowInfo(false)}>
-                        <div className="text-slate-900 text-sm font-semibold">
-                            <p className="font-black text-slate-900">KA-01-AB-1234</p>
-                            <p className="text-xs text-slate-600">Location: New Delhi</p>
-                            <p className="text-xs text-slate-600">Speed: 38 km/h</p>
-                        </div>
-                    </InfoWindow>
-                )}
-            </GoogleMap>
-        </div>
-    );
+          </Popup>
+        </Marker>
+      </MapContainer>
+    </div>
+  );
 }

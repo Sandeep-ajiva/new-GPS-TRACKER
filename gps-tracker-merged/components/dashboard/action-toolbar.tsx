@@ -1,7 +1,15 @@
 import Link from "next/link"
 import { MapPin, FileText, Fuel, Thermometer, Share2, ClipboardList, Shield, Blocks, Settings, Users, Bell } from "lucide-react"
 
-export function ActionToolbar({ compact = false, className = "" }: { compact?: boolean; className?: string }) {
+export function ActionToolbar({
+    compact = false,
+    className = "",
+    alertCount = 0,
+}: {
+    compact?: boolean
+    className?: string
+    alertCount?: number
+}) {
     const actions = [
         { label: "Tracking", icon: MapPin, href: "/dashboard" },
         { label: "Reports", icon: FileText, href: "/dashboard/reports" },
@@ -13,7 +21,7 @@ export function ActionToolbar({ compact = false, className = "" }: { compact?: b
         { label: "App Config", icon: Blocks, href: "/dashboard/app-config" },
         { label: "Sys Config", icon: Settings, href: "/dashboard/sys-config" },
         { label: "User Rights", icon: Users, href: "/dashboard/users" },
-        { label: "Alerts", icon: Bell, badge: 312, href: "/dashboard/alerts" },
+        { label: "Alerts", icon: Bell, badge: alertCount, href: "/dashboard/alerts" },
     ]
 
     return (

@@ -20,6 +20,10 @@ export type Vehicle = {
   location: string
   poi: string
   route: VehicleRoutePoint[]
+  batteryVoltage?: number | null
+  batteryPercent?: number | null
+  satelliteCount?: number | null
+  gsmSignal?: number | null
 }
 
 export const vehicles: Vehicle[] = []

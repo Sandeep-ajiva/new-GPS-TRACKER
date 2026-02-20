@@ -32,6 +32,8 @@ interface ApiGpsItem {
     _id: string;
     vehicleNumber: string;
   };
+  imei?: string;
+  gpsDeviceId?: string | { _id: string };
   organizationId?: string | { _id: string };
   latitude?: number;
   longitude?: number;
@@ -46,6 +48,7 @@ export default function LiveTrackingPage() {
     refetchOnMountOrArgChange: true,
     refetchOnFocus: false,
     refetchOnReconnect: true,
+    pollingInterval: 10000,
   });
 
   const [vehiclesMap, setVehiclesMap] = useState<Record<string, Vehicle>>({});
@@ -60,34 +63,72 @@ export default function LiveTrackingPage() {
   // Handle real-time updates
   const handleGpsUpdate = useCallback(
     (update: {
-      vehicleId: string;
+      vehicleId?: string | { _id?: string };
+      imei?: string;
+      gpsDeviceId?: string | { _id?: string };
+      vehicleNumber?: string;
+      organizationId?: string | { _id?: string };
       latitude?: number;
       lat?: number;
       longitude?: number;
       lng?: number;
       speed?: number;
+      currentSpeed?: number;
+      heading?: number;
       movementStatus?: string;
       status?: string;
       updatedAt?: string;
       lastUpdated?: string;
     }) => {
+      const normalizedVehicleId =
+        (typeof update.vehicleId === "string"
+          ? update.vehicleId
+          : update.vehicleId?._id) ||
+        (typeof update.gpsDeviceId === "string"
+          ? update.gpsDeviceId
+          : update.gpsDeviceId?._id) ||
+        update.imei;
+
+      if (!normalizedVehicleId) return;
+
+      const orgId =
+        typeof update.organizationId === "string"
+          ? update.organizationId
+          : update.organizationId?._id;
+      const lat = update.lat ?? update.latitude;
+      const lng = update.lng ?? update.longitude;
+      const speed = update.speed ?? update.currentSpeed ?? 0;
+      const status = update.status ?? update.movementStatus ?? "offline";
+      const lastUpdated =
+        update.lastUpdated ?? update.updatedAt ?? new Date().toISOString();
+
       setVehiclesMap((prev) => {
-        const existing = prev[update.vehicleId];
-        if (!existing) return prev;
+        const existing = prev[normalizedVehicleId];
+        const next: Vehicle = existing
+          ? {
+              ...existing,
+              lat: lat ?? existing.lat,
+              lng: lng ?? existing.lng,
+              speed,
+              heading: update.heading ?? existing.heading,
+              status,
+              lastUpdated,
+            }
+          : {
+              id: normalizedVehicleId,
+              vehicleNumber: update.vehicleNumber || update.imei || "Unknown",
+              lat: lat ?? 0,
+              lng: lng ?? 0,
+              speed,
+              heading: update.heading ?? 0,
+              status,
+              lastUpdated,
+              organizationId: orgId,
+            };
 
         return {
           ...prev,
-          [update.vehicleId]: {
-            ...existing,
-            lat: update.lat ?? update.latitude ?? existing.lat,
-            lng: update.lng ?? update.longitude ?? existing.lng,
-            speed: update.speed ?? existing.speed,
-            status: update.status ?? update.movementStatus ?? existing.status,
-            lastUpdated:
-              update.lastUpdated ??
-              update.updatedAt ??
-              new Date().toISOString(),
-          },
+          [normalizedVehicleId]: next,
         };
       });
     },
@@ -125,31 +166,39 @@ export default function LiveTrackingPage() {
   useEffect(() => {
     if (liveDataRes?.data) {
       setVehiclesMap((prev) => {
-        let changed = false;
         const nextMap = { ...prev };
         liveDataRes.data.forEach((item: ApiGpsItem) => {
-          const id = item.vehicleId?._id || item._id;
+          const id =
+            item.vehicleId?._id ||
+            (typeof item.gpsDeviceId === "string"
+              ? item.gpsDeviceId
+              : item.gpsDeviceId?._id) ||
+            item.imei ||
+            item._id;
           const orgId =
             typeof item.organizationId === "string"
               ? item.organizationId
               : item.organizationId?._id;
+          const existing = nextMap[id];
 
-          if (!nextMap[id]) {
-            nextMap[id] = {
-              id,
-              vehicleNumber: item.vehicleId?.vehicleNumber || "Unknown",
-              lat: item.latitude || 0,
-              lng: item.longitude || 0,
-              speed: item.currentSpeed || 0,
-              heading: item.heading || 0,
-              status: item.movementStatus || "offline",
-              lastUpdated: item.updatedAt || new Date().toISOString(),
-              organizationId: orgId,
-            };
-            changed = true;
-          }
+          nextMap[id] = {
+            id,
+            vehicleNumber:
+              item.vehicleId?.vehicleNumber ||
+              existing?.vehicleNumber ||
+              item.imei ||
+              "Unknown",
+            lat: item.latitude ?? existing?.lat ?? 0,
+            lng: item.longitude ?? existing?.lng ?? 0,
+            speed: item.currentSpeed ?? existing?.speed ?? 0,
+            heading: item.heading ?? existing?.heading ?? 0,
+            status: item.movementStatus ?? existing?.status ?? "offline",
+            lastUpdated:
+              item.updatedAt ?? existing?.lastUpdated ?? new Date().toISOString(),
+            organizationId: orgId ?? existing?.organizationId,
+          };
         });
-        return changed ? nextMap : prev;
+        return nextMap;
       });
     }
   }, [liveDataRes]);

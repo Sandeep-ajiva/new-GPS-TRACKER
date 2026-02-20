@@ -1,114 +1,97 @@
 "use client";
 
-import { GoogleMap, Marker, Polyline, useLoadScript } from "@react-google-maps/api";
-import { useEffect, useMemo, useRef } from "react";
+import { DivIcon, latLngBounds } from "leaflet";
+import { MapContainer, Marker, Polyline, TileLayer, useMap } from "react-leaflet";
+import { Fragment, useMemo } from "react";
+import "leaflet/dist/leaflet.css";
+import "leaflet-defaulticon-compatibility/dist/leaflet-defaulticon-compatibility.css";
+import "leaflet-defaulticon-compatibility";
+
+type RoutePoint = {
+  lat: number;
+  lng: number;
+  timestamp: string;
+  speed: number;
+};
 
 interface HistoryMapProps {
-    pathData: any[];
+  routes: RoutePoint[][];
+  selectedRouteIndex: number;
 }
 
-export default function HistoryMap({ pathData }: HistoryMapProps) {
-    const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
-    const { isLoaded, loadError } = useLoadScript({
-        googleMapsApiKey: apiKey || "",
+function FitPathBounds({
+  points,
+}: {
+  points: Array<{ lat: number; lng: number }>;
+}) {
+  const map = useMap();
+  if (points.length) {
+    map.fitBounds(latLngBounds(points.map((p) => [p.lat, p.lng])), {
+      padding: [70, 70],
     });
-    const mapRef = useRef<google.maps.Map | null>(null);
+  }
+  return null;
+}
 
-    const pathPoints = useMemo(
-        () =>
-            pathData
-                .map((p) => ({ lat: p.latitude ?? p.lat, lng: p.longitude ?? p.lng }))
-                .filter((point) => Number.isFinite(point.lat) && Number.isFinite(point.lng)),
-        [pathData]
+const startIcon = new DivIcon({
+  className: "history-start",
+  html: `<div style="width:16px;height:16px;background:#22c55e;border:2px solid #fff;border-radius:9999px;box-shadow:0 0 0 2px rgba(15,23,42,.18)"></div>`,
+  iconSize: [16, 16],
+  iconAnchor: [8, 8],
+});
+
+const endIcon = new DivIcon({
+  className: "history-end",
+  html: `<div style="width:16px;height:16px;background:#0ea5e9;border:2px solid #fff;border-radius:9999px;box-shadow:0 0 0 2px rgba(15,23,42,.18)"></div>`,
+  iconSize: [16, 16],
+  iconAnchor: [8, 8],
+});
+
+export default function HistoryMap({ routes, selectedRouteIndex }: HistoryMapProps) {
+  const pathPoints = useMemo(() => {
+    const selected = routes[selectedRouteIndex] || [];
+    return selected.filter(
+      (point) => Number.isFinite(point.lat) && Number.isFinite(point.lng),
     );
+  }, [routes, selectedRouteIndex]);
 
-    useEffect(() => {
-        if (!mapRef.current || pathPoints.length === 0) return;
-        const bounds = new google.maps.LatLngBounds();
-        pathPoints.forEach((point) => bounds.extend(point));
-        if (!bounds.isEmpty()) {
-            mapRef.current.fitBounds(bounds, 80);
-        }
-    }, [pathPoints]);
+  const center = pathPoints[0] || { lat: 20.5937, lng: 78.9629 };
 
-    if (!apiKey) {
-        return (
-            <div className="flex h-full w-full items-center justify-center bg-slate-50 text-slate-500">
-                Add `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` to load Google Maps.
-            </div>
-        );
-    }
+  return (
+    <div className="relative h-full w-full overflow-hidden rounded-xl bg-slate-50">
+      <MapContainer center={center} zoom={12} className="h-full w-full">
+        <TileLayer
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        />
+        <FitPathBounds points={pathPoints} />
+        {routes.map((route, idx) => {
+          if (!route?.length) return null;
 
-    if (loadError) {
-        return (
-            <div className="flex h-full w-full items-center justify-center bg-slate-50 text-slate-500">
-                Unable to load Google Maps. Check the API key and billing settings.
-            </div>
-        );
-    }
+          const isSelected = idx === selectedRouteIndex;
+          const startPoint = route[0];
+          const endPoint = route[route.length - 1];
 
-    if (!isLoaded) {
-        return (
-            <div className="flex h-full w-full items-center justify-center bg-slate-50 text-slate-500">
-                Loading Google Maps...
-            </div>
-        );
-    }
-
-    const mapStyles: google.maps.MapTypeStyle[] = [
-        { elementType: "geometry", stylers: [{ color: "#f8fafc" }] },
-        { elementType: "labels.text.stroke", stylers: [{ color: "#ffffff" }] },
-        { elementType: "labels.text.fill", stylers: [{ color: "#64748b" }] },
-        { featureType: "administrative", elementType: "geometry", stylers: [{ color: "#e2e8f0" }] },
-        { featureType: "poi", elementType: "geometry", stylers: [{ color: "#eef2f7" }] },
-        { featureType: "poi", elementType: "labels.text.fill", stylers: [{ color: "#64748b" }] },
-        { featureType: "road", elementType: "geometry", stylers: [{ color: "#ffffff" }] },
-        { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#e2e8f0" }] },
-        { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#94a3b8" }] },
-        { featureType: "water", elementType: "geometry", stylers: [{ color: "#dbeafe" }] },
-        { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#3b82f6" }] },
-    ];
-
-    const startPoint = pathPoints[0];
-    const endPoint = pathPoints[pathPoints.length - 1];
-
-    return (
-        <div className="relative h-full w-full bg-slate-50">
-            <GoogleMap
-                mapContainerStyle={{ width: "100%", height: "100%" }}
-                zoom={12}
-                center={startPoint || { lat: 20.5937, lng: 78.9629 }}
-                onLoad={(map) => {
-                    mapRef.current = map;
+          return (
+            <Fragment key={`route-${idx}`}>
+              <Polyline
+                positions={route.map((p) => [p.lat, p.lng])}
+                pathOptions={{
+                  color: isSelected ? "#0ea5e9" : "#94a3b8",
+                  opacity: isSelected ? 0.95 : 0.5,
+                  weight: isSelected ? 4 : 2,
                 }}
-                options={{
-                    styles: mapStyles,
-                    disableDefaultUI: true,
-                    zoomControl: true,
-                    fullscreenControl: false,
-                    streetViewControl: false,
-                    mapTypeControl: false,
-                }}
-            >
-                {pathPoints.length > 0 && (
-                    <Polyline
-                        path={pathPoints}
-                        options={{ strokeColor: "#38bdf8", strokeOpacity: 0.9, strokeWeight: 3 }}
-                    />
-                )}
-                {startPoint && (
-                    <Marker
-                        position={startPoint}
-                        label={{ text: "Start", color: "#0f172a", fontSize: "12px", fontWeight: "700" }}
-                    />
-                )}
-                {endPoint && (
-                    <Marker
-                        position={endPoint}
-                        label={{ text: "End", color: "#0f172a", fontSize: "12px", fontWeight: "700" }}
-                    />
-                )}
-            </GoogleMap>
-        </div>
-    );
+              />
+              {isSelected ? (
+                <>
+                  <Marker position={startPoint} icon={startIcon} />
+                  <Marker position={endPoint} icon={endIcon} />
+                </>
+              ) : null}
+            </Fragment>
+          );
+        })}
+      </MapContainer>
+    </div>
+  );
 }
