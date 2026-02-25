@@ -2,7 +2,8 @@
 
 import { useMemo } from "react";
 import { DivIcon, latLngBounds } from "leaflet";
-import { MapContainer, Marker, TileLayer, useMap } from "react-leaflet";
+import { MapContainer, Marker, TileLayer, useMap, Popup } from "react-leaflet";
+import { TelemetryGrid } from "./telemetry-grid";
 import type { Vehicle } from "@/lib/vehicles";
 import type { VehiclePositions } from "@/lib/use-vehicle-positions";
 import "leaflet/dist/leaflet.css";
@@ -26,7 +27,7 @@ function FitBounds({
 const markerIcon = (color: string, size = 14) =>
   new DivIcon({
     className: "dashboard-vehicle-marker",
-    html: `<div style="width:${size}px;height:${size}px;background:${color};border:2px solid #0f172a;border-radius:9999px"></div>`,
+    html: `<div style="width:${size}px;height:${size}px;background:${color};border:2px solid #0f172a;border-radius:9999px;box-shadow: 0 0 10px ${color}80;"></div>`,
     iconSize: [size, size],
     iconAnchor: [size / 2, size / 2],
   });
@@ -86,8 +87,17 @@ export function MapView({
             <Marker
               key={vehicle.id}
               position={point}
-              icon={markerIcon(statusColor(vehicle.status), selectedVehicle ? 17 : 14)}
-            />
+              icon={markerIcon(statusColor(vehicle.status), selectedVehicle ? 18 : 14)}
+            >
+              <Popup className="dark-leaflet-popup">
+                <div className="min-w-[300px] bg-slate-900 p-2">
+                  <TelemetryGrid vehicle={vehicle} compact />
+                  <div className="mt-2 border-t border-white/5 pt-2 text-[8px] text-slate-500 italic">
+                    Last update: {vehicle.date}
+                  </div>
+                </div>
+              </Popup>
+            </Marker>
           );
         })}
 

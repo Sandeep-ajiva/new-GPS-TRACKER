@@ -24,6 +24,13 @@ export type Vehicle = {
   batteryPercent?: number | null
   satelliteCount?: number | null
   gsmSignal?: number | null
+  imei?: string
+  deviceImei?: string
+  registrationNumber?: string
+  model?: string
+  color?: string
+  year?: string
+  vehicleType?: string
 }
 
 export const vehicles: Vehicle[] = []

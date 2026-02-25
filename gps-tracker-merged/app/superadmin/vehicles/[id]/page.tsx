@@ -63,12 +63,12 @@ export default function VehicleDetailPage() {
     () =>
       org
         ? [
-            {
-              id: org.id,
-              name: org.name,
-              position: org.position,
-            },
-          ]
+          {
+            id: org.id,
+            name: org.name,
+            position: org.position,
+          },
+        ]
         : [],
     [org]
   );
@@ -77,17 +77,17 @@ export default function VehicleDetailPage() {
     () =>
       vehicle
         ? [
-            {
-              id: `${vehicle.orgId}:${vehicle.id}`,
-              status: vehicle.status,
-              position: vehicle.position,
-              label: vehicle.label,
-              driverName: vehicle.driverName,
-              speed: vehicle.speed,
-              lastUpdated: vehicle.lastUpdated,
-              location: vehicle.location,
-            },
-          ]
+          {
+            id: `${vehicle.orgId}:${vehicle.id}`,
+            status: vehicle.status as any,
+            position: vehicle.position,
+            label: vehicle.label,
+            driverName: vehicle.driverName,
+            speed: vehicle.speed,
+            lastUpdated: vehicle.lastUpdated,
+            location: vehicle.location,
+          },
+        ]
         : [],
     [vehicle]
   );

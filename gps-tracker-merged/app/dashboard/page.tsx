@@ -15,12 +15,18 @@ import { useGetVehiclesQuery } from "@/redux/api/vehicleApi"
 import { useGetNotificationsQuery } from "@/redux/api/notificationsApi"
 import { useGetMeQuery } from "@/redux/api/usersApi"
 import { useGetOrganizationsQuery } from "@/redux/api/organizationApi"
-import { useGetUsersQuery } from "@/redux/api/usersApi"
 import { useGetLiveVehiclesQuery } from "@/redux/api/gpsLiveApi"
 import { useGetVehicleDailyStatsByDateQuery } from "@/redux/api/vehicleDailyStatsApi"
-
+import { LayoutDashboard, ChevronDown } from "lucide-react"
 import { getSecureItem } from "@/app/admin/Helpers/encryptionHelper"
 import { useSocket } from "@/hooks/useSocket"
+import { useAppDispatch, useAppSelector } from "@/redux/hooks"
+import { setActiveTab, setSelectedVehicle } from "@/redux/features/vehicleSlice"
+import { ReportView } from "@/components/dashboard/modules/ReportView"
+import { GeofenceView } from "@/components/dashboard/modules/GeofenceView"
+import { LicensingView } from "@/components/dashboard/modules/LicensingView"
+import { AlertView } from "@/components/dashboard/modules/AlertView"
+import { X } from "lucide-react"
 
 type LiveGpsItem = {
   vehicleId?: string | { _id?: string }
@@ -62,17 +68,19 @@ export default function DashboardPage() {
   })
   const { data: meData } = useGetMeQuery(undefined)
   const { data: orgData } = useGetOrganizationsQuery(undefined)
-  const { data: usersData } = useGetUsersQuery(undefined, {
-    skip: getSecureItem("userRole") !== "admin",
-  })
+  const dispatch = useAppDispatch()
+  const { selectedVehicleId: selectedVehicle, activeTab } = useAppSelector((state) => state.vehicle)
+
   const [liveByVehicleId, setLiveByVehicleId] = useState<Record<string, LiveGpsItem>>({})
   const [uiVehicles, setUiVehicles] = useState<Vehicle[]>([])
   const positions = useVehiclePositions(uiVehicles)
   const [isAuthed, setIsAuthed] = useState(false)
   const [userRole, setUserRole] = useState<string | null>(null)
-  const [selectedVehicle, setSelectedVehicle] = useState<string | null>(null)
+
+  const [mobileView, setMobileView] = useState<"list" | "map">("list")
   const [statusFilter, setStatusFilter] = useState<VehicleStatusFilter>("total")
   const [selectedOrgId, setSelectedOrgId] = useState<string>("all")
+  const [isOrgOpen, setIsOrgOpen] = useState(false)
   const [clockMs, setClockMs] = useState(() => Date.now())
   const user = meData?.data
   const assignedVehicleId = user?.assignedVehicleId?._id || user?.assignedVehicleId || ""
@@ -80,12 +88,7 @@ export default function DashboardPage() {
   const organizations = useMemo(() => orgData?.organizations || orgData?.data || [], [orgData])
   const allVehicles = useMemo(() => vehData?.vehicles || vehData?.data || [], [vehData])
   const liveVehicles = useMemo(() => liveData?.vehicles || liveData?.data || [], [liveData])
-  const users = useMemo(() => usersData?.users || usersData?.data || [], [usersData])
   const alerts = useMemo(() => notifData?.data || [], [notifData])
-  const managerCount = useMemo(
-    () => users.filter((item: any) => item.role === "manager").length,
-    [users]
-  )
   const notificationCount = useMemo(
     () => alerts.filter((item: any) => item?.acknowledged === false).length,
     [alerts],
@@ -207,6 +210,14 @@ export default function DashboardPage() {
     }
   }, [router])
 
+  // Handle click outside for custom dropdown
+  useEffect(() => {
+    if (!isOrgOpen) return
+    const handler = () => setIsOrgOpen(false)
+    window.addEventListener("click", handler)
+    return () => window.removeEventListener("click", handler)
+  }, [isOrgOpen])
+
   useEffect(() => {
     const interval = setInterval(() => {
       setClockMs(Date.now())
@@ -242,9 +253,9 @@ export default function DashboardPage() {
           ? { lat: lat as number, lng: lng as number }
           : hasVehiclePosition
             ? {
-                lat: vehicle.currentLocation.latitude,
-                lng: vehicle.currentLocation.longitude,
-              }
+              lat: vehicle.currentLocation.latitude,
+              lng: vehicle.currentLocation.longitude,
+            }
             : null
 
         const oldRoute = prevRouteMap.get(vehicle._id) || []
@@ -310,6 +321,13 @@ export default function DashboardPage() {
           batteryPercent: live?.batteryLevel ?? null,
           satelliteCount: live?.numberOfSatellites ?? null,
           gsmSignal: live?.gsmSignalStrength ?? null,
+          imei: vehicle.imei || vehicle.deviceImei,
+          deviceImei: vehicle.deviceImei,
+          registrationNumber: vehicle.registrationNumber || vehicle.vehicleNumber,
+          model: vehicle.model,
+          color: vehicle.color,
+          year: vehicle.year,
+          vehicleType: vehicle.vehicleType,
         } as Vehicle
 
         seenIds.add(row.id)
@@ -360,7 +378,7 @@ export default function DashboardPage() {
           driver: "Unassigned",
           date:
             live.updatedAt || live.gpsTimestamp
-              ? new Date(live.updatedAt || live.gpsTimestamp).toLocaleString("en-GB").replace(",", "")
+              ? new Date((live.updatedAt || live.gpsTimestamp) as string).toLocaleString("en-GB").replace(",", "")
               : "N/A",
           speed: isStale ? 0 : Number(live.currentSpeed ?? live.speed ?? 0),
           status,
@@ -474,9 +492,6 @@ export default function DashboardPage() {
   return (
     <div className="flex min-h-screen flex-col overflow-x-hidden bg-slate-950 font-sans text-slate-100">
       <Header
-        onVehicleCreated={handleVehicleCreated}
-        messageCount={alerts.length}
-        notificationCount={notificationCount}
         vehicleSummary={{
           label: currentVehicle?.vehicleNumber || "Vehicle",
           speed: currentVehicle?.speed || 0,
@@ -490,24 +505,45 @@ export default function DashboardPage() {
               Organizations: <span className="text-emerald-200">{organizations.length}</span>
             </div>
             <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold text-slate-100">
-              Managers: <span className="text-emerald-200">{managerCount}</span>
-            </div>
-            <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold text-slate-100">
               Vehicles: <span className="text-emerald-200">{allVehicles.length}</span>
             </div>
-            <div className="ml-auto min-w-60">
-              <select
-                value={selectedOrgId}
-                onChange={(event) => setSelectedOrgId(event.target.value)}
-                className="w-full rounded-xl border border-white/10 bg-slate-900/80 px-3 py-2 text-xs font-semibold text-slate-100"
-              >
-                <option value="all">All organizations</option>
-                {organizations.map((org: any) => (
-                  <option key={org._id} value={org._id}>
-                    {org.name || "Organization"}
-                  </option>
-                ))}
-              </select>
+            <div className="ml-auto flex-1 max-w-xs relative" onClick={(e) => e.stopPropagation()}>
+              <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 mb-1.5 ml-1">Select Organization</label>
+              <div className="relative">
+                <button
+                  onClick={() => setIsOrgOpen(!isOrgOpen)}
+                  className="flex w-full items-center gap-3 rounded-xl border border-white/10 bg-slate-900/90 px-4 py-2.5 text-xs font-bold text-slate-100 transition-all hover:bg-slate-800 hover:border-white/20 active:scale-[0.98]"
+                >
+                  <LayoutDashboard size={14} className={isOrgOpen ? "text-emerald-400" : "text-slate-400"} />
+                  <span className="flex-1 text-left truncate">
+                    {selectedOrgId === "all" ? "All Organizations" : organizations.find((o: any) => o._id === selectedOrgId)?.name || "Organization"}
+                  </span>
+                  <ChevronDown size={14} className={`text-slate-500 transition-transform duration-200 ${isOrgOpen ? "rotate-180 text-emerald-400" : ""}`} />
+                </button>
+
+                {isOrgOpen && (
+                  <div className="absolute top-full right-0 mt-2 w-full min-w-[200px] max-h-60 overflow-y-auto rounded-2xl bg-slate-800 border border-white/10 shadow-2xl ring-1 ring-black/40 z-50 animate-in fade-in slide-in-from-top-2 duration-150 backdrop-blur-xl">
+                    <div className="p-1.5">
+                      <button
+                        onClick={() => { setSelectedOrgId("all"); setIsOrgOpen(false); }}
+                        className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs font-bold transition-colors ${selectedOrgId === "all" ? "bg-emerald-500/20 text-emerald-300" : "text-slate-300 hover:bg-white/5"}`}
+                      >
+                        All Organizations
+                      </button>
+                      <div className="my-1 h-px bg-white/5" />
+                      {organizations.map((org: any) => (
+                        <button
+                          key={org._id}
+                          onClick={() => { setSelectedOrgId(org._id); setIsOrgOpen(false); }}
+                          className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs font-bold transition-colors ${selectedOrgId === org._id ? "bg-emerald-500/20 text-emerald-300" : "text-slate-300 hover:bg-white/5"}`}
+                        >
+                          {org.name || "Organization"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -538,37 +574,55 @@ export default function DashboardPage() {
             setSelectedVehicle(null)
           }}
         />
+        {/* Mobile View Switcher */}
+        <div className="flex border-t border-white/5 lg:hidden">
+          <button
+            onClick={() => setMobileView("list")}
+            className={`flex-1 py-3 text-xs font-bold transition-colors ${mobileView === "list" ? "bg-emerald-500/20 text-emerald-400 border-b-2 border-emerald-400" : "text-slate-400 hover:bg-white/5"}`}
+          >
+            LIST VIEW
+          </button>
+          <button
+            onClick={() => setMobileView("map")}
+            className={`flex-1 py-3 text-xs font-bold transition-colors ${mobileView === "map" ? "bg-emerald-500/20 text-emerald-400 border-b-2 border-emerald-400" : "text-slate-400 hover:bg-white/5"}`}
+          >
+            MAP VIEW
+          </button>
+        </div>
       </div>
 
-      <div className="relative flex flex-1 flex-col overflow-y-auto">
-        <div className="grid grid-cols-1 gap-2 p-2 lg:grid-cols-5">
-          <div className="lg:col-span-3 h-[20rem] md:h-[24rem] lg:h-[30rem] min-h-0 overflow-hidden">
+      <div className="flex flex-1 flex-col overflow-hidden">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-2 p-2 flex-1 min-h-0 overflow-y-auto lg:overflow-hidden">
+          {/* Sidebar Area (Left 50%) */}
+          <div className={`${mobileView === "list" ? "flex" : "hidden"} lg:flex lg:col-span-6 xl:col-span-6 flex-col min-h-[450px] lg:h-full overflow-hidden border border-white/10 bg-slate-950/50 rounded-2xl shadow-2xl`}>
             <VehicleSidebar
               vehicles={uiVehicles}
               selectedId={selectedVehicle}
-              onSelect={(id) => setSelectedVehicle(id === selectedVehicle ? null : id)}
-              isFullWidth={false}
+              onSelect={(id) => {
+                dispatch(setSelectedVehicle(id === selectedVehicle ? null : id))
+                if (window.innerWidth < 1024) setMobileView("map")
+              }}
+              isFullWidth={true}
               statusFilter={statusFilter}
             />
           </div>
 
-          <div className="lg:col-span-2 h-[20rem] md:h-[24rem] lg:h-[30rem] min-h-0 overflow-hidden border border-white/10 bg-slate-950">
-            <div className="flex h-full w-full flex-col">
-              <ActionToolbar compact className="border-b border-white/10" alertCount={notificationCount} />
-              <div className="flex-1 min-h-0">
-                <MapWrapper
-                  selectedVehicleId={selectedVehicle}
-                  positions={positions}
-                  vehicles={uiVehicles}
-                />
-              </div>
+          {/* Map Area (Right 50%) */}
+          <div className={`${mobileView === "map" ? "flex" : "hidden md:flex"} lg:flex lg:col-span-6 xl:col-span-6 flex-col min-h-[450px] lg:h-full overflow-hidden border border-white/10 bg-slate-950 rounded-2xl shadow-2xl`}>
+            <ActionToolbar compact className="bg-slate-950/80 backdrop-blur-md border-b border-white/10" alertCount={notificationCount} />
+            <div className="flex-1 min-h-0">
+              <MapWrapper
+                selectedVehicleId={selectedVehicle}
+                positions={positions}
+                vehicles={uiVehicles}
+              />
             </div>
           </div>
         </div>
 
         {selectedVehicle && (
-          <div className="border-t border-white/10 bg-slate-950 p-2">
-            <div className="grid grid-cols-1 gap-2 lg:grid-cols-[1fr_2fr]">
+          <div className="border-t border-white/10 bg-slate-950/95 backdrop-blur-xl p-2 shadow-2xl z-40">
+            <div className="grid grid-cols-1 gap-2 xl:grid-cols-[1fr_2.5fr]">
               <div className="min-h-0">
                 <ActivityStats
                   vehicles={uiVehicles}
@@ -579,13 +633,43 @@ export default function DashboardPage() {
                   dailyStats={dailyStats}
                 />
               </div>
-              <div className="min-h-0">
+              <div className="min-h-0 overflow-x-auto">
                 <VehicleDetails vehicleId={selectedVehicle} positions={positions} vehicles={uiVehicles} />
               </div>
             </div>
           </div>
         )}
       </div>
+
+      {/* Module Modal Overlay */}
+      {activeTab !== "Tracking" && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="relative w-full max-w-6xl max-h-[90vh] bg-slate-900 rounded-3xl border border-white/10 shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-white/5 bg-slate-900/50">
+              <h3 className="text-xl font-black uppercase tracking-widest text-emerald-400">{activeTab}</h3>
+              <button
+                onClick={() => dispatch(setActiveTab("Tracking"))}
+                className="p-2 rounded-full hover:bg-white/5 text-slate-400 hover:text-white transition-colors"
+              >
+                <X size={24} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-auto p-6 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
+              {activeTab === "Reports" && <ReportView />}
+              {activeTab === "Geofences" && <GeofenceView />}
+              {activeTab === "Licensing" && <LicensingView />}
+              {activeTab === "Alerts" && <AlertView />}
+              {/* Add other modules as they are developed */}
+              {["Fuel", "Temperature", "Tour", "App Config", "Sys Config", "User Rights"].includes(activeTab) && (
+                <div className="flex flex-col items-center justify-center h-64 text-slate-500 italic">
+                  <LayoutDashboard className="h-12 w-12 mb-4 opacity-20" />
+                  {activeTab} module is coming soon...
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

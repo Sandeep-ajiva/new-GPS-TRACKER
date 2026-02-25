@@ -35,16 +35,21 @@ export function StatusCards({
     ]
 
     return (
-        <div className="grid grid-cols-2 gap-2 p-2 sm:grid-cols-3 lg:grid-cols-6">
+        <div className="grid grid-cols-2 gap-1.5 p-2 sm:grid-cols-3 lg:grid-cols-6 xl:gap-2">
             {stats.map((stat) => (
                 <div
                     key={stat.label}
                     onClick={() => onFilterChange?.(stat.filter)}
-                    className={`${stat.color} ${stat.textColor || 'text-white'} flex flex-col items-center justify-center rounded-lg border border-white/10 py-1 shadow-[0_10px_30px_rgba(15,23,42,0.25)] relative overflow-hidden group h-18 transition-all hover:brightness-105 cursor-pointer ${activeFilter === stat.filter ? "ring-2 ring-emerald-200/60" : ""}`}
+                    className={`${stat.color} ${stat.textColor || 'text-white'} flex flex-col items-center justify-center rounded-xl border border-white/5 py-1.5 shadow-lg relative overflow-hidden group h-16 sm:h-18 transition-all hover:scale-[1.02] active:scale-95 cursor-pointer ring-offset-2 ring-offset-slate-950 ${activeFilter === stat.filter ? "ring-2 ring-emerald-400 shadow-emerald-400/20" : "hover:shadow-xl"}`}
                 >
-                    {stat.icon && <stat.icon className="h-4 w-4 mb-0.5 opacity-80" />}
-                    <span className="text-lg font-bold leading-none">{stat.count}</span>
-                    <span className="text-[9px] font-semibold uppercase tracking-wide">{stat.label}</span>
+                    <div className="flex items-center gap-1.5 mb-0.5">
+                        {stat.icon && <stat.icon className="h-3.5 w-3.5 opacity-70 group-hover:opacity-100" />}
+                        <span className="text-base sm:text-lg font-black leading-none">{stat.count}</span>
+                    </div>
+                    <span className="text-[8px] sm:text-[9px] font-black uppercase tracking-widest opacity-80 group-hover:opacity-100">{stat.label}</span>
+
+                    {/* Subtle highlight effect */}
+                    <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
                 </div>
             ))}
         </div>
