@@ -407,9 +407,6 @@ exports.delete = async (req, res) => {
    CREATE SUB-ORG + ADMIN (TRANSACTION)
 ====================================================== */
 exports.createSubOrganizationWithManager = async (req, res) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
-
   try {
     parseJsonFields(req.body, [
       "organizationData.address",
@@ -448,7 +445,6 @@ exports.createSubOrganizationWithManager = async (req, res) => {
         message: "You are not allowed to create sub-organization under this organization",
       });
     }
-
 
     // parent org check
     const parentOrg = await Organization.findById(parentOrganizationId);
@@ -500,18 +496,18 @@ exports.createSubOrganizationWithManager = async (req, res) => {
           parentOrganizationId,
           path,
           status: "active",
-          createdBy: actorUser._id,
-          adminUser: null,
+          createdBy: adminUser._id,
+          adminUser: adminUser._id, // ✅ ownership stays with existing admin
         },
       ],
       { session },
     );
 
-    // 2️⃣ create org admin
+    // 2️⃣ create manager
     // 🔥 email & phone SAME as organization
     const passwordHash = await bcrypt.hash(managerData.password, 10);
 
-    const [newOrgAdmin] = await User.create(
+    const [manager] = await User.create(
       [
         {
           organizationId: subOrganization._id,
@@ -520,16 +516,13 @@ exports.createSubOrganizationWithManager = async (req, res) => {
           email: organizationData.email.toLowerCase().trim(), // ✅ SAME
           mobile: organizationData.phone.trim(),              // ✅ SAME
           passwordHash,
-          role: "admin",
+          role: "manager",
           status: "active",
-          createdBy: actorUser._id,
+          createdBy: adminUser._id,
         },
       ],
       { session },
     );
-
-    subOrganization.adminUser = newOrgAdmin._id;
-    await subOrganization.save({ session });
 
     await session.commitTransaction();
     session.endSession();
@@ -543,9 +536,6 @@ exports.createSubOrganizationWithManager = async (req, res) => {
       },
     });
   } catch (error) {
-    await session.abortTransaction();
-    session.endSession();
-
     console.error("Create Sub Organization With Manager Error:", error);
     return res.status(500).json({
       status: false,
