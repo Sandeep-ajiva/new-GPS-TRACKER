@@ -125,14 +125,14 @@ export default function UsersPage() {
         await createUser(data).unwrap();
         toast.success("User created successfully");
       }
-      closeModal();
     } catch (err: unknown) {
       const error = err as { data?: { message?: string } };
       toast.error(error?.data?.message || "Operation failed");
+      throw err; // re-throw so DynamicModal keeps the form open and shows inline error
     }
   };
 
-  const userFormFields: FormField[] = [
+  const userFormFields: FormField[] = useMemo(() => [
     {
       name: "firstName",
       label: "First Name",
@@ -213,7 +213,8 @@ export default function UsersPage() {
       })),
       icon: <Building2 size={14} className="text-slate-500" />,
     },
-  ];
+  ], [editingUser, organizations]);
+
 
 
 

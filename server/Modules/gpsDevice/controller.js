@@ -3,6 +3,40 @@ const Validator = require("../../helpers/validators");
 const mongoose = require("mongoose");
 const paginate = require("../../helpers/limitoffset");
 
+const normalizeGpsDevicePayload = (data = {}) => {
+  const payload = { ...data };
+
+  if (typeof payload.imei === "string") {
+    payload.imei = payload.imei.trim();
+  }
+
+  if (typeof payload.firmwareVersion === "string") {
+    payload.firmwareVersion = payload.firmwareVersion.trim();
+  }
+
+  if (typeof payload.softwareVersion === "string") {
+    payload.softwareVersion = payload.softwareVersion.trim();
+  }
+
+  if (!payload.softwareVersion && payload.firmwareVersion) {
+    payload.softwareVersion = payload.firmwareVersion;
+  }
+
+  if (!payload.firmwareVersion && payload.softwareVersion) {
+    payload.firmwareVersion = payload.softwareVersion;
+  }
+
+  if (typeof payload.connectionStatus === "string") {
+    const status = payload.connectionStatus.toLowerCase();
+    if (status === "online" || status === "offline") {
+      payload.connectionStatus = status;
+      payload.isOnline = status === "online";
+    }
+  }
+
+  return payload;
+};
+
 /* -------------------------------------------------------------------------- */
 /*                               VALIDATIONS                                  */
 /* -------------------------------------------------------------------------- */
@@ -32,6 +66,14 @@ const validateUpdateGpsDevice = async (data, user) => {
     organizationId: "string",
     vehicleId: "string",
     configuration: "object",
+    simNumber: "string",
+    deviceModel: "string",
+    manufacturer: "string",
+    serialNumber: "string",
+    firmwareVersion: "string",
+    hardwareVersion: "string",
+    warrantyExpiry: "string",
+    connectionStatus: "string",
   };
 
   const allowedFields = Object.keys(rules);
@@ -55,10 +97,11 @@ const validateUpdateGpsDevice = async (data, user) => {
 
 exports.create = async (req, res) => {
   try {
-    await validateCreateGpsDevice(req.body, req.user);
+    const payload = normalizeGpsDevicePayload(req.body);
+    await validateCreateGpsDevice(payload, req.user);
 
     const organizationId =
-      req.user.role === "superadmin" ? req.body.organizationId : req.orgId;
+      req.user.role === "superadmin" ? payload.organizationId : req.orgId;
 
     if (!organizationId) {
       return res.status(400).json({
@@ -68,7 +111,7 @@ exports.create = async (req, res) => {
     }
 
     const existing = await GpsDevice.findOne({
-      imei: req.body.imei.trim(),
+      imei: payload.imei,
     });
 
     if (existing) {
@@ -79,8 +122,7 @@ exports.create = async (req, res) => {
     }
 
     const device = await GpsDevice.create({
-      ...req.body,
-      imei: req.body.imei.trim(),
+      ...payload,
       organizationId,
       createdBy: req.user._id,
     });
@@ -109,8 +151,8 @@ exports.getAll = async (req, res) => {
 
     const filter = {};
 
-    if (req.user.role !== "superadmin") {
-      filter.organizationId = req.orgId;
+    if (req.user.role !== "superadmin" && req.orgScope !== "ALL") {
+      filter.organizationId = { $in: req.orgScope };
     }
 
     if (status) filter.status = status;
@@ -191,7 +233,8 @@ exports.getById = async (req, res) => {
 
 exports.update = async (req, res) => {
   try {
-    await validateUpdateGpsDevice(req.body, req.user);
+    const payload = normalizeGpsDevicePayload(req.body);
+    await validateUpdateGpsDevice(payload, req.user);
 
     const device = await GpsDevice.findById(req.params.id);
 
@@ -212,9 +255,9 @@ exports.update = async (req, res) => {
       });
     }
 
-    if (req.body.imei) {
+    if (payload.imei) {
       const duplicate = await GpsDevice.findOne({
-        imei: req.body.imei.trim(),
+        imei: payload.imei,
         _id: { $ne: device._id },
       });
 
@@ -225,10 +268,10 @@ exports.update = async (req, res) => {
         });
       }
 
-      req.body.imei = req.body.imei.trim();
+      payload.imei = payload.imei.trim();
     }
 
-    Object.assign(device, req.body);
+    Object.assign(device, payload);
     await device.save();
 
     await device.populate("organizationId vehicleId");

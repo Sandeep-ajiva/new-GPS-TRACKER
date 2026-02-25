@@ -39,7 +39,6 @@ const vehicleSchema = {
     max: new Date().getFullYear() + 1,
   },
   color: String,
-  image: String,
 
   // Device Assignment
   deviceId: {

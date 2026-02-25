@@ -8,7 +8,7 @@ const User = require("../Modules/users/model");
 const Organization = require("../Modules/organizations/model");
 const Vehicle = require("../Modules/vehicle/model");
 const GpsDevice = require("../Modules/gpsDevice/model");
-const VehicleMapping = require("../Modules/vehicleMapping/model");
+const VehicleMapping = require("../Modules/deviceMapping/model");
 
 const SEED = {
   superadmin: {

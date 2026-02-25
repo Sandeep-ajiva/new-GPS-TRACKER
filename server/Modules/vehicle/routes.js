@@ -12,9 +12,8 @@ const Controller = require("./controller");
 router.post(
   "/",
   verifyToken,
-  checkAuthorization(["admin", "superadmin", "manager"], "vehicle", "create"),
+  checkAuthorization(["admin", "superadmin"], "vehicle", "create"),
   checkOrganization,
-  handleVehicleImageUpload,
   Controller.create,
 );
 
@@ -22,7 +21,7 @@ router.post(
 router.get(
   "/",
   verifyToken,
-  checkAuthorization(["admin", "superadmin", "manager"], "vehicle", "read"),
+  checkAuthorization(["admin", "superadmin"], "vehicle", "read"),
   checkOrganization,
   Controller.getAll,
 );
@@ -31,7 +30,7 @@ router.get(
 router.get(
   "/:id",
   verifyToken,
-  checkAuthorization(["admin", "superadmin", "manager"], "vehicle", "read"),
+  checkAuthorization(["admin", "superadmin"], "vehicle", "read"),
   checkOrganization,
   Controller.getById,
 );
@@ -42,7 +41,6 @@ router.put(
   verifyToken,
   checkAuthorization(["admin", "superadmin"], "vehicle", "update"),
   checkOrganization,
-  handleVehicleImageUpload,
   Controller.update,
 );
 
@@ -64,20 +62,20 @@ router.put(
 //   Controller.updateStatus,
 // );
 
-// // hard delete (superadmin only)
-// router.delete(
-//   "/:id",
-//   verifyToken,
-//   checkAuthorization(["superadmin", "admin"], "vehicle", "delete"),
-//   checkOrganization,
-//   Controller.remove,
-// );
+// hard delete
+router.delete(
+  "/:id",
+  verifyToken,
+  checkAuthorization(["admin", "superadmin"], "vehicle", "delete"),
+  checkOrganization,
+  Controller.remove,
+);
 
 // get vehicles by suborganization
 // router.get(
 //   "/suborganization/:suborganizationId",
 //   verifyToken,
-//   checkAuthorization(["admin", "superadmin", "manager"], "vehicle", "read"),
+//   checkAuthorization(["admin", "superadmin"], "vehicle", "read"),
 //   checkOrganization,
 //   Controller.getBySuborganization,
 // );

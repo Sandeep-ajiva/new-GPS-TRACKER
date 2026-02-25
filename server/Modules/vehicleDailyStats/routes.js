@@ -9,21 +9,21 @@ const Controller = require("./controller");
 router.get(
   "/",
   requireAuth,
-  checkAuthorization(["admin", "manager"], "vehicleDailyStats", "read"),
+  checkAuthorization(["admin"], "vehicleDailyStats", "read"),
   Controller.getAll
 );
 
 router.get(
   "/vehicle/:vehicleId",
   requireAuth,
-  checkAuthorization(["admin", "manager"], "vehicleDailyStats", "read"),
+  checkAuthorization(["admin"], "vehicleDailyStats", "read"),
   Controller.getByVehicle
 );
 
 router.get(
   "/vehicle/:vehicleId/date/:date",
   requireAuth,
-  checkAuthorization(["admin", "manager"], "vehicleDailyStats", "read"),
+  checkAuthorization(["admin"], "vehicleDailyStats", "read"),
   Controller.getByVehicleAndDate
 );
 

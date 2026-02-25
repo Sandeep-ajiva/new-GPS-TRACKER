@@ -9,28 +9,28 @@ const Controller = require("./controller");
 router.post(
   "/",
   requireAuth,
-  checkAuthorization(["admin", "manager"], "geofence", "create"),
+  checkAuthorization(["admin"], "geofence", "create"),
   Controller.create
 );
 
 router.get(
   "/",
   requireAuth,
-  checkAuthorization(["admin", "manager"], "geofence", "read"),
+  checkAuthorization(["admin"], "geofence", "read"),
   Controller.getAll
 );
 
 router.get(
   "/:id",
   requireAuth,
-  checkAuthorization(["admin", "manager"], "geofence", "read"),
+  checkAuthorization(["admin"], "geofence", "read"),
   Controller.getById
 );
 
 router.put(
   "/:id",
   requireAuth,
-  checkAuthorization(["admin", "manager"], "geofence", "update"),
+  checkAuthorization(["admin"], "geofence", "update"),
   Controller.update
 );
 

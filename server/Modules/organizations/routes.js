@@ -21,7 +21,7 @@ router.post(
   Controller.createOrganizationWithAdmin
 );
 
-// 2️⃣ Create sub-organization + manager
+// 2️⃣ Create sub-organization + admin
 router.post(
   "/sub",
   requireAuth,
@@ -31,29 +31,48 @@ router.post(
   Controller.createSubOrganizationWithManager
 );
 
+// 3️⃣ Create sub-organization only
+router.post(
+  "/sub-organization",
+  requireAuth,
+  checkAuthorization(["superadmin", "admin"], "organizations", "create"),
+  checkOrganization,
+  handleLogoUpload,
+  Controller.createSubOrganization
+);
+
+// 4️⃣ Create sub-organization admin only
+router.post(
+  "/sub-admin",
+  requireAuth,
+  checkAuthorization(["superadmin", "admin"], "organizations", "create"),
+  checkOrganization,
+  Controller.createSubAdmin
+);
+
 /* =========================
    READ
 ========================= */
 
-// 3️⃣ Get organizations (scoped)
+// 5️⃣ Get organizations (scoped)
 router.get(
   "/",
   requireAuth,
-  checkAuthorization(["superadmin", "admin", "manager"], "organizations", "read"),
+  checkAuthorization(["superadmin", "admin"], "organizations", "read"),
   checkOrganization,
   Controller.getAll
 );
 
-// 4️⃣ Get only sub-organizations of current org
+// 6️⃣ Get only sub-organizations of current org
 router.get(
   "/sub",
   requireAuth,
-  checkAuthorization(["superadmin", "admin", "manager"], "organizations", "read"),
+  checkAuthorization(["superadmin", "admin"], "organizations", "read"),
   checkOrganization,
   Controller.getSubOrganizations
 );
 
-// 5️⃣ Get organization by id (superadmin only)
+// 7️⃣ Get organization by id (superadmin only)
 router.get(
   "/:id",
   requireAuth,
@@ -68,7 +87,8 @@ router.get(
 router.put(
   "/:id",
   requireAuth,
-  checkAuthorization(["superadmin"], "organizations", "update"),
+  checkAuthorization(["superadmin", "admin"], "organizations", "update"),
+  checkOrganization,
   handleLogoUpload,
   Controller.update
 );

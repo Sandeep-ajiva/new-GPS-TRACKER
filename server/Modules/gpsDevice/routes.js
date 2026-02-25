@@ -18,7 +18,7 @@ router.post(
 router.get(
   "/",
   verifyToken,
-  checkAuthorization(["admin", "manager", "driver"], "gpsDevice", "read"),
+  checkAuthorization(["admin", "driver"], "gpsDevice", "read"),
   checkOrganization,
   Controller.getAll
 );
@@ -26,7 +26,7 @@ router.get(
 router.get(
   "/available",
   verifyToken,
-  checkAuthorization(["admin", "manager", "driver"], "gpsDevice", "read"),
+  checkAuthorization(["admin", "driver"], "gpsDevice", "read"),
   checkOrganization,
   Controller.getAvailable
 );
@@ -34,7 +34,7 @@ router.get(
 router.get(
   "/:id",
   verifyToken,
-  checkAuthorization(["admin", "manager", "driver"], "gpsDevice", "read"),
+  checkAuthorization(["admin", "driver"], "gpsDevice", "read"),
   checkOrganization,
   Controller.getById
 );

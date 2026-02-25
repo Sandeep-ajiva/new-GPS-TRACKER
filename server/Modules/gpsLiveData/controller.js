@@ -2,7 +2,7 @@ const GpsLiveData = require("./model");
 const Service = require("./service");
 const { getIo } = require("../../socket");
 const GpsDevice = require("../gpsDevice/model");
-const VehicleDeviceMapping = require("../vehicleMapping/model");
+const VehicleDeviceMapping = require("../deviceMapping/model");
 
 /* ========================================================================== */
 /*                          AIS-140 PACKET PARSER                              */
@@ -210,7 +210,7 @@ const GpsLiveDataController = {
         const io = getIo();
         io.to(`device_${parsed.imei}`).emit("gps_update", doc);
         io.to(`org_${device.organizationId}`).emit("gps_update", doc);
-      } catch (_) {}
+      } catch (_) { }
     } catch (e) {
       console.error("Store packet error:", e);
     }

@@ -38,6 +38,54 @@ const gpsDeviceSchema = {
     maxlength: 20,
   },
 
+  // UI-facing metadata fields
+  deviceModel: {
+    type: String,
+    default: "",
+    trim: true,
+  },
+
+  manufacturer: {
+    type: String,
+    default: "",
+    trim: true,
+  },
+
+  simNumber: {
+    type: String,
+    default: "",
+    trim: true,
+  },
+
+  serialNumber: {
+    type: String,
+    default: "",
+    trim: true,
+  },
+
+  firmwareVersion: {
+    type: String,
+    default: "",
+    trim: true,
+  },
+
+  hardwareVersion: {
+    type: String,
+    default: "",
+    trim: true,
+  },
+
+  warrantyExpiry: {
+    type: Date,
+    default: null,
+  },
+
+  connectionStatus: {
+    type: String,
+    enum: ["online", "offline"],
+    default: "offline",
+  },
+
   vehicleRegistrationNumber: {
     type: String,
     uppercase: true,

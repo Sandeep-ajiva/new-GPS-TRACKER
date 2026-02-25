@@ -4,7 +4,7 @@ const permissionscontroller = require("./controller.js");
 const verifyToken = require("../../middleware/verifyToken.js");
 const checkAuthorization = require("../../middleware/checkAuthorization.js");
 
-const allRoles = ["admin", "hr", "supervisor", "employee", "manager", "superadmin", "contractor", "teacher"];
+const allRoles = ["admin", "superadmin", "driver"];
 
 router.get(
   "/",

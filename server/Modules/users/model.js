@@ -41,7 +41,7 @@ const userSchema = {
 
   role: {
     type: String,
-    enum: ["superadmin", "admin", "manager", "driver", "viewer"],
+    enum: ["superadmin", "admin", "driver"],
     required: true,
   },
 

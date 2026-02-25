@@ -15,6 +15,11 @@ export interface FormOption {
   value: string;
 }
 
+export interface FormOptionGroup {
+  label: string;
+  options: FormOption[];
+}
+
 export interface FormField {
   name: string;
   label: string;
@@ -22,6 +27,7 @@ export interface FormField {
   placeholder?: string;
   required?: boolean;
   options?: FormOption[]; // For select type
+  groups?: FormOptionGroup[]; // For grouped select type
   rows?: number; // For textarea type
   icon?: React.ReactNode;
 }

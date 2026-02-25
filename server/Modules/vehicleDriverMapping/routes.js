@@ -11,7 +11,7 @@ const Controller = require("./controller");
 router.post(
     "/assign",
     verifyToken,
-    checkAuthorization(["admin", "superadmin", "manager"], "vehicleDriverMapping", "create"),
+    checkAuthorization(["admin", "superadmin"], "vehicleDriverMapping", "create"),
     checkOrganization,
     Controller.assignDriverToVehicle
 );
@@ -20,7 +20,7 @@ router.post(
 router.post(
     "/unassign",
     verifyToken,
-    checkAuthorization(["admin", "superadmin", "manager"], "vehicleDriverMapping", "update"),
+    checkAuthorization(["admin", "superadmin"], "vehicleDriverMapping", "update"),
     checkOrganization,
     Controller.unassignDriverFromVehicle
 );
@@ -29,7 +29,7 @@ router.post(
 router.get(
     "/:vehicleId/current",
     verifyToken,
-    checkAuthorization(["admin", "superadmin", "manager", "driver"], "vehicleDriverMapping", "read"),
+    checkAuthorization(["admin", "superadmin", "driver"], "vehicleDriverMapping", "read"),
     checkOrganization,
     Controller.getCurrentDriverByVehicle
 );

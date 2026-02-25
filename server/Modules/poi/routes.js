@@ -9,28 +9,28 @@ const Controller = require("./controller");
 router.post(
   "/",
   requireAuth,
-  checkAuthorization(["admin", "manager"], "poi", "create"),
+  checkAuthorization(["admin"], "poi", "create"),
   Controller.create
 );
 
 router.get(
   "/",
   requireAuth,
-  checkAuthorization(["admin", "manager"], "poi", "read"),
+  checkAuthorization(["admin"], "poi", "read"),
   Controller.getAll
 );
 
 router.get(
   "/:id",
   requireAuth,
-  checkAuthorization(["admin", "manager"], "poi", "read"),
+  checkAuthorization(["admin"], "poi", "read"),
   Controller.getById
 );
 
 router.put(
   "/:id",
   requireAuth,
-  checkAuthorization(["admin", "manager"], "poi", "update"),
+  checkAuthorization(["admin"], "poi", "update"),
   Controller.update
 );
 

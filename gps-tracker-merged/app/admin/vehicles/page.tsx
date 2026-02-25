@@ -71,7 +71,7 @@ export default function VehiclesPage() {
 
   const vehicles = useMemo(() => (vehData?.data as Vehicle[]) || [], [vehData]);
   const organizations = useMemo(
-    () => (orgData?.data as { _id: string; name: string }[]) || [],
+    () => (orgData?.data as { _id: string; name: string; parentOrganizationId?: string | null }[]) || [],
     [orgData],
   );
   const devices = useMemo(
@@ -177,72 +177,76 @@ export default function VehiclesPage() {
     data: Record<string, string | number | boolean | File>,
   ) => {
     try {
-      const formData = new FormData();
-
       // 🔹 Append fields carefully
+      const body: Record<string, any> = {};
+
       Object.entries(data).forEach(([key, value]) => {
-        if (
-          value === "" ||
-          value === undefined ||
-          value === null ||
-          key === "image"
-        ) {
-          return;
-        }
+        // Skip null/undefined
+        if (value === undefined || value === null) return;
 
-        // ❌ UPDATE ke time organizationId skip
-        if (editingVehicle && key === "organizationId") {
-          return;
-        }
+        // Skip organizationId on update
+        if (editingVehicle && key === "organizationId") return;
 
-        formData.append(key, String(value));
+        // Handle empty strings for optional IDs
+        if (value === "" && ["deviceId", "driverId"].includes(key)) {
+          body[key] = null;
+        } else if (value !== "") {
+          body[key] = value;
+        }
       });
 
       // 🔹 Uppercase vehicle number
-      if (data.vehicleNumber) {
-        formData.set(
-          "vehicleNumber",
-          String(data.vehicleNumber).toUpperCase(),
-        );
-      }
-
-      // 🔹 Image
-      if (data.image instanceof File) {
-        formData.append("image", data.image);
+      if (body.vehicleNumber) {
+        body.vehicleNumber = String(body.vehicleNumber).toUpperCase().trim();
       }
 
       if (editingVehicle) {
         // ✅ UPDATE
         await updateVehicle({
           id: editingVehicle._id,
-          formData,
+          ...body,
         }).unwrap();
 
         toast.success("Vehicle updated successfully");
       } else {
-        // ✅ CREATE (organizationId allowed here)
-        await createVehicle(formData).unwrap();
+        // ✅ CREATE
+        await createVehicle(body).unwrap();
         toast.success("Vehicle created successfully");
       }
-
-      closeModal();
     } catch (err: unknown) {
       const error = err as { data?: { message?: string } };
       toast.error(error?.data?.message || "Operation failed");
+      throw err; // re-throw so DynamicModal keeps the form open on failure
     }
   };
 
 
-  const vehicleFormFields: FormField[] = [
+  const vehicleFormFields: FormField[] = useMemo(() => [
     {
       name: "organizationId",
       label: "Organization",
       type: "select",
       required: true,
-      options: organizations.map((org) => ({
-        label: org.name,
-        value: org._id,
-      })),
+      groups: [
+        {
+          label: "Organizations",
+          options: organizations
+            .filter((org) => !org.parentOrganizationId)
+            .map((org) => ({
+              label: org.name,
+              value: org._id,
+            })),
+        },
+        {
+          label: "Sub-Organizations",
+          options: organizations
+            .filter((org) => org.parentOrganizationId)
+            .map((org) => ({
+              label: org.name,
+              value: org._id,
+            })),
+        },
+      ],
       icon: <Building2 size={14} className="text-slate-500" />,
     },
     {
@@ -315,29 +319,30 @@ export default function VehiclesPage() {
       name: "driverId",
       label: "Driver",
       type: "select",
-      options: drivers.map((driver) => ({
-        label: `${driver.firstName} ${driver.lastName}`,
-        value: driver._id,
-      })),
+      options: [
+        { label: "Unassigned", value: "" },
+        ...drivers.map((driver) => ({
+          label: `${driver.firstName} ${driver.lastName}`,
+          value: driver._id,
+        })),
+      ],
       icon: <Info size={14} className="text-slate-500" />,
     },
     {
       name: "deviceId",
       label: "Assign GPS Device",
       type: "select",
-      options: getAvailableDevices(editingVehicle?._id).map((d) => ({
-        label: `${d.imei} (${d.deviceModel})`,
-        value: d._id,
-      })),
+      options: [
+        { label: "Unassigned", value: "" },
+        ...getAvailableDevices(editingVehicle?._id).map((d) => ({
+          label: `${d.imei} (${d.deviceModel})`,
+          value: d._id,
+        })),
+      ],
       icon: <ShieldAlert size={14} className="text-slate-500" />,
     },
-    {
-      name: "image",
-      label: "Vehicle Image",
-      type: "file",
-      icon: <ImageIcon size={14} className="text-slate-500" />,
-    },
-  ];
+  ], [organizations, drivers, devices, vehicles, editingVehicle]);
+
 
   const handleAssignDevice = async (deviceId: string) => {
     if (!selectedVehicleForAssignment) return;
@@ -429,15 +434,14 @@ export default function VehiclesPage() {
       header: "Running",
       accessor: (row: Vehicle) => (
         <span
-          className={`capitalize text-xs font-semibold ${
-            row.runningStatus === "running"
-              ? "text-green-600"
-              : row.runningStatus === "idle"
-                ? "text-amber-600"
-                : row.runningStatus === "stopped"
-                  ? "text-red-600"
-                  : "text-slate-500"
-          }`}
+          className={`capitalize text-xs font-semibold ${row.runningStatus === "running"
+            ? "text-green-600"
+            : row.runningStatus === "idle"
+              ? "text-amber-600"
+              : row.runningStatus === "stopped"
+                ? "text-red-600"
+                : "text-slate-500"
+            }`}
         >
           {row.runningStatus || "-"}
         </span>
@@ -447,11 +451,10 @@ export default function VehiclesPage() {
       header: "Status",
       accessor: (row: Vehicle) => (
         <span
-          className={`px-2 py-1 rounded-lg text-xs font-bold uppercase ${
-            row.status === "active"
-              ? "bg-green-100 text-green-700"
-              : "bg-red-100 text-red-700"
-          }`}
+          className={`px-2 py-1 rounded-lg text-xs font-bold uppercase ${row.status === "active"
+            ? "bg-green-100 text-green-700"
+            : "bg-red-100 text-red-700"
+            }`}
         >
           {capitalizeFirstLetter(row.status || "active")}
         </span>
@@ -584,11 +587,24 @@ export default function VehiclesPage() {
                   }
                 >
                   <option value="">All Organizations</option>
-                  {organizations.map((org) => (
-                    <option key={org._id} value={org._id}>
-                      {org.name}
-                    </option>
-                  ))}
+                  <optgroup label="Organizations">
+                    {organizations
+                      .filter((org) => !org.parentOrganizationId)
+                      .map((org) => (
+                        <option key={org._id} value={org._id}>
+                          {org.name}
+                        </option>
+                      ))}
+                  </optgroup>
+                  <optgroup label="Sub-Organizations">
+                    {organizations
+                      .filter((org) => org.parentOrganizationId)
+                      .map((org) => (
+                        <option key={org._id} value={org._id}>
+                          {org.name}
+                        </option>
+                      ))}
+                  </optgroup>
                 </select>
               </div>
               <div>

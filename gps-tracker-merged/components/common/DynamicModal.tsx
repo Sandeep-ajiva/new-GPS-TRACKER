@@ -21,6 +21,7 @@ export function DynamicModal({
     Record<string, string | number | boolean | File>
   >({});
   const [isSaving, setIsSaving] = useState(false);
+  const [apiError, setApiError] = useState<string | null>(null);
 
   useEffect(() => {
     if (initialData) {
@@ -33,7 +34,11 @@ export function DynamicModal({
       });
       setFormData(initial);
     }
-  }, [initialData, fields, isOpen]);
+    // Only clear error if the modal is opening for the first time
+    if (isOpen) {
+      // We keep the error if it was just set during a submission attempt
+    }
+  }, [initialData, isOpen]);
 
   if (!isOpen) return null;
 
@@ -51,22 +56,46 @@ export function DynamicModal({
       val = (e.target as HTMLInputElement).files?.[0] as File;
     }
 
+    setApiError(null); // clear error when user resumes typing
     setFormData((prev) => ({ ...prev, [name]: val }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
+    setApiError(null);
     try {
       await onSubmit(formData);
       onClose();
-    } catch (error) {
-      // Error is usually handled by the parent via toast
-      console.error("Form submit error:", error);
+    } catch (err: any) {
+      // Step 1: Extract nested validation errors (Mongoose style)
+      const errorData = err?.data;
+      if (errorData?.errors && typeof errorData.errors === 'object') {
+        try {
+          const messages = Object.values(errorData.errors).map((fieldErr: any) =>
+            typeof fieldErr === 'string' ? fieldErr : fieldErr?.message || "Invalid value"
+          );
+          if (messages.length > 0) {
+            setApiError(messages.join(" | "));
+            return;
+          }
+        } catch (innerErr) {
+          // ignore parsing error
+        }
+      }
+
+      // Step 2: Fallback to top-level message or plain Error
+      const message =
+        errorData?.message ||
+        err?.message ||
+        "Something went wrong. Please try again.";
+      setApiError(message);
     } finally {
       setIsSaving(false);
     }
   };
+
+
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
@@ -122,7 +151,28 @@ export function DynamicModal({
 
         {/* Body */}
         <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-6 overflow-y-auto">
+          {/* ── Inline API error ── */}
+          {apiError && (
+            <div className={cn(
+              "flex items-start gap-3 rounded-xl px-4 py-3 text-sm font-medium border animate-in fade-in slide-in-from-top-1 duration-200",
+              isDark
+                ? "bg-red-900/30 border-red-700/40 text-red-300"
+                : "bg-red-50 border-red-200 text-red-700"
+            )}>
+              <span className="mt-0.5 shrink-0 text-rose-500">⚠</span>
+              <span className="flex-1">{apiError}</span>
+              <button
+                type="button"
+                onClick={() => setApiError(null)}
+                className="shrink-0 opacity-60 hover:opacity-100 transition-opacity"
+              >
+                <X size={16} />
+              </button>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
             {fields.map((field) => (
               <div
                 key={field.name}
@@ -168,11 +218,21 @@ export function DynamicModal({
                     )}
                   >
                     <option value="">Select option</option>
-                    {field.options?.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
+                    {field.groups
+                      ? field.groups.map((group) => (
+                        <optgroup key={group.label} label={group.label}>
+                          {group.options.map((opt) => (
+                            <option key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </option>
+                          ))}
+                        </optgroup>
+                      ))
+                      : field.options?.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
                   </select>
                 ) : field.type === "checkbox" ? (
                   <div className="flex items-center gap-3 py-1">

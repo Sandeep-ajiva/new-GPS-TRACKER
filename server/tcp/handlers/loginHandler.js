@@ -1,5 +1,5 @@
 const GpsDevice = require("../../Modules/gpsDevice/model");
-const VehicleDeviceMapping = require("../../Modules/vehicleMapping/model");
+const VehicleDeviceMapping = require("../../Modules/deviceMapping/model");
 
 module.exports = async function loginHandler(socket, packet) {
   try {
@@ -47,10 +47,10 @@ module.exports = async function loginHandler(socket, packet) {
       "🧪 DEVICE FOUND:",
       device
         ? {
-            imei: device.imei,
-            status: device.status,
-            organizationId: device.organizationId,
-          }
+          imei: device.imei,
+          status: device.status,
+          organizationId: device.organizationId,
+        }
         : "❌ NULL - Device not in database",
     );
 

@@ -2,7 +2,7 @@
 // const mongoose = require("mongoose");
 
 // const GpsDevice = require("../Modules/gpsDevice/model");
-// const VehicleDeviceMapping = require("../Modules/vehicleMapping/model");
+// const VehicleDeviceMapping = require("../Modules/deviceMapping/model");
 // const Service = require("../Modules/gpsLiveData/service");
 
 // /**
@@ -233,7 +233,6 @@
 //       return;
 //     }
 
-//     // ensure device is mapped
 //     const mapping = await VehicleDeviceMapping.findOne({
 //       gpsDeviceId: device._id,
 //       unassignedAt: null,

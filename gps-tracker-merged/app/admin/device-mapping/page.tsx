@@ -103,11 +103,8 @@ export default function DeviceMappingPage() {
         {
             header: "Organization",
             accessor: (row: any) => {
-                const vehicle = row.vehicleId;
-                const vObj = (typeof vehicle === 'object') ? vehicle : vehicles.find((item: any) => item._id === vehicle);
-                const org = vObj?.organizationId;
+                const org = row.organizationId;
                 if (org && typeof org === 'object') return org.name;
-                // Can't lookup org name easily without org list access or population
                 return "N/A";
             }
         },

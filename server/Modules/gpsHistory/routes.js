@@ -11,7 +11,7 @@ router.get(
   "/",
   verifyToken,
   checkAuthorization(
-    ["admin", "superadmin", "manager", "driver"],
+    ["admin", "superadmin", "driver"],
     "gpsHistory",
     "read",
   ),
@@ -24,7 +24,7 @@ router.get(
   "/vehicle/:vehicleId",
   verifyToken,
   checkAuthorization(
-    ["admin", "superadmin", "manager", "driver"],
+    ["admin", "superadmin", "driver"],
     "gpsHistory",
     "read",
   ),
@@ -37,7 +37,7 @@ router.get(
   "/device/:gpsDeviceId",
   verifyToken,
   checkAuthorization(
-    ["admin", "superadmin", "manager", "driver"],
+    ["admin", "superadmin", "driver"],
     "gpsHistory",
     "read",
   ),

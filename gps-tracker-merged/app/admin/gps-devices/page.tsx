@@ -42,13 +42,15 @@ export interface GPSDevice {
   organizationId: string | { _id: string; name: string };
   vehicleId?: string;
   imei: string;
-  deviceModel: string;
+  deviceModel?: string;
   manufacturer?: string;
   simNumber?: string;
   serialNumber?: string;
   firmwareVersion?: string;
+  softwareVersion?: string;
   hardwareVersion?: string;
-  connectionStatus: "online" | "offline";
+  connectionStatus?: "online" | "offline";
+  isOnline?: boolean;
   warrantyExpiry?: string;
   status: "active" | "inactive";
 }
@@ -100,7 +102,7 @@ export default function GpsDevicesPage() {
   );
 
   const organizations = useMemo(
-    () => (orgData?.data as { _id: string; name: string }[]) || [],
+    () => (orgData?.data as { _id: string; name: string; parentOrganizationId?: string | null }[]) || [],
     [orgData],
   );
 
@@ -117,6 +119,7 @@ export default function GpsDevicesPage() {
     assigned: "",
     vehicleNumber: "",
     warrantyExpiry: "",
+    organizationId: "",
   });
   const userRole = getSecureItem("userRole");
   const canCreateDevice = userRole === "admin";
@@ -140,13 +143,15 @@ export default function GpsDevicesPage() {
 
     if (filters.model) {
       filtered = filtered.filter((d) =>
-        d.deviceModel.toLowerCase().includes(filters.model.toLowerCase()),
+        (d.deviceModel || "").toLowerCase().includes(filters.model.toLowerCase()),
       );
     }
 
     if (filters.firmware) {
       filtered = filtered.filter((d) =>
-        (d.firmwareVersion || "").toLowerCase().includes(filters.firmware.toLowerCase()),
+        (d.firmwareVersion || d.softwareVersion || "")
+          .toLowerCase()
+          .includes(filters.firmware.toLowerCase()),
       );
     }
 
@@ -158,7 +163,9 @@ export default function GpsDevicesPage() {
 
     if (filters.connectionStatus) {
       filtered = filtered.filter(
-        (d) => d.connectionStatus === filters.connectionStatus,
+        (d) =>
+          (d.connectionStatus || (d.isOnline ? "online" : "offline")) ===
+          filters.connectionStatus,
       );
     }
 
@@ -193,6 +200,15 @@ export default function GpsDevicesPage() {
       filtered = filtered.filter((d) => d.status === filters.status);
     }
 
+    if (filters.organizationId) {
+      filtered = filtered.filter((d) => {
+        const orgId = typeof d.organizationId === "object"
+          ? d.organizationId._id
+          : d.organizationId;
+        return orgId === filters.organizationId;
+      });
+    }
+
     return filtered;
   }, [devices, vehiclesData, filters]);
 
@@ -220,25 +236,40 @@ export default function GpsDevicesPage() {
         await createGpsDevice(data).unwrap();
         toast.success("Device created successfully");
       }
-
-      closeModal();
     } catch (err: any) {
       toast.error(err?.data?.message || "Operation failed");
+      throw err; // re-throw so DynamicModal keeps the form open and shows inline error
     }
   };
 
   /* ================= FORM FIELDS (FIXED) ================= */
 
-  const deviceFormFields: FormField[] = [
+  const deviceFormFields: FormField[] = useMemo(() => [
     {
       name: "organizationId",
       label: "Organization",
       type: "select",
       required: true,
-      options: organizations.map((org) => ({
-        label: org.name,
-        value: org._id,
-      })),
+      groups: [
+        {
+          label: "Organizations",
+          options: organizations
+            .filter((org) => !org.parentOrganizationId)
+            .map((org) => ({
+              label: org.name,
+              value: org._id,
+            })),
+        },
+        {
+          label: "Sub-Organizations",
+          options: organizations
+            .filter((org) => org.parentOrganizationId)
+            .map((org) => ({
+              label: org.name,
+              value: org._id,
+            })),
+        },
+      ],
       icon: <Building2 size={14} />,
     },
     { name: "imei", label: "IMEI", type: "text", required: true },
@@ -278,7 +309,8 @@ export default function GpsDevicesPage() {
         { label: "Inactive", value: "inactive" },
       ],
     },
-  ];
+  ], [organizations]);
+
 
   /* ================= MODALS ================= */
 
@@ -316,6 +348,7 @@ export default function GpsDevicesPage() {
       assigned: "",
       vehicleNumber: "",
       warrantyExpiry: "",
+      organizationId: "",
     });
   };
 
@@ -341,8 +374,14 @@ export default function GpsDevicesPage() {
 
   const columns = [
     { header: "IMEI", accessor: "imei" },
-    { header: "Model", accessor: "deviceModel" },
-    { header: "Firmware", accessor: "firmwareVersion" },
+    {
+      header: "Model",
+      accessor: (row: GPSDevice) => row.deviceModel || row.manufacturer || "-",
+    },
+    {
+      header: "Firmware",
+      accessor: (row: GPSDevice) => row.firmwareVersion || row.softwareVersion || "-",
+    },
     { header: "SIM", accessor: "simNumber" },
     {
       header: "Vehicle",
@@ -355,13 +394,12 @@ export default function GpsDevicesPage() {
       header: "Connection",
       accessor: (row: GPSDevice) => (
         <span
-          className={`capitalize text-xs font-semibold ${
-            row.connectionStatus === "online"
-              ? "text-green-600"
-              : "text-red-600"
-          }`}
+          className={`capitalize text-xs font-semibold ${(row.connectionStatus || (row.isOnline ? "online" : "offline")) === "online"
+            ? "text-green-600"
+            : "text-red-600"
+            }`}
         >
-          {row.connectionStatus || "-"}
+          {row.connectionStatus || (row.isOnline ? "online" : "offline")}
         </span>
       ),
     },
@@ -374,9 +412,8 @@ export default function GpsDevicesPage() {
       header: "Status",
       accessor: (row: GPSDevice) => (
         <span
-          className={`capitalize text-xs font-semibold ${
-            row.status === "active" ? "text-green-600" : "text-red-600"
-          }`}
+          className={`capitalize text-xs font-semibold ${row.status === "active" ? "text-green-600" : "text-red-600"
+            }`}
         >
           {capitalizeFirstLetter(row.status)}
         </span>
@@ -562,6 +599,38 @@ export default function GpsDevicesPage() {
                   }
                 />
               </div>
+              <div>
+                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
+                  Organization
+                </label>
+                <select
+                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-blue-500/20 outline-none"
+                  value={filters.organizationId}
+                  onChange={(e) =>
+                    setFilters({ ...filters, organizationId: e.target.value })
+                  }
+                >
+                  <option value="">All Organizations</option>
+                  <optgroup label="Organizations">
+                    {organizations
+                      .filter((org) => !org.parentOrganizationId)
+                      .map((org) => (
+                        <option key={org._id} value={org._id}>
+                          {org.name}
+                        </option>
+                      ))}
+                  </optgroup>
+                  <optgroup label="Sub-Organizations">
+                    {organizations
+                      .filter((org) => org.parentOrganizationId)
+                      .map((org) => (
+                        <option key={org._id} value={org._id}>
+                          {org.name}
+                        </option>
+                      ))}
+                  </optgroup>
+                </select>
+              </div>
               <div className="flex items-end">
                 <button
                   onClick={clearFilters}
@@ -594,15 +663,18 @@ export default function GpsDevicesPage() {
                   : editingDevice.organizationId,
                 imei: editingDevice.imei,
                 simNumber: editingDevice.simNumber || "",
-                deviceModel: editingDevice.deviceModel,
+                deviceModel: editingDevice.deviceModel || "",
                 manufacturer: editingDevice.manufacturer || "",
                 serialNumber: editingDevice.serialNumber || "",
-                firmwareVersion: editingDevice.firmwareVersion || "",
+                firmwareVersion:
+                  editingDevice.firmwareVersion || editingDevice.softwareVersion || "",
                 hardwareVersion: editingDevice.hardwareVersion || "",
                 warrantyExpiry: editingDevice.warrantyExpiry
                   ? editingDevice.warrantyExpiry.split("T")[0]
                   : "",
-                connectionStatus: editingDevice.connectionStatus,
+                connectionStatus:
+                  editingDevice.connectionStatus ||
+                  (editingDevice.isOnline ? "online" : "offline"),
                 status: editingDevice.status,
               }
               : undefined

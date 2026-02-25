@@ -67,13 +67,8 @@ export default function OrganizationsPage() {
   /* ---------------------------------------
      3️⃣ Fetch sub-organizations (NO parentId param)
   ---------------------------------------- */
-  const {
-    data: subOrgResponse,
-    isLoading,
-    error,
-  } = useGetSubOrganizationsQuery(undefined, {
-    skip: !parentOrgId,
-  });
+  const { data: subOrgResponse, isLoading, error } =
+    useGetSubOrganizationsQuery(undefined);
 
   const organizations: Organization[] = useMemo(
     () => subOrgResponse?.data || [],
@@ -179,16 +174,17 @@ export default function OrganizationsPage() {
           managerData: {
             firstName: form.managerFirstName,
             lastName: form.managerLastName,
+            email: form.email,
+            mobile: form.phone,
             password: form.managerPassword,
           },
         }).unwrap();
 
         toast.success("Sub-organization & manager created successfully");
       }
-
-      closeModal();
     } catch (err: any) {
       toast.error(err?.data?.message || "Operation failed");
+      throw err; // re-throw so DynamicModal keeps the form open and shows inline error
     }
   };
 
@@ -218,8 +214,8 @@ export default function OrganizationsPage() {
       accessor: (row: Organization) => (
         <span
           className={`px-2 py-1 rounded text-xs font-bold ${row.status === "active"
-              ? "bg-green-100 text-green-700"
-              : "bg-red-100 text-red-700"
+            ? "bg-green-100 text-green-700"
+            : "bg-red-100 text-red-700"
             }`}
         >
           {row.status}
@@ -257,14 +253,6 @@ export default function OrganizationsPage() {
     return (
       <div className="flex justify-center p-10">
         <Loader2 className="animate-spin" />
-      </div>
-    );
-  }
-
-  if (!parentOrgId) {
-    return (
-      <div className="p-6 text-red-500">
-        Parent organization not found. Please create a main organization first.
       </div>
     );
   }
@@ -312,8 +300,9 @@ export default function OrganizationsPage() {
               ? "Edit Organization"
               : "Create Sub Organization & Manager"
           }
-          fields={getFormFields(!!editingOrg)}
+          fields={useMemo(() => getFormFields(!!editingOrg), [editingOrg])}
           initialData={
+
             editingOrg
               ? {
                 name: editingOrg.name,
@@ -369,19 +358,19 @@ function getFormFields(isEdit: boolean): FormField[] {
     ...orgFields,
     {
       name: "managerFirstName",
-      label: "Manager First Name",
+      label: "Admin First Name",
       type: "text",
       required: true,
     },
     {
       name: "managerLastName",
-      label: "Manager Last Name",
+      label: "Admin Last Name",
       type: "text",
       required: true,
     },
     {
       name: "managerPassword",
-      label: "Manager Password",
+      label: "Admin Password",
       type: "password",
       required: true,
     },

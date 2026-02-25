@@ -14,11 +14,10 @@ const VEHICLE_RULES = {
   model: "string",
   year: "numeric",
   color: "string",
-  // ais140Compliant: "boolean",
-  // ais140CertificateNumber: "string",
+  deviceId: "string",
+  driverId: "string",
   status: "in:active,inactive,maintenance,decommissioned",
   runningStatus: "in:running,idle,stopped,inactive",
-  // image: "string",
 };
 
 /* -------------------------------------------------------------------------- */
@@ -63,16 +62,19 @@ exports.create = async (req, res) => {
       });
     }
 
-    const image = req.file ? `/uploads/vehicles/${req.file.filename}` : null;
-
-    const vehicle = await VehicleModel.create({
+    const vehicleData = {
       organizationId,
       ...req.body,
       vehicleNumber,
-      image,
       runningStatus: "inactive",
       createdBy: req.user._id,
-    });
+    };
+
+    // Clean up empty strings for IDs
+    if (!vehicleData.deviceId) vehicleData.deviceId = null;
+    if (!vehicleData.driverId) vehicleData.driverId = null;
+
+    const vehicle = await VehicleModel.create(vehicleData);
 
     return res.status(201).json({
       status: true,
@@ -81,9 +83,19 @@ exports.create = async (req, res) => {
     });
   } catch (error) {
     console.error("Create Vehicle Error:", error);
+
+    if (error.name === "ValidationError") {
+      return res.status(400).json({
+        status: false,
+        message: "Validation failed",
+        errors: error.errors,
+      });
+    }
+
     return res.status(error.status || 500).json({
       status: false,
       message: error.message || "Internal server error",
+      errors: error.errors || null,
     });
   }
 };
@@ -106,14 +118,14 @@ exports.update = async (req, res) => {
       });
     }
 
-    if (
-      req.user.role !== "superadmin" &&
-      vehicle.organizationId.toString() !== req.orgId.toString()
-    ) {
-      return res.status(403).json({
-        status: false,
-        message: "Forbidden",
-      });
+    if (req.user.role !== "superadmin") {
+      const allowedOrgIds = (req.orgScope || []).map((id) => id.toString());
+      if (!allowedOrgIds.includes(vehicle.organizationId.toString())) {
+        return res.status(403).json({
+          status: false,
+          message: "Forbidden",
+        });
+      }
     }
 
     if (req.body.vehicleNumber) {
@@ -137,9 +149,9 @@ exports.update = async (req, res) => {
       req.body.vehicleNumber = formattedVehicleNumber;
     }
 
-    if (req.file) {
-      req.body.image = `/uploads/vehicles/${req.file.filename}`;
-    }
+    // Clean up empty strings for IDs
+    if (req.body.deviceId === "") req.body.deviceId = null;
+    if (req.body.driverId === "") req.body.driverId = null;
 
     Object.assign(vehicle, req.body);
     vehicle.updatedAt = new Date();
@@ -152,9 +164,19 @@ exports.update = async (req, res) => {
     });
   } catch (error) {
     console.error("Update Vehicle Error:", error);
+
+    if (error.name === "ValidationError") {
+      return res.status(400).json({
+        status: false,
+        message: "Validation failed",
+        errors: error.errors,
+      });
+    }
+
     return res.status(error.status || 500).json({
       status: false,
       message: error.message || "Internal server error",
+      errors: error.errors || null,
     });
   }
 };
@@ -167,8 +189,8 @@ exports.getAll = async (req, res) => {
   try {
     const filter = {};
 
-    if (req.user.role !== "superadmin") {
-      filter.organizationId = req.orgId;
+    if (req.user.role !== "superadmin" && req.orgScope !== "ALL") {
+      filter.organizationId = { $in: req.orgScope };
     }
 
     const result = await paginate(
@@ -213,6 +235,46 @@ exports.getById = async (req, res) => {
     return res.status(500).json({
       status: false,
       message: error.message,
+    });
+  }
+};
+
+/* -------------------------------------------------------------------------- */
+/*                                   DELETE                                   */
+/* -------------------------------------------------------------------------- */
+
+exports.remove = async (req, res) => {
+  try {
+    const vehicle = await VehicleModel.findById(req.params.id);
+
+    if (!vehicle) {
+      return res.status(404).json({
+        status: false,
+        message: "Vehicle not found",
+      });
+    }
+
+    if (req.user.role !== "superadmin") {
+      const allowedOrgIds = (req.orgScope || []).map((id) => id.toString());
+      if (!allowedOrgIds.includes(vehicle.organizationId.toString())) {
+        return res.status(403).json({
+          status: false,
+          message: "Forbidden",
+        });
+      }
+    }
+
+    await VehicleModel.findByIdAndDelete(req.params.id);
+
+    return res.json({
+      status: true,
+      message: "Vehicle deleted successfully",
+    });
+  } catch (error) {
+    console.error("Delete Vehicle Error:", error);
+    return res.status(500).json({
+      status: false,
+      message: error.message || "Internal server error",
     });
   }
 };

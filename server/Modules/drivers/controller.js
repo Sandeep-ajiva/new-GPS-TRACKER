@@ -166,8 +166,8 @@ exports.getAll = async (req, res) => {
 
         const filter = {};
 
-        if (req.user.role !== "superadmin") {
-            filter.organizationId = req.orgId;
+        if (req.user.role !== "superadmin" && req.orgScope !== "ALL") {
+            filter.organizationId = { $in: req.orgScope };
         }
 
         if (status) filter.status = status;
@@ -185,9 +185,9 @@ exports.getAll = async (req, res) => {
         return res.status(200).json(result);
     } catch (error) {
         console.error("Get All Drivers Error:", error);
-        return res.status(500).json({ 
-            status: false, 
-            message: error.message 
+        return res.status(500).json({
+            status: false,
+            message: error.message
         });
     }
 };
@@ -208,9 +208,9 @@ exports.getById = async (req, res) => {
             .populate('assignedVehicleId');
 
         if (!driver) {
-            return res.status(404).json({ 
-                status: false, 
-                message: "Driver not found" 
+            return res.status(404).json({
+                status: false,
+                message: "Driver not found"
             });
         }
 
@@ -222,15 +222,15 @@ exports.getById = async (req, res) => {
             });
         }
 
-        return res.status(200).json({ 
-            status: true, 
-            data: driver 
+        return res.status(200).json({
+            status: true,
+            data: driver
         });
     } catch (error) {
         console.error("Get Driver By ID Error:", error);
-        return res.status(500).json({ 
-            status: false, 
-            message: error.message 
+        return res.status(500).json({
+            status: false,
+            message: error.message
         });
     }
 };
@@ -251,9 +251,9 @@ exports.update = async (req, res) => {
         const driver = await Driver.findById(id);
 
         if (!driver) {
-            return res.status(404).json({ 
-                status: false, 
-                message: "Driver not found" 
+            return res.status(404).json({
+                status: false,
+                message: "Driver not found"
             });
         }
 
@@ -311,15 +311,15 @@ exports.update = async (req, res) => {
 
         await driver.populate(['organizationId', 'assignedVehicleId']);
 
-        return res.status(200).json({ 
-            status: true, 
-            message: "Driver Updated Successfully", 
-            data: driver 
+        return res.status(200).json({
+            status: true,
+            message: "Driver Updated Successfully",
+            data: driver
         });
     } catch (error) {
         console.error("Update Driver Error:", error);
-        return res.status(error.status || 500).json({ 
-            status: false, 
+        return res.status(error.status || 500).json({
+            status: false,
             message: error.message || "Internal server error"
         });
     }
@@ -339,9 +339,9 @@ exports.delete = async (req, res) => {
         const driver = await Driver.findById(id);
 
         if (!driver) {
-            return res.status(404).json({ 
-                status: false, 
-                message: "Driver not found" 
+            return res.status(404).json({
+                status: false,
+                message: "Driver not found"
             });
         }
 
@@ -355,14 +355,14 @@ exports.delete = async (req, res) => {
 
         await driver.deleteOne();
 
-        return res.status(200).json({ 
-            status: true, 
-            message: "Driver Deleted Successfully" 
+        return res.status(200).json({
+            status: true,
+            message: "Driver Deleted Successfully"
         });
     } catch (error) {
         console.error("Delete Driver Error:", error);
-        return res.status(error.status || 500).json({ 
-            status: false, 
+        return res.status(error.status || 500).json({
+            status: false,
             message: error.message || "Internal server error"
         });
     }
@@ -373,9 +373,9 @@ exports.createDriverUser = async (req, res) => {
     try {
         await validateDriverUserData(req.body);
 
-        const { 
-            firstName, lastName, phone, email, passwordHash, 
-            licenseNumber, licenseExpiry, photo, address, assignedVehicleId 
+        const {
+            firstName, lastName, phone, email, passwordHash,
+            licenseNumber, licenseExpiry, photo, address, assignedVehicleId
         } = req.body;
 
         // Get organization ID from middleware (always set by checkOrganization)

@@ -28,7 +28,7 @@ const vehicleMappingSchema = {
   },
 };
 
-const instance = new ajModel("VehicleDeviceMapping", vehicleMappingSchema);
+const instance = new ajModel("DeviceMapping", vehicleMappingSchema);
 instance.index(
   { vehicleId: 1 },
   { unique: true, partialFilterExpression: { unassignedAt: null } },

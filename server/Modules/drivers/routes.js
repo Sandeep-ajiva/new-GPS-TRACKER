@@ -10,7 +10,7 @@ const Controller = require("./controller");
 router.post(
   "/",
   requireAuth,
-  checkAuthorization(["admin", "manager"], "drivers", "create"),
+  checkAuthorization(["admin"], "drivers", "create"),
   Controller.create,
 );
 
@@ -18,7 +18,7 @@ router.post(
 router.post(
   "/create-with-user",
   requireAuth,
-  checkAuthorization(["admin", "superadmin", "manager"], "drivers", "create"),
+  checkAuthorization(["admin", "superadmin"], "drivers", "create"),
   checkOrganization,
   Controller.createDriverUser
 );
@@ -27,21 +27,21 @@ router.post(
 router.get(
   "/",
   requireAuth,
-  checkAuthorization(["admin", "manager"], "drivers", "read"),
+  checkAuthorization(["admin"], "drivers", "read"),
   Controller.getAll,
 );
 
 router.get(
   "/:id",
   requireAuth,
-  checkAuthorization(["admin", "manager"], "drivers", "read"),
+  checkAuthorization(["admin"], "drivers", "read"),
   Controller.getById,
 );
 
 router.put(
   "/:id",
   requireAuth,
-  checkAuthorization(["admin", "manager"], "drivers", "update"),
+  checkAuthorization(["admin"], "drivers", "update"),
   Controller.update,
 );
 

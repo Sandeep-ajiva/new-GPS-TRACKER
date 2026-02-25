@@ -196,11 +196,19 @@ exports.createUser = async (req, res) => {
   try {
     const { firstName, lastName, email, mobile, password, role, organizationId } =
       req.body;
+    const allowedRoles = ["admin", "driver"];
 
     if (!firstName || !email || !mobile || !password || !role) {
       return res.status(400).json({
         status: false,
         message: "Required fields missing",
+      });
+    }
+
+    if (!allowedRoles.includes(role)) {
+      return res.status(400).json({
+        status: false,
+        message: "Invalid role. Allowed roles: admin, driver",
       });
     }
 
