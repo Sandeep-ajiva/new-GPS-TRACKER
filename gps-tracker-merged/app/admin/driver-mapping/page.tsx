@@ -62,7 +62,9 @@ export default function DriverMappingPage() {
     );
 
     const availableVehicles = useMemo(
-        () => vehicles.filter((v: any) => !assignedVehicleIds.has(v._id?.toString())),
+        () => vehicles.filter((v: any) =>
+            !assignedVehicleIds.has(v._id?.toString()) && v.deviceId
+        ),
         [vehicles, assignedVehicleIds],
     );
     const availableDrivers = useMemo(
@@ -471,7 +473,7 @@ export default function DriverMappingPage() {
 
                                 {(availableVehicles.length === 0 || availableDrivers.length === 0) && (
                                     <div className="mt-4 text-[11px] font-semibold text-rose-500">
-                                        {availableVehicles.length === 0 ? "No available vehicles found. " : ""}
+                                        {availableVehicles.length === 0 ? "No available vehicles found. Vehicles must have a GPS device assigned first. " : ""}
                                         {availableDrivers.length === 0 ? "No available drivers found." : ""}
                                     </div>
                                 )}

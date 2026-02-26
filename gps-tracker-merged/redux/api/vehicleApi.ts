@@ -1,22 +1,31 @@
 import { baseApi } from "./baseApi";
 
+type VehicleListParams = {
+  page?: number;
+  limit?: number;
+  status?: string;
+  search?: string;
+  organizationId?: string;
+  [key: string]: string | number | boolean | null | undefined;
+};
+
 export const vehicleApi = baseApi.injectEndpoints({
   endpoints: (builder) => ({
-    // getVehicles: builder.query({
-    //   query: (params?: { page?: number; limit?: number; status?: string }params) => ({
-    //     url: {
-    //     if (!params) return "/vehicle";
-    //     const query = new URLSearchParams();
-    //     if (params.page) query.set("page", String(params.page));
-    //     if (params.limit) query.set("limit", String(params.limit));
-    //     if (params.status && params.status !== "all") query.set("status", params.status);
-    //     const qs = query.toString();
-    //     return qs ? `/vehicle?${qs}` : "/vehicle";
-    //   },
-    //     params,
-    //   }),
-    //   providesTags: ["Vehicle"],
-    // }),
+    getVehicles: builder.query({
+      query: (params?: VehicleListParams) => {
+        const hasParams =
+          !!params &&
+          Object.values(params).some(
+            (value) => value !== undefined && value !== null && value !== "",
+          );
+
+        return {
+          url: "/vehicle",
+          params: hasParams ? params : undefined,
+        };
+      },
+      providesTags: ["Vehicle"],
+    }),
     getVehicle: builder.query({
       query: (id: string) => `/vehicle/${id}`,
       providesTags: ["Vehicle"],

@@ -196,6 +196,10 @@ exports.unassignDriverFromVehicle = async (req, res) => {
     activeMapping.status = "unassigned";
     await activeMapping.save();
 
+    // Clear denormalized cache fields
+    await Vehicle.findByIdAndUpdate(vehicleId, { driverId: null });
+    await Driver.findByIdAndUpdate(activeMapping.driverId, { assignedVehicleId: null });
+
     await activeMapping.populate(['vehicleId', 'driverId']);
 
     return res.status(200).json({

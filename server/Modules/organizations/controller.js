@@ -442,31 +442,43 @@ exports.delete = async (req, res) => {
    CREATE SUB-ORG + ADMIN (TRANSACTION)
 ====================================================== */
 exports.createSubOrganizationWithManager = async (req, res) => {
-  try {
-    parseJsonFields(req.body, [
-      "organizationData.address",
-      "organizationData.geo",
-      "organizationData.settings",
-    ]);
+  const session = await mongoose.startSession();
+  session.startTransaction();
 
-    const { organizationData, managerData } = req.body;
+  try {
+    if (typeof req.body.organizationData === "string") {
+      try {
+        req.body.organizationData = JSON.parse(req.body.organizationData);
+      } catch (_) {}
+    }
+    if (typeof req.body.managerData === "string") {
+      try {
+        req.body.managerData = JSON.parse(req.body.managerData);
+      } catch (_) {}
+    }
+
+    const organizationData = req.body.organizationData || {};
+    const managerData = req.body.managerData || {};
+
     const parentOrganizationId = resolveParentOrganizationId(
       req,
-      req.body.parentOrganizationId
+      req.body.parentOrganizationId || organizationData.parentOrganizationId
     );
 
     await validateOrganizationData(organizationData);
     await validateManagerData(managerData);
+    validateAddressData(organizationData.address);
+    validateGeoData(organizationData.geo);
+    validateSettingsData(organizationData.settings);
 
     if (!parentOrganizationId) {
+      await session.abortTransaction();
+      session.endSession();
       return res.status(400).json({
         status: false,
         message: "parentOrganizationId is required",
       });
     }
-
-    // 🔐 existing logged-in admin
-    const actorUser = req.user;
 
     // 🔐 ensure admin has access to parent org
     if (
@@ -475,6 +487,8 @@ exports.createSubOrganizationWithManager = async (req, res) => {
         (id) => id.toString() === parentOrganizationId.toString()
       )
     ) {
+      await session.abortTransaction();
+      session.endSession();
       return res.status(403).json({
         status: false,
         message: "You are not allowed to create sub-organization under this organization",
@@ -482,8 +496,12 @@ exports.createSubOrganizationWithManager = async (req, res) => {
     }
 
     // parent org check
-    const parentOrg = await Organization.findById(parentOrganizationId);
+    const parentOrg = await Organization.findById(parentOrganizationId).session(
+      session
+    );
     if (!parentOrg) {
+      await session.abortTransaction();
+      session.endSession();
       return res.status(404).json({
         status: false,
         message: "Parent organization not found",
@@ -496,12 +514,33 @@ exports.createSubOrganizationWithManager = async (req, res) => {
         { email: organizationData.email.toLowerCase() },
         { phone: organizationData.phone.trim() },
       ],
-    });
+    }).session(session);
 
     if (orgExists) {
+      await session.abortTransaction();
+      session.endSession();
       return res.status(409).json({
         status: false,
         message: "Organization with this email or phone already exists",
+      });
+    }
+
+    const adminEmail = (managerData.email || organizationData.email || "")
+      .toLowerCase()
+      .trim();
+    const adminMobile = (managerData.mobile || organizationData.phone || "")
+      .trim();
+
+    const userExists = await User.findOne({
+      $or: [{ email: adminEmail }, { mobile: adminMobile }],
+    }).session(session);
+
+    if (userExists) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(409).json({
+        status: false,
+        message: "User with this email or mobile already exists",
       });
     }
 
@@ -531,8 +570,8 @@ exports.createSubOrganizationWithManager = async (req, res) => {
           parentOrganizationId,
           path,
           status: "active",
-          createdBy: adminUser._id,
-          adminUser: adminUser._id, // ✅ ownership stays with existing admin
+          createdBy: req.user._id,
+          adminUser: null,
         },
       ],
       { session },
@@ -542,22 +581,25 @@ exports.createSubOrganizationWithManager = async (req, res) => {
     // 🔥 email & phone SAME as organization
     const passwordHash = await bcrypt.hash(managerData.password, 10);
 
-    const [manager] = await User.create(
+    const [newOrgAdmin] = await User.create(
       [
         {
           organizationId: subOrganization._id,
           firstName: managerData.firstName.trim(),
           lastName: managerData.lastName.trim(),
-          email: organizationData.email.toLowerCase().trim(), // ✅ SAME
-          mobile: organizationData.phone.trim(),              // ✅ SAME
+          email: adminEmail,
+          mobile: adminMobile,
           passwordHash,
-          role: "manager",
+          role: "admin",
           status: "active",
-          createdBy: adminUser._id,
+          createdBy: req.user._id,
         },
       ],
       { session },
     );
+
+    subOrganization.adminUser = newOrgAdmin._id;
+    await subOrganization.save({ session });
 
     await session.commitTransaction();
     session.endSession();
@@ -571,8 +613,10 @@ exports.createSubOrganizationWithManager = async (req, res) => {
       },
     });
   } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
     console.error("Create Sub Organization With Manager Error:", error);
-    return res.status(500).json({
+    return res.status(error.status || 500).json({
       status: false,
       message: error.message || "Internal server error",
     });

@@ -3,6 +3,8 @@ const Validator = require("../../helpers/validators");
 const mongoose = require("mongoose");
 const VehicleModel = require("../vehicle/model");
 const DeviceModel = require("../gpsDevice/model");
+const DriverModel = require("../drivers/model");
+const VehicleDriverMapping = require("../vehicleDriverMapping/model");
 const paginate = require("../../helpers/limitoffset");
 
 const validateVehicleMappingData = async (data) => {
@@ -189,6 +191,30 @@ exports.unassignById = async (req, res) => {
     mapping.unassignedAt = new Date();
     await mapping.save({ session });
 
+    // ── CASCADE: also unassign driver from this vehicle ──
+    const activeDriverMapping = await VehicleDriverMapping.findOne({
+      vehicleId,
+      unassignedAt: null,
+    }).session(session);
+
+    if (activeDriverMapping) {
+      activeDriverMapping.unassignedAt = new Date();
+      activeDriverMapping.status = "unassigned";
+      await activeDriverMapping.save({ session });
+
+      // Clear denormalized cache fields
+      await VehicleModel.findByIdAndUpdate(
+        vehicleId,
+        { driverId: null },
+        { session },
+      );
+      await DriverModel.findByIdAndUpdate(
+        activeDriverMapping.driverId,
+        { assignedVehicleId: null },
+        { session },
+      );
+    }
+
     await session.commitTransaction();
 
     return res.status(200).json({
@@ -246,6 +272,30 @@ exports.unassign = async (req, res) => {
       { vehicleId: null },
       { session },
     );
+
+    // ── CASCADE: also unassign driver from this vehicle ──
+    const activeDriverMapping = await VehicleDriverMapping.findOne({
+      vehicleId,
+      unassignedAt: null,
+    }).session(session);
+
+    if (activeDriverMapping) {
+      activeDriverMapping.unassignedAt = new Date();
+      activeDriverMapping.status = "unassigned";
+      await activeDriverMapping.save({ session });
+
+      // Clear denormalized cache fields
+      await VehicleModel.findByIdAndUpdate(
+        vehicleId,
+        { driverId: null },
+        { session },
+      );
+      await DriverModel.findByIdAndUpdate(
+        activeDriverMapping.driverId,
+        { assignedVehicleId: null },
+        { session },
+      );
+    }
 
     await session.commitTransaction();
 
