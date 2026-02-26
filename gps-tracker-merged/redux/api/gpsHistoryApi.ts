@@ -12,4 +12,4 @@ export const gpsHistoryApi = baseApi.injectEndpoints({
     }),
 });
 
-export const { useGetVehicleHistoryQuery } = gpsHistoryApi;
+export const { useGetVehicleHistoryQuery, useLazyGetVehicleHistoryQuery } = gpsHistoryApi;

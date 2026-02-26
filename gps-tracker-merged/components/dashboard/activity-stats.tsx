@@ -43,6 +43,7 @@ export function ActivityStats({
     alertCount = 0,
     alerts = [],
     selectedVehicleId,
+    selectedVehicleObj,
     compact = false,
     dailyStats,
 }: {
@@ -50,6 +51,7 @@ export function ActivityStats({
     alertCount?: number
     alerts?: AlertItem[]
     selectedVehicleId?: string | null
+    selectedVehicleObj?: Vehicle | null
     compact?: boolean
     dailyStats?: DailyStats | null
 }) {
@@ -58,7 +60,7 @@ export function ActivityStats({
     const computedMaxSpeed = speeds.length ? Math.max(...speeds) : 0
     const avgSpeed = Number.isFinite(Number(dailyStats?.avgSpeed)) ? Math.round(Number(dailyStats?.avgSpeed)) : computedAvgSpeed
     const maxSpeed = Number.isFinite(Number(dailyStats?.maxSpeed)) ? Math.round(Number(dailyStats?.maxSpeed)) : computedMaxSpeed
-    const selectedVehicle = selectedVehicleId ? vehicles.find((item) => item.id === selectedVehicleId) : vehicles[0]
+    const selectedVehicle = selectedVehicleObj || (selectedVehicleId ? vehicles.find((item) => item.id === selectedVehicleId) : vehicles[0])
 
     const filteredAlerts = selectedVehicleId
         ? alerts.filter((item) => toVehicleId(item) === selectedVehicleId)

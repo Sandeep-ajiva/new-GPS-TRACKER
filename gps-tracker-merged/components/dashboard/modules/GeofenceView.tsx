@@ -1,13 +1,30 @@
 "use client";
 
 import { Shield, Plus, Map, Search, Trash2 } from "lucide-react";
+import { useGetGeofencesQuery } from "@/redux/api/vehicleApi";
+import { useState, useMemo } from "react";
 
 export function GeofenceView() {
-    const geofences = [
-        { name: "Main Office Zone", type: "Circle", radius: "500m", alert: "Entry/Exit" },
-        { name: "Warehouse Perimeter", type: "Polygon", alert: "Exit Only" },
-        { name: "Client Site A", type: "Circle", radius: "1km", alert: "Entry Only" },
-    ];
+    const { data: geofenceData, isLoading, error } = useGetGeofencesQuery(undefined);
+    const [searchTerm, setSearchTerm] = useState("");
+
+    const isForbidden = (error as any)?.status === 403;
+
+    const geofences = useMemo(() => {
+        if (isForbidden) return [];
+        const raw = geofenceData?.data || [];
+        if (!searchTerm) return raw;
+        return raw.filter((g: any) => g.name?.toLowerCase().includes(searchTerm.toLowerCase()));
+    }, [geofenceData, searchTerm, isForbidden]);
+
+    if (isForbidden) {
+        return (
+            <div className="flex flex-col items-center justify-center h-64 text-slate-500 italic">
+                <Shield className="h-12 w-12 mb-4 opacity-20 text-red-500" />
+                Access Denied: You do not have permission to view Geofences.
+            </div>
+        );
+    }
 
     return (
         <div className="flex flex-col h-full gap-6">
@@ -17,6 +34,8 @@ export function GeofenceView() {
                     <input
                         type="text"
                         placeholder="Search geofences..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
                         className="w-full bg-white/5 border border-white/10 rounded-xl py-2 pl-10 pr-4 text-xs font-bold text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
                     />
                 </div>
@@ -26,7 +45,7 @@ export function GeofenceView() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {geofences.map((g, i) => (
+                {geofences.map((g: any, i: number) => (
                     <div key={i} className="group relative rounded-2xl border border-white/5 bg-slate-800/40 p-5 transition-all hover:bg-slate-800/60 hover:border-emerald-500/30">
                         <div className="flex items-start justify-between mb-4">
                             <div className="p-3 rounded-xl bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/10">
@@ -38,12 +57,12 @@ export function GeofenceView() {
                         </div>
                         <h4 className="text-sm font-black text-slate-100 mb-1">{g.name}</h4>
                         <div className="flex items-center gap-3 text-[10px] text-slate-400 font-bold uppercase tracking-widest">
-                            <span className="flex items-center gap-1"><Map size={10} /> {g.type}</span>
-                            {g.radius && <span>Radius: {g.radius}</span>}
+                            <span className="flex items-center gap-1"><Map size={10} /> {g.areaType || "Zone"}</span>
+                            {g.radius && <span>Radius: {g.radius}m</span>}
                         </div>
                         <div className="mt-4 flex items-center justify-between text-[10px]">
                             <span className="text-slate-500 uppercase tracking-widest">Alert Rule</span>
-                            <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/10">{g.alert}</span>
+                            <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/10">{g.alertOn || "Entry/Exit"}</span>
                         </div>
                     </div>
                 ))}

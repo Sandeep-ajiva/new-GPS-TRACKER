@@ -44,6 +44,10 @@ export const vehicleApi = baseApi.injectEndpoints({
       }),
       invalidatesTags: ["Vehicle"],
     }),
+    getGeofences: builder.query({
+      query: () => "/geofence",
+      providesTags: ["Geofence"],
+    }),
   }),
 });
 
@@ -53,4 +57,5 @@ export const {
   useCreateVehicleMutation,
   useUpdateVehicleMutation,
   useDeleteVehicleMutation,
+  useGetGeofencesQuery,
 } = vehicleApi;

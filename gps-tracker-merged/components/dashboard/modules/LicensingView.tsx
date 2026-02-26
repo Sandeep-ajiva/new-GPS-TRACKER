@@ -1,14 +1,27 @@
 "use client";
 
 import { ClipboardList, AlertTriangle, CheckCircle2, CloudUpload, Clock, FileText } from "lucide-react";
+import { useDashboardContext } from "../DashboardContext";
 
 export function LicensingView() {
-    const documents = [
-        { name: "Insurance Policy", vehicle: "HR-38-AS-1234", expiry: "2026-05-15", status: "Active" },
-        { name: "Fitness Certificate", vehicle: "DL-1-GB-9988", expiry: "2026-03-10", status: "Expiring Soon" },
-        { name: "Pollution (PUC)", vehicle: "HR-55-XY-0001", expiry: "2026-06-20", status: "Active" },
-        { name: "Road Permit", vehicle: "UP-14-ZZ-5566", expiry: "2026-02-28", status: "Expired" },
-    ];
+    const { selectedVehicle } = useDashboardContext();
+
+    const documents = selectedVehicle ? [
+        {
+            name: "AIS-140 Compliance",
+            vehicle: selectedVehicle.vehicleNumber,
+            expiry: "2026-12-31", // Mocked expiry as it's not in the payload
+            status: selectedVehicle.ais140Compliant ? "Active" : "Not Compliant",
+            cert: selectedVehicle.ais140CertificateNumber
+        },
+        {
+            name: "Vehicle Status",
+            vehicle: selectedVehicle.vehicleNumber,
+            expiry: "N/A",
+            status: selectedVehicle.status.charAt(0).toUpperCase() + selectedVehicle.status.slice(1),
+            cert: "System Check"
+        },
+    ] : [];
 
     return (
         <div className="space-y-6">
@@ -51,8 +64,9 @@ export function LicensingView() {
                                 </td>
                                 <td className="px-6 py-4">
                                     <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-tight ${doc.status === 'Active' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/10' :
-                                            doc.status === 'Expiring Soon' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/10' :
-                                                'bg-red-500/10 text-red-400 border border-red-500/10'
+                                        doc.status === 'Expiring Soon' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/10' :
+                                            doc.status === 'Not Compliant' || doc.status === 'Expired' ? 'bg-red-500/10 text-red-400 border border-red-500/10' :
+                                                'bg-blue-500/10 text-blue-400 border border-blue-500/10'
                                         }`}>
                                         {doc.status === 'Active' ? <CheckCircle2 size={10} /> : <AlertTriangle size={10} />}
                                         {doc.status}

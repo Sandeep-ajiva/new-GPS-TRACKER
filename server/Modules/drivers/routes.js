@@ -11,6 +11,7 @@ router.post(
   "/",
   requireAuth,
   checkAuthorization(["admin"], "drivers", "create"),
+  checkOrganization,
   Controller.create,
 );
 
@@ -28,6 +29,7 @@ router.get(
   "/",
   requireAuth,
   checkAuthorization(["admin"], "drivers", "read"),
+  checkOrganization,
   Controller.getAll,
 );
 
@@ -35,6 +37,7 @@ router.get(
   "/:id",
   requireAuth,
   checkAuthorization(["admin"], "drivers", "read"),
+  checkOrganization,
   Controller.getById,
 );
 
@@ -42,6 +45,7 @@ router.put(
   "/:id",
   requireAuth,
   checkAuthorization(["admin"], "drivers", "update"),
+  checkOrganization,
   Controller.update,
 );
 
@@ -49,6 +53,7 @@ router.delete(
   "/:id",
   requireAuth,
   checkAuthorization(["admin"], "drivers", "delete"),
+  checkOrganization,
   Controller.delete,
 );
 

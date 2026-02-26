@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { createPortal } from "react-dom"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Header } from "@/components/dashboard/header"
 import { StatusCards, VehicleStatusFilter } from "@/components/dashboard/status-cards"
@@ -21,11 +22,14 @@ import { LayoutDashboard, ChevronDown } from "lucide-react"
 import { getSecureItem } from "@/app/admin/Helpers/encryptionHelper"
 import { useSocket } from "@/hooks/useSocket"
 import { useAppDispatch, useAppSelector } from "@/redux/hooks"
-import { setActiveTab, setSelectedVehicle } from "@/redux/features/vehicleSlice"
+import { setActiveTab, setSelectedVehicle as setReduxSelectedVehicle } from "@/redux/features/vehicleSlice"
+import { useDashboardContext } from "@/components/dashboard/DashboardContext"
 import { ReportView } from "@/components/dashboard/modules/ReportView"
 import { GeofenceView } from "@/components/dashboard/modules/GeofenceView"
 import { LicensingView } from "@/components/dashboard/modules/LicensingView"
 import { AlertView } from "@/components/dashboard/modules/AlertView"
+import { FuelView } from "@/components/dashboard/modules/FuelView"
+import { TemperatureView } from "@/components/dashboard/modules/TemperatureView"
 import { X } from "lucide-react"
 
 type LiveGpsItem = {
@@ -49,6 +53,8 @@ type LiveGpsItem = {
   batteryLevel?: number
   numberOfSatellites?: number
   gsmSignalStrength?: number
+  fuelPercentage?: number
+  temperature?: string
 }
 
 const LIVE_STALE_TIMEOUT_MS = 60 * 1000
@@ -69,7 +75,8 @@ export default function DashboardPage() {
   const { data: meData } = useGetMeQuery(undefined)
   const { data: orgData } = useGetOrganizationsQuery(undefined)
   const dispatch = useAppDispatch()
-  const { selectedVehicleId: selectedVehicle, activeTab } = useAppSelector((state) => state.vehicle)
+  const { selectedVehicleId: reduxSelectedVehicleId, activeTab } = useAppSelector((state) => state.vehicle)
+  const { selectedVehicle, setSelectedVehicle } = useDashboardContext()
 
   const [liveByVehicleId, setLiveByVehicleId] = useState<Record<string, LiveGpsItem>>({})
   const [uiVehicles, setUiVehicles] = useState<Vehicle[]>([])
@@ -306,7 +313,15 @@ export default function DashboardPage() {
           id: vehicle._id,
           vehicleNumber: vehicle.vehicleNumber || vehicle.registrationNumber || vehicle._id,
           organizationId: vehicle.organizationId?._id || vehicle.organizationId,
-          driver: vehicle.driverName || "Unassigned",
+          driver: vehicle.driverId ? `${vehicle.driverId.firstName} ${vehicle.driverId.lastName}` : "Unassigned",
+          driverDetails: vehicle.driverId ? {
+            firstName: vehicle.driverId.firstName,
+            lastName: vehicle.driverId.lastName,
+            phone: vehicle.driverId.phone,
+            email: vehicle.driverId.email,
+            licenseNumber: vehicle.driverId.licenseNumber,
+            address: vehicle.driverId.address
+          } : undefined,
           date,
           speed,
           status,
@@ -315,7 +330,7 @@ export default function DashboardPage() {
           pw: power,
           gps: hasLivePosition || hasVehiclePosition,
           location,
-          poi: "-",
+          poi: live?.poi || vehicle.poi || "-",
           route,
           batteryVoltage: live?.internalBatteryVoltage ?? null,
           batteryPercent: live?.batteryLevel ?? null,
@@ -324,10 +339,14 @@ export default function DashboardPage() {
           imei: vehicle.imei || vehicle.deviceImei,
           deviceImei: vehicle.deviceImei,
           registrationNumber: vehicle.registrationNumber || vehicle.vehicleNumber,
+          make: vehicle.make,
           model: vehicle.model,
           color: vehicle.color,
           year: vehicle.year,
           vehicleType: vehicle.vehicleType,
+          fuel: live?.fuelPercentage ?? null,
+          temperature: live?.temperature ?? null,
+          ais140Compliant: vehicle.ais140Compliant || false,
         } as Vehicle
 
         seenIds.add(row.id)
@@ -393,6 +412,8 @@ export default function DashboardPage() {
           batteryPercent: live?.batteryLevel ?? null,
           satelliteCount: live?.numberOfSatellites ?? null,
           gsmSignal: live?.gsmSignalStrength ?? null,
+          fuel: live?.fuelPercentage ?? null,
+          temperature: live?.temperature ?? null,
         })
       })
 
@@ -426,7 +447,8 @@ export default function DashboardPage() {
     })
   }, [allVehicles, liveByVehicleId, userRole, assignedVehicleId, selectedOrgId, clockMs])
 
-  const currentVehicle = uiVehicles.find((vehicle) => vehicle.id === selectedVehicle) || uiVehicles[0] || null
+  const currentVehicleSelection = selectedVehicle || uiVehicles.find((vehicle) => vehicle.id === reduxSelectedVehicleId) || uiVehicles[0] || null
+  const currentVehicleId = currentVehicleSelection?.id || null
   const todayDate = useMemo(() => {
     const d = new Date()
     const yyyy = d.getFullYear()
@@ -436,11 +458,11 @@ export default function DashboardPage() {
   }, [])
   const { data: dailyStatsRes } = useGetVehicleDailyStatsByDateQuery(
     {
-      vehicleId: currentVehicle?.id || "",
+      vehicleId: currentVehicleId || "",
       date: todayDate,
     },
     {
-      skip: !currentVehicle?.id,
+      skip: !currentVehicleId,
       refetchOnMountOrArgChange: true,
       pollingInterval: 30000,
     },
@@ -493,8 +515,8 @@ export default function DashboardPage() {
     <div className="flex min-h-screen flex-col overflow-x-hidden bg-slate-950 font-sans text-slate-100">
       <Header
         vehicleSummary={{
-          label: currentVehicle?.vehicleNumber || "Vehicle",
-          speed: currentVehicle?.speed || 0,
+          label: currentVehicleSelection?.vehicleNumber || "Vehicle",
+          speed: currentVehicleSelection?.speed || 0,
         }}
       />
 
@@ -571,6 +593,7 @@ export default function DashboardPage() {
           activeFilter={statusFilter}
           onFilterChange={(filter) => {
             setStatusFilter(filter)
+            setReduxSelectedVehicle(null)
             setSelectedVehicle(null)
           }}
         />
@@ -597,9 +620,12 @@ export default function DashboardPage() {
           <div className={`${mobileView === "list" ? "flex" : "hidden"} lg:flex lg:col-span-6 xl:col-span-6 flex-col min-h-[450px] lg:h-full overflow-hidden border border-white/10 bg-slate-950/50 rounded-2xl shadow-2xl`}>
             <VehicleSidebar
               vehicles={uiVehicles}
-              selectedId={selectedVehicle}
+              selectedId={reduxSelectedVehicleId || currentVehicleId}
               onSelect={(id) => {
-                dispatch(setSelectedVehicle(id === selectedVehicle ? null : id))
+                dispatch(setReduxSelectedVehicle(id === reduxSelectedVehicleId ? null : id))
+                if (id === reduxSelectedVehicleId) {
+                  setSelectedVehicle(null)
+                }
                 if (window.innerWidth < 1024) setMobileView("map")
               }}
               isFullWidth={true}
@@ -611,16 +637,12 @@ export default function DashboardPage() {
           <div className={`${mobileView === "map" ? "flex" : "hidden md:flex"} lg:flex lg:col-span-6 xl:col-span-6 flex-col min-h-[450px] lg:h-full overflow-hidden border border-white/10 bg-slate-950 rounded-2xl shadow-2xl`}>
             <ActionToolbar compact className="bg-slate-950/80 backdrop-blur-md border-b border-white/10" alertCount={notificationCount} />
             <div className="flex-1 min-h-0">
-              <MapWrapper
-                selectedVehicleId={selectedVehicle}
-                positions={positions}
-                vehicles={uiVehicles}
-              />
+              <MapWrapper />
             </div>
           </div>
         </div>
 
-        {selectedVehicle && (
+        {currentVehicleSelection && (
           <div className="border-t border-white/10 bg-slate-950/95 backdrop-blur-xl p-2 shadow-2xl z-40">
             <div className="grid grid-cols-1 gap-2 xl:grid-cols-[1fr_2.5fr]">
               <div className="min-h-0">
@@ -628,13 +650,21 @@ export default function DashboardPage() {
                   vehicles={uiVehicles}
                   alertCount={alerts.length}
                   alerts={alerts}
-                  selectedVehicleId={selectedVehicle}
+                  selectedVehicleId={currentVehicleId}
+                  selectedVehicleObj={currentVehicleSelection}
                   compact
                   dailyStats={dailyStats}
                 />
               </div>
               <div className="min-h-0 overflow-x-auto">
-                <VehicleDetails vehicleId={selectedVehicle} positions={positions} vehicles={uiVehicles} />
+                <VehicleDetails 
+                  vehicleId={currentVehicleId} 
+                  positions={positions} 
+                  vehicles={uiVehicles} 
+                  selectedVehicleObj={currentVehicleSelection}
+                  dailyStats={dailyStats}
+                  alerts={alerts}
+                />
               </div>
             </div>
           </div>
@@ -642,8 +672,8 @@ export default function DashboardPage() {
       </div>
 
       {/* Module Modal Overlay */}
-      {activeTab !== "Tracking" && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+      {activeTab !== "Tracking" && typeof document !== "undefined" && createPortal(
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-950/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
           <div className="relative w-full max-w-6xl max-h-[90vh] bg-slate-900 rounded-3xl border border-white/10 shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between px-6 py-4 border-b border-white/5 bg-slate-900/50">
               <h3 className="text-xl font-black uppercase tracking-widest text-emerald-400">{activeTab}</h3>
@@ -659,8 +689,10 @@ export default function DashboardPage() {
               {activeTab === "Geofences" && <GeofenceView />}
               {activeTab === "Licensing" && <LicensingView />}
               {activeTab === "Alerts" && <AlertView />}
+              {activeTab === "Fuel" && <FuelView />}
+              {activeTab === "Temperature" && <TemperatureView />}
               {/* Add other modules as they are developed */}
-              {["Fuel", "Temperature", "Tour", "App Config", "Sys Config", "User Rights"].includes(activeTab) && (
+              {["Tour", "App Config", "Sys Config", "User Rights"].includes(activeTab) && (
                 <div className="flex flex-col items-center justify-center h-64 text-slate-500 italic">
                   <LayoutDashboard className="h-12 w-12 mb-4 opacity-20" />
                   {activeTab} module is coming soon...
@@ -668,7 +700,8 @@ export default function DashboardPage() {
               )}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )

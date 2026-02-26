@@ -16,7 +16,28 @@ exports.create = async (req, res) => {
     try {
         await validateGeofenceData(req.body);
 
-        const { organizationId, name, type, circleCenterType, circleCenterCoordinates, circleRadius, polygon, alertOnEnter, alertOnExit } = req.body;
+        let organizationId = req.orgId;
+
+        if (req.user.role === "superadmin") {
+            organizationId = req.body.organizationId || req.orgId;
+        } else if (req.body.organizationId) {
+            const allowedOrgIds = (req.orgScope || []).map(id => id.toString());
+            if (allowedOrgIds.includes(req.body.organizationId.toString())) {
+                organizationId = req.body.organizationId;
+            } else {
+                return res.status(403).json({
+                    status: false,
+                    message: "Forbidden: Cannot create geofence for this organization"
+                });
+            }
+        }
+
+        if (!organizationId) {
+            return res.status(400).json({
+                status: false,
+                message: "OrganizationId is required",
+            });
+        }
 
         const geofence = await Geofence.create({
             organizationId,
@@ -48,6 +69,9 @@ exports.getAll = async (req, res) => {
         const { page, limit, search, type } = req.query;
         
         const filter = {};
+        if (req.user.role !== "superadmin" && req.orgScope !== "ALL") {
+            filter.organizationId = { $in: req.orgScope };
+        }
         if (type) filter.type = type;
 
         const result = await paginate(
@@ -71,6 +95,20 @@ exports.getById = async (req, res) => {
         const geofence = await Geofence.findById(req.params.id)
             .populate('organizationId');
         if (!geofence) return res.status(404).json({ status: false, message: "Geofence not found" });
+
+        // Verify organization ownership
+        if (req.user.role !== "superadmin") {
+            const allowedOrgIds = (req.orgScope || []).map(id => id.toString());
+            const geofenceOrgId = geofence.organizationId._id ? geofence.organizationId._id.toString() : geofence.organizationId.toString();
+            
+            if (!allowedOrgIds.includes(geofenceOrgId)) {
+                return res.status(403).json({
+                    status: false,
+                    message: "Forbidden: Cannot access this geofence"
+                });
+            }
+        }
+
         return res.status(200).json({ status: true, data: geofence });
     } catch (error) {
         return res.status(500).json({ status: false, message: error.message });
@@ -79,10 +117,26 @@ exports.getById = async (req, res) => {
 
 exports.update = async (req, res) => {
     try {
-        const geofence = await Geofence.findByIdAndUpdate(req.params.id, req.body, { new: true })
-            .populate('organizationId');
+        const geofence = await Geofence.findById(req.params.id);
         if (!geofence) return res.status(404).json({ status: false, message: "Geofence not found" });
-        return res.status(200).json({ status: true, message: "Updated Successfully", data: geofence });
+
+        // Verify organization ownership
+        if (req.user.role !== "superadmin") {
+            const allowedOrgIds = (req.orgScope || []).map(id => id.toString());
+            const geofenceOrgId = geofence.organizationId.toString();
+            
+            if (!allowedOrgIds.includes(geofenceOrgId)) {
+                return res.status(403).json({
+                    status: false,
+                    message: "Forbidden: Cannot update this geofence"
+                });
+            }
+        }
+
+        const updatedGeofence = await Geofence.findByIdAndUpdate(req.params.id, req.body, { new: true })
+            .populate('organizationId');
+        
+        return res.status(200).json({ status: true, message: "Updated Successfully", data: updatedGeofence });
     } catch (error) {
         return res.status(500).json({ status: false, message: error.message });
     }
@@ -90,8 +144,23 @@ exports.update = async (req, res) => {
 
 exports.delete = async (req, res) => {
     try {
-        const geofence = await Geofence.findByIdAndDelete(req.params.id);
+        const geofence = await Geofence.findById(req.params.id);
         if (!geofence) return res.status(404).json({ status: false, message: "Geofence not found" });
+
+        // Verify organization ownership
+        if (req.user.role !== "superadmin") {
+            const allowedOrgIds = (req.orgScope || []).map(id => id.toString());
+            const geofenceOrgId = geofence.organizationId.toString();
+            
+            if (!allowedOrgIds.includes(geofenceOrgId)) {
+                return res.status(403).json({
+                    status: false,
+                    message: "Forbidden: Cannot delete this geofence"
+                });
+            }
+        }
+
+        await geofence.deleteOne();
         return res.status(200).json({ status: true, message: "Deleted Successfully" });
     } catch (error) {
         return res.status(500).json({ status: false, message: error.message });

@@ -198,7 +198,7 @@ exports.getAll = async (req, res) => {
       filter,
       req.query.page,
       req.query.limit,
-      ["createdBy"],
+      ["createdBy", "driverId", "organizationId"],
       ["vehicleNumber", "model", "vehicleType"],
       req.query.search,
     );

@@ -10,6 +10,14 @@ export type Vehicle = {
   vehicleNumber?: string
   organizationId?: string
   driver: string
+  driverDetails?: {
+    firstName: string
+    lastName: string
+    phone: string
+    email: string
+    licenseNumber: string
+    address?: string
+  }
   date: string
   speed: number
   status: VehicleStatus
@@ -25,12 +33,19 @@ export type Vehicle = {
   satelliteCount?: number | null
   gsmSignal?: number | null
   imei?: string
+  deviceId?: string
+  gpsDeviceId?: any
   deviceImei?: string
   registrationNumber?: string
+  make?: string
   model?: string
   color?: string
   year?: string
   vehicleType?: string
+  ais140Compliant?: boolean
+  ais140CertificateNumber?: string
+  fuel?: number | null
+  temperature?: string | null
 }
 
 export const vehicles: Vehicle[] = []

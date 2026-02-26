@@ -6,7 +6,11 @@ export const gpsLiveApi = baseApi.injectEndpoints({
             query: () => "/gpsLiveData",
             providesTags: ["Tracking"],
         }),
+        getLiveVehicleByDeviceId: builder.query({
+            query: (deviceId) => `/gpsLiveData/device/${deviceId}`,
+            providesTags: ["Tracking"],
+        }),
     }),
 });
 
-export const { useGetLiveVehiclesQuery } = gpsLiveApi;
+export const { useGetLiveVehiclesQuery, useGetLiveVehicleByDeviceIdQuery } = gpsLiveApi;
