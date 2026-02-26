@@ -105,7 +105,27 @@ exports.getByVehicleAndDate = async (req, res) => {
             .populate('gpsDeviceId');
         
         if (!stats || stats.length === 0) {
-            return res.status(404).json({ status: false, message: "Stats not found" });
+            // Return empty stats instead of 404 to avoid noisy logs and handle new vehicles gracefully
+            return res.status(200).json({ 
+                status: true, 
+                data: {
+                    totalDistance: 0,
+                    maxSpeed: 0,
+                    avgSpeed: 0,
+                    runningTime: 0,
+                    idleTime: 0,
+                    stoppedTime: 0,
+                    totalTrips: 0,
+                    alertCounts: {
+                        overspeedCount: 0,
+                        harshBrakingCount: 0,
+                        harshAccelerationCount: 0,
+                        rashTurningCount: 0,
+                        tamperAlertCount: 0,
+                        emergencyCount: 0
+                    }
+                } 
+            });
         }
         return res.status(200).json({ status: true, data: stats[0] });
     } catch (error) {

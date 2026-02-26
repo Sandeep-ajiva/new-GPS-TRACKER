@@ -2,10 +2,9 @@
 
 import dynamic from "next/dynamic"
 import { Loader2 } from "lucide-react"
-import type { Vehicle } from "@/lib/vehicles"
 
 // Dynamically import Map with no SSR
-const Map = dynamic(() => import("./map-view").then((mod) => mod.MapView), {
+const Map = dynamic(() => import("./map-view-legacy").then((mod) => mod.MapViewLegacy), {
     ssr: false,
     loading: () => (
         <div className="flex h-full w-full items-center justify-center bg-slate-950 text-slate-400">
@@ -15,6 +14,6 @@ const Map = dynamic(() => import("./map-view").then((mod) => mod.MapView), {
     ),
 })
 
-export function MapWrapper() {
-    return <Map />
+export function LegacyMapWrapper(props: any) {
+    return <Map {...props} />
 }

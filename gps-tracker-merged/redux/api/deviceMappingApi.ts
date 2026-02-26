@@ -36,7 +36,7 @@ export const deviceMappingApi = baseApi.injectEndpoints({
 
 export const {
     useGetDeviceMappingsQuery,
-    useGetAllMappingsQuery,
     useAssignDeviceMutation,
     useUnassignDeviceMutation,
+    useDeleteMappingMutation,
 } = deviceMappingApi;

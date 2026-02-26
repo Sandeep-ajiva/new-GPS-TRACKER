@@ -56,6 +56,13 @@ export function MapView() {
     }
     return points;
   }, [currentPos, selectedVehicle]);
+  if (!selectedVehicle) {
+    return (
+      <div className="flex h-full w-full items-center justify-center bg-slate-950 text-slate-400">
+        <span>Select vehicle to view tracking</span>
+      </div>
+    );
+  }
 
   const statusColor = (status: string) => {
     if (status === "running") return "#34d399";
@@ -65,19 +72,11 @@ export function MapView() {
     return "#ef4444";
   };
 
-  if (!selectedVehicle) {
-    return (
-      <div className="flex h-full w-full items-center justify-center bg-slate-950 text-slate-400">
-        <span>Select vehicle to view tracking</span>
-      </div>
-    );
-  }
-
   const center = currentPos || selectedVehicle?.route?.[0] || { lat: 20.5937, lng: 78.9629 };
 
   return (
     <div className="relative h-full w-full bg-slate-950">
-      <MapContainer center={center} zoom={12} className="h-full w-full" style={{ zIndex: 1 }}>
+      <MapContainer center={center} zoom={12} className="h-full w-full">
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"

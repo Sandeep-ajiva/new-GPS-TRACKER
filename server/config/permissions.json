@@ -63,6 +63,12 @@
         "read",
         "update",
         "delete"
+      ],
+      "geofence": [
+        "create",
+        "read",
+        "update",
+        "delete"
       ]
     }
   },
@@ -120,6 +126,12 @@
         "delete"
       ],
       "vehicleDriverMapping": [
+        "create",
+        "read",
+        "update",
+        "delete"
+      ],
+      "geofence": [
         "create",
         "read",
         "update",

@@ -92,12 +92,12 @@ export default function OrganizationDetailPage() {
     () =>
       org
         ? [
-            {
-              id: org.id,
-              name: org.name,
-              position: org.position,
-            },
-          ]
+          {
+            id: org.id,
+            name: org.name,
+            position: org.position,
+          },
+        ]
         : [],
     [org]
   );
@@ -106,7 +106,7 @@ export default function OrganizationDetailPage() {
     () =>
       orgVehicles.map((vehicle) => ({
         id: vehicle.id,
-        status: vehicle.status,
+        status: vehicle.status as any,
         position: vehicle.position,
         label: vehicle.label,
         driverName: vehicle.driverName,
@@ -179,11 +179,10 @@ export default function OrganizationDetailPage() {
                   <button
                     key={vehicle.id}
                     onClick={() => setSelectedVehicleId(vehicle.id)}
-                    className={`w-full rounded-xl border p-3 text-left text-sm transition ${
-                      isActive
+                    className={`w-full rounded-xl border p-3 text-left text-sm transition ${isActive
                         ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-100"
                         : "border-slate-800/80 bg-slate-950/60 text-slate-200 hover:border-emerald-500/20"
-                    }`}
+                      }`}
                   >
                     <div className="flex items-center justify-between">
                       <p className="font-black">{vehicle.label}</p>

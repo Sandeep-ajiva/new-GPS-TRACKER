@@ -6,6 +6,7 @@
     "start": "node index.js",
     "dev": "nodemon index.js",
     "seed:sim": "node scripts/seedSimulationData.js",
+    "seed:full": "node scripts/seedData.js",
     "verify:daily": "node scripts/verifyDailyStatus.js"
   },
   "author": "",

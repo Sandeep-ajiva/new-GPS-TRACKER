@@ -227,7 +227,7 @@ const GpsLiveDataController = {
 
   getByVehicle: async (req, res) => {
     const data = await GpsLiveData.findOne({ vehicleId: req.params.vehicleId });
-    if (!data) return res.status(404).json({ status: false });
+    if (!data) return res.status(404).json({ status: false, message: "Details not found.." });
     res.json({ status: true, data });
   },
 

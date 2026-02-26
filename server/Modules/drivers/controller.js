@@ -121,7 +121,22 @@ exports.create = async (req, res) => {
 
         const { assignedVehicleId, firstName, lastName, phone, email, licenseNumber, licenseExpiry, photo, address, organizationId: orgPayload } = req.body;
 
-        const organizationId = resolveDriverOrganizationId({ organizationId: orgPayload }, req);
+        let organizationId = req.orgId; // Default for non-superadmins
+
+        if (req.user.role === "superadmin") {
+            organizationId = req.body.organizationId || req.orgId;
+        } else if (req.body.organizationId) {
+            // If admin/user provides an org ID, verify it's within their scope
+            const allowedOrgIds = (req.orgScope || []).map(id => id.toString());
+            if (allowedOrgIds.includes(req.body.organizationId.toString())) {
+                organizationId = req.body.organizationId;
+            } else {
+                return res.status(403).json({
+                    status: false,
+                    message: "Forbidden: Cannot create driver for this organization"
+                });
+            }
+        }
 
         if (!organizationId) {
             return res.status(400).json({
@@ -244,11 +259,16 @@ exports.getById = async (req, res) => {
         }
 
         // Verify organization ownership
-        if (req.user.role !== "superadmin" && driver.organizationId.toString() !== req.orgId.toString()) {
-            return res.status(403).json({
-                status: false,
-                message: "Forbidden: Cannot access drivers from other organizations"
-            });
+        if (req.user.role !== "superadmin") {
+            const allowedOrgIds = (req.orgScope || []).map(id => id.toString());
+            const driverOrgId = driver.organizationId._id ? driver.organizationId._id.toString() : driver.organizationId.toString();
+            
+            if (!allowedOrgIds.includes(driverOrgId)) {
+                return res.status(403).json({
+                    status: false,
+                    message: "Forbidden: Cannot access drivers from other organizations"
+                });
+            }
         }
 
         return res.status(200).json({
@@ -287,11 +307,16 @@ exports.update = async (req, res) => {
         }
 
         // Verify organization ownership
-        if (req.user.role !== "superadmin" && driver.organizationId.toString() !== req.orgId.toString()) {
-            return res.status(403).json({
-                status: false,
-                message: "Forbidden: Cannot update drivers from other organizations"
-            });
+        if (req.user.role !== "superadmin") {
+            const allowedOrgIds = (req.orgScope || []).map(id => id.toString());
+            const driverOrgId = driver.organizationId._id ? driver.organizationId._id.toString() : driver.organizationId.toString();
+            
+            if (!allowedOrgIds.includes(driverOrgId)) {
+                return res.status(403).json({
+                    status: false,
+                    message: "Forbidden: Cannot update drivers from other organizations"
+                });
+            }
         }
 
         // Check for duplicate unique fields if updating them

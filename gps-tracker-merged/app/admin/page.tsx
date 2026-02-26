@@ -47,16 +47,16 @@ export default function DashboardPage() {
      RTK QUERY (FORCED LOAD)
   ========================= */
   const { data: orgData, isLoading: isLoadingOrgs } =
-    useGetOrganizationsQuery(null, { refetchOnMountOrArgChange: true });
+    useGetOrganizationsQuery(undefined, { refetchOnMountOrArgChange: true });
 
   const { data: vehData, isLoading: isLoadingVehicles } =
-    useGetVehiclesQuery(null, { refetchOnMountOrArgChange: true });
+    useGetVehiclesQuery(undefined, { refetchOnMountOrArgChange: true });
 
   const { data: devData, isLoading: isLoadingDevices } =
-    useGetGpsDevicesQuery(null, { refetchOnMountOrArgChange: true });
+    useGetGpsDevicesQuery(undefined, { refetchOnMountOrArgChange: true });
 
   const { data: liveData, isLoading: isLoadingLive } =
-    useGetLiveVehiclesQuery(null, {
+    useGetLiveVehiclesQuery(undefined, {
       pollingInterval: 30000, // Changed from 5000ms to 30000ms (30 seconds) to reduce excessive API calls
       refetchOnMountOrArgChange: true,
     });

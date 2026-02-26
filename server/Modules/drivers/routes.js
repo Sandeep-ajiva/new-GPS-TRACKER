@@ -11,6 +11,7 @@ router.post(
   "/",
   requireAuth,
   checkAuthorization(["admin"], "drivers", "create"),
+  checkOrganization,
   Controller.create,
 );
 

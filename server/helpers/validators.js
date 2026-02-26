@@ -57,9 +57,8 @@ class Validator {
       } else {
         // Normal fields
         const value = this.data[field];
-        const isRequired = fieldRules.includes("required");
-
-        // Skip validation if field is not required and value is empty
+        // 🆕 FIX: If field is not required and value is null/undefined/empty, skip validation
+        const isRequired = fieldRules.some((r) => r === "required" || r.startsWith("required_if"));
         if (!isRequired && (value === undefined || value === null || value === "")) {
           continue;
         }

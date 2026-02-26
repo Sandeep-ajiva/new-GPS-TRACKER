@@ -109,16 +109,16 @@ export default function DashboardPage() {
 
   const vehicles: VehicleRecord[] = useMemo(() => {
     if (!vehiclesData?.docs) return [];
-    
+
     // Create a map of live data by vehicleId for quick lookup
     const liveDataMap = new Map();
     if (liveData?.data) {
-        liveData.data.forEach((item: ApiLiveDataItem) => {
-            if (item.vehicleId) {
-                const vId = typeof item.vehicleId === 'string' ? item.vehicleId : item.vehicleId._id;
-                liveDataMap.set(vId, item);
-            }
-        });
+      liveData.data.forEach((item: ApiLiveDataItem) => {
+        if (item.vehicleId) {
+          const vId = typeof item.vehicleId === 'string' ? item.vehicleId : item.vehicleId._id;
+          liveDataMap.set(vId, item);
+        }
+      });
     }
 
     return vehiclesData.docs.map((vehicle: ApiVehicle) => {
@@ -140,8 +140,8 @@ export default function DashboardPage() {
   }, [vehiclesData, liveData]);
 
   const devices = useMemo(() => {
-     if (!devicesData?.docs) return [];
-     return devicesData.docs;
+    if (!devicesData?.docs) return [];
+    return devicesData.docs;
   }, [devicesData]);
 
   const orgPoints = useMemo(
@@ -158,7 +158,7 @@ export default function DashboardPage() {
     () =>
       vehicles.map((vehicle) => ({
         id: vehicle.id,
-        status: vehicle.status,
+        status: vehicle.status as any,
         position: vehicle.position,
         label: vehicle.label,
         driverName: vehicle.driverName,
@@ -183,7 +183,7 @@ export default function DashboardPage() {
   };
 
   if (isOrgsLoading || isVehiclesLoading || isDevicesLoading || isLiveLoading) {
-      return <div className="p-10 text-center text-slate-400">Loading Dashboard...</div>;
+    return <div className="p-10 text-center text-slate-400">Loading Dashboard...</div>;
   }
 
   return (
@@ -214,7 +214,7 @@ export default function DashboardPage() {
         onClose={() => setIsOrgModalOpen(false)}
         variant="dark"
         onCreate={() => {
-            // Ideally should call createOrganization mutation here
+          // Ideally should call createOrganization mutation here
         }}
       />
 
@@ -253,20 +253,18 @@ export default function DashboardPage() {
                       handleSelectOrg(org.id);
                     }
                   }}
-                  className={`w-full rounded-2xl border px-4 py-4 text-left transition ${
-                    isActive
+                  className={`w-full rounded-2xl border px-4 py-4 text-left transition ${isActive
                       ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-100"
                       : "border-slate-800/80 bg-slate-900/60 text-slate-200 hover:border-emerald-500/20"
-                  }`}
+                    }`}
                 >
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm font-black">{org.adminName}</p>
                       <p className="text-xs text-slate-400">{org.name}</p>
                     </div>
-                    <span className={`text-[10px] font-black uppercase tracking-widest ${
-                      org.status === "active" ? "text-emerald-300" : "text-amber-300"
-                    }`}>
+                    <span className={`text-[10px] font-black uppercase tracking-widest ${org.status === "active" ? "text-emerald-300" : "text-amber-300"
+                      }`}>
                       {org.status}
                     </span>
                   </div>
@@ -368,11 +366,10 @@ export default function DashboardPage() {
                         <button
                           key={vehicle.id}
                           onClick={() => setSelectedVehicleId(vehicle.id)}
-                          className={`rounded-xl border px-4 py-3 text-left transition ${
-                            active
+                          className={`rounded-xl border px-4 py-3 text-left transition ${active
                               ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-100"
                               : "border-slate-800/80 bg-slate-950/60 text-slate-200 hover:border-emerald-500/20"
-                          }`}
+                            }`}
                         >
                           <div className="flex items-center justify-between">
                             <p className="text-sm font-black">{vehicle.label}</p>
