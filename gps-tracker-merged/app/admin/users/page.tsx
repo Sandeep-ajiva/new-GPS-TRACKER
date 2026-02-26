@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { useSearchParams } from "next/navigation";
 import Table from "@/components/ui/Table";
 import ApiErrorBoundary from "@/components/admin/ErrorBoundary/ApiErrorBoundary";
 import { Plus, Edit, Trash2, Filter, Loader2 } from "lucide-react";
@@ -43,14 +44,16 @@ export interface User {
 
 export default function UsersPage() {
   const { openPopup, closePopup, isPopupOpen } = usePopups();
+  const searchParams = useSearchParams();
+  const searchQueryParam = searchParams.get("search");
 
-  const [showFilters, setShowFilters] = useState(false);
+  const [showFilters, setShowFilters] = useState(!!searchQueryParam);
   const userRole = getSecureItem("userRole");
   const canCreateUser = userRole === "admin" || userRole === "manager";
   const canEditUser = userRole === "admin" || userRole === "manager";
   const canDeleteUser = userRole === "admin";
   const [filters, setFilters] = useState({
-    name: "",
+    name: searchQueryParam || "",
     email: "",
     mobile: "",
     role: "",

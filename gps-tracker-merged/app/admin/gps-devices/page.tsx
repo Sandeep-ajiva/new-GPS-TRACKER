@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { useSearchParams } from "next/navigation";
 import Table from "@/components/ui/Table";
 import ApiErrorBoundary from "@/components/admin/ErrorBoundary/ApiErrorBoundary";
 import { Plus, Edit, Trash2, Filter, Loader2 } from "lucide-react";
@@ -60,6 +61,8 @@ export interface GPSDevice {
 
 export default function GpsDevicesPage() {
   const { openPopup, closePopup, isPopupOpen } = usePopups();
+  const searchParams = useSearchParams();
+  const searchQueryParam = searchParams.get("search");
 
   /* ================= API ================= */
 
@@ -109,9 +112,9 @@ export default function GpsDevicesPage() {
 
   /* ================= STATE ================= */
 
-  const [showFilters, setShowFilters] = useState(false);
+  const [showFilters, setShowFilters] = useState(!!searchQueryParam);
   const [filters, setFilters] = useState({
-    imei: "",
+    imei: searchQueryParam || "",
     model: "",
     firmware: "",
     simNumber: "",
@@ -376,7 +379,7 @@ export default function GpsDevicesPage() {
 
   const columns = [
     {
-    header: "IMEI",
+      header: "IMEI",
       accessor: "imei",
     },
     {

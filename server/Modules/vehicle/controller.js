@@ -205,6 +205,7 @@ exports.getAll = async (req, res) => {
       // ✅ populate
       [
         { path: "organizationId", select: "name" },
+        {path: "driverId"},
       ],
 
       // ✅ searchable fields
@@ -234,7 +235,7 @@ exports.getAll = async (req, res) => {
 
 exports.getById = async (req, res) => {
   try {
-    const vehicle = await VehicleModel.findById(req.params.id);
+    const vehicle = await VehicleModel.findById(req.params.id).populate(['organizationId', 'driverId']);
 
     if (!vehicle) {
       return res.status(404).json({

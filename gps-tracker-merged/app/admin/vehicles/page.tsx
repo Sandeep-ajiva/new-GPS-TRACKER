@@ -54,6 +54,7 @@ export default function VehiclesPage() {
   const { openPopup, closePopup, isPopupOpen } = usePopups();
   const searchParams = useSearchParams();
   const filterParam = searchParams.get("filter");
+  const searchQueryParam = searchParams.get("search");
 
   // API Hooks
   const { data: vehData, isLoading: isVehLoading } =
@@ -95,11 +96,11 @@ export default function VehiclesPage() {
     [driverData],
   );
 
-  const [showFilters, setShowFilters] = useState(false);
+  const [showFilters, setShowFilters] = useState(!!searchQueryParam);
   const [selectedVehicleForAssignment, setSelectedVehicleForAssignment] =
     useState<Vehicle | null>(null);
   const [filters, setFilters] = useState({
-    number: "",
+    number: searchQueryParam || "",
     type: "",
     organizationId: "",
     status: "",

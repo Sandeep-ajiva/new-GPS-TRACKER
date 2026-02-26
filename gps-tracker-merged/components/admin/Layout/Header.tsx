@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect, useRef } from "react";
-import { Bell, Search, X, Building2, Car, Radio, User, Trash2, Menu } from "lucide-react";
+import { Bell, Search, X, Building2, Car, Radio, User, Trash2, Menu, LayoutDashboard } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { getSecureItem } from "@/app/admin/Helpers/encryptionHelper";
@@ -12,6 +12,9 @@ import {
     useClearAllNotificationsMutation
 } from "@/redux/api/notificationsApi";
 import { useGetOrganizationsQuery } from "@/redux/api/organizationApi";
+import { useGetVehiclesQuery } from "@/redux/api/vehicleApi";
+import { useGetGpsDevicesQuery } from "@/redux/api/gpsDeviceApi";
+import { useGetUsersQuery } from "@/redux/api/usersApi";
 
 type HeaderProps = {
     onOpenSidebar?: () => void;
@@ -27,10 +30,13 @@ export default function Header({ onOpenSidebar }: HeaderProps) {
     // Redux Hooks
     const { data: userData } = useGetMeQuery(undefined, { refetchOnMountOrArgChange: true });
     const { data: notifData } = useGetNotificationsQuery(undefined, {
-        pollingInterval: 60000, // Changed from 15000ms to 60000ms (60 seconds) to reduce excessive API calls
+        pollingInterval: 60000,
         refetchOnMountOrArgChange: true,
     });
     const { data: orgData } = useGetOrganizationsQuery(undefined, { refetchOnMountOrArgChange: true });
+    const { data: vehData } = useGetVehiclesQuery(undefined);
+    const { data: devicesData } = useGetGpsDevicesQuery(undefined);
+    const { data: usersData } = useGetUsersQuery(undefined);
 
     const [markAsRead] = useMarkAsReadMutation();
     const [deleteNotification] = useDeleteNotificationMutation();
@@ -39,6 +45,9 @@ export default function Header({ onOpenSidebar }: HeaderProps) {
     const notifications = notifData?.data || [];
     const adminUser = userData?.data || {};
     const organizations = orgData?.data || [];
+    const vehicles = vehData?.data || vehData?.vehicles || [];
+    const devices = devicesData?.data || [];
+    const allUsers = usersData?.data || usersData?.users || [];
 
     // Derived state
     const rootOrg = organizations.find((o: any) => !o.parentOrganizationId) || {};
@@ -59,20 +68,48 @@ export default function Header({ onOpenSidebar }: HeaderProps) {
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
 
-    // Placeholder Search Effect - requires a real search API
     useEffect(() => {
-        if (searchQuery.trim()) {
-            // TODO: Implement real global search API. 
-            // Current approach: clear results to avoid dummy data.
-            setSearchResults([]);
-            // Optionally could prompt user to go to specific pages
-            // or implement client-side search if data is available in cache, 
-            // but that's complex to wire up here without direct access to all cached lists.
+        const query = searchQuery.trim().toLowerCase();
+        if (query.length > 1) {
+            const results: any[] = [];
+
+            // 1. Search Organizations
+            (organizations || []).forEach((org: any) => {
+                if (org.name?.toLowerCase().includes(query)) {
+                    results.push({ type: "Organization", id: org._id, name: org.name, details: org.email || "Org", path: `/dashboard?organizationId=${org._id}` });
+                }
+            });
+
+            // 2. Search Vehicles
+            (vehicles || []).forEach((v: any) => {
+                if (v.vehicleNumber?.toLowerCase().includes(query) || v.registrationNumber?.toLowerCase().includes(query)) {
+                    results.push({ type: "Vehicle", id: v._id, name: v.vehicleNumber, details: v.vehicleType || "Vehicle", path: `/admin/vehicles?search=${encodeURIComponent(v.vehicleNumber)}` });
+                }
+            });
+
+            // 3. Search Devices
+            (devices || []).forEach((d: any) => {
+                if (d.imei?.toLowerCase().includes(query) || d.model?.toLowerCase().includes(query)) {
+                    results.push({ type: "GPS Device", id: d._id, name: d.imei, details: d.model || "Device", path: `/admin/gps-devices?search=${encodeURIComponent(d.imei)}` });
+                }
+            });
+
+            // 4. Search Users
+            (allUsers || []).forEach((u: any) => {
+                const fullName = `${u.firstName} ${u.lastName}`;
+                if (u.firstName?.toLowerCase().includes(query) || u.lastName?.toLowerCase().includes(query) || u.email?.toLowerCase().includes(query)) {
+                    results.push({ type: "User", id: u._id, name: fullName, details: u.role || "User", path: `/admin/users?search=${encodeURIComponent(u.firstName)}` });
+                }
+            });
+
+            setSearchResults(results.slice(0, 10)); // Top 10 results
+            setShowSearchResults(true);
         } else {
             setSearchResults([]);
             setShowSearchResults(false);
         }
-    }, [searchQuery]);
+    }, [searchQuery, organizations, vehicles, devices, allUsers]);
+
 
     const handleSearchResultClick = (result: { type: string; id: string }) => {
         // Search disabled for now
@@ -142,19 +179,69 @@ export default function Header({ onOpenSidebar }: HeaderProps) {
                 </button>
                 <div className="w-full max-w-55 sm:max-w-90 md:max-w-105 relative" ref={searchRef}>
                     {/* Search disabled temporarily as per refactor plan */}
-                    <div className="relative opacity-50 cursor-not-allowed">
+                    <div className="relative">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
+                        {showSearchResults && searchResults.length > 0 && (
+                            <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-slate-200 rounded-xl shadow-xl z-50 overflow-hidden">
+                                <div className="p-2 border-b border-slate-100 bg-slate-50 text-[10px] font-black uppercase text-slate-500 tracking-widest">
+                                    Search Results ({searchResults.length})
+                                </div>
+                                <div className="max-h-60 overflow-y-auto">
+                                    {searchResults.map((result: any) => (
+                                        <button
+                                            key={`${result.type}-${result.id}`}
+                                            onClick={() => {
+                                                router.push(result.path);
+                                                setShowSearchResults(false);
+                                                setSearchQuery("");
+                                            }}
+                                            className="w-full flex items-center gap-3 p-3 hover:bg-slate-50 transition-colors border-b border-slate-100 last:border-0"
+                                        >
+                                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${result.type === 'Organization' ? 'bg-blue-50 text-blue-600' :
+                                                result.type === 'Vehicle' ? 'bg-emerald-50 text-emerald-600' :
+                                                    result.type === 'GPS Device' ? 'bg-amber-50 text-amber-600' :
+                                                        'bg-purple-50 text-purple-600'
+                                                }`}>
+                                                {getIcon(result.type)}
+                                            </div>
+                                            <div className="text-left flex-1">
+                                                <div className="flex items-center justify-between">
+                                                    <div className="text-sm font-bold text-slate-900">{result.name}</div>
+                                                    <span className="text-[9px] font-black uppercase text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded-full">{result.type}</span>
+                                                </div>
+                                                <div className="text-[10px] text-slate-500">{result.details}</div>
+                                            </div>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
                         <input
                             type="text"
-                            placeholder="Search unavailable (Backend pending)..."
-                            disabled
-                            className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 placeholder-slate-400 transition cursor-not-allowed"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            onFocus={() => searchQuery && setShowSearchResults(true)}
+                            placeholder="Search organizations..."
+                            className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 placeholder-slate-400 transition"
                         />
                     </div>
+
                 </div>
             </div>
 
             <div className="flex items-center gap-4">
+
+                <button
+                    onClick={() => router.push("/dashboard")}
+                    className="flex items-center gap-2 px-3 py-2 text-slate-600 hover:bg-slate-100 rounded-xl transition-all group"
+                    title="Main Dashboard"
+                >
+                    <LayoutDashboard size={18} className="group-hover:text-emerald-500 transition-colors" />
+                    <span className="text-xs font-bold uppercase tracking-wider hidden sm:block">Dashboard</span>
+                </button>
+
+
                 <div className="relative" ref={notifRef}>
                     <button
                         onClick={() => setShowNotifications(!showNotifications)}
