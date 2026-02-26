@@ -6,20 +6,13 @@ import { Lock, Mail, Loader2 } from "lucide-react"
 
 import { saveSecureItem } from "@/app/admin/Helpers/encryptionHelper"
 
-// Dummy accounts for testing
-const DUMMY_ACCOUNTS = [
-  { email: "admin1@gmail.com", password: "Admin@123", role: "admin", name: "Admin User" },
-  {
-    email: "rahul.sharma@gmail.com",
-    password: "Manager@123",
-    role: "manager",
-    name: "Manager User",
-    organizationId: "org_ajiva_tracker",
-    organizationName: "Ajiva Tracker",
-  },
-  { email: "driver@test.com", password: "driver123", role: "driver", name: "Driver User" },
-  { email: "superadmin@gmail.com", password: "admin@123", role: "superadmin", name: "Super Admin" },
-]
+// Roles information
+const ROLE_REDIRECTS: Record<string, string> = {
+  superadmin: "/superadmin",
+  admin: "/dashboard",
+  manager: "/dashboard",
+  driver: "/dashboard",
+}
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"
@@ -63,36 +56,10 @@ export default function LoginPage() {
         return
       }
 
-      // Fallback to dummy accounts when API is unavailable
-      const account = DUMMY_ACCOUNTS.find(
-        acc => acc.email.toLowerCase() === email.toLowerCase() && acc.password === password
-      )
-
-      if (!account) {
-        setError(data?.message || "Invalid email or password. Check dummy accounts below.")
-        setIsSubmitting(false)
-        return
-      }
-
-      const dummyToken = `dummy_token_${Date.now()}_${Math.random().toString(36).substring(7)}`
-
-      saveSecureItem("token", dummyToken)
-      saveSecureItem("userRole", account.role)
-      localStorage.setItem("userId", `user_${account.email}`)
-      localStorage.setItem("userEmail", account.email)
-      localStorage.setItem("userName", account.name)
-      if ("organizationId" in account && account.organizationId) {
-        localStorage.setItem("organizationId", account.organizationId)
-      }
-      if ("organizationName" in account && account.organizationName) {
-        localStorage.setItem("organizationName", account.organizationName)
-      }
-
-      if (account.role === "superadmin") {
-        router.push("/superadmin")
-      } else {
-        router.push("/dashboard")
-      }
+      // Use real backend response
+      setError(data?.message || "Invalid email or password.")
+      setIsSubmitting(false)
+      return
     } catch (err: any) {
       setError(err.message || "An error occurred")
       setIsSubmitting(false)
@@ -128,7 +95,7 @@ export default function LoginPage() {
           <div className="flex flex-col gap-2">
             <h2 className="text-2xl font-semibold text-white">Sign in</h2>
             <p className="text-sm text-slate-300">
-              Use test credentials to access the dashboard.
+              Enter your credentials to access the fleet management system.
             </p>
           </div>
 
@@ -142,7 +109,7 @@ export default function LoginPage() {
                 <input
                   type="email"
                   className="h-12 w-full rounded-xl border border-white/10 bg-slate-900/60 px-4 pl-10 text-white placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/30"
-                  placeholder="admin@test.com"
+                  placeholder="your@email.com"
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
                   required
@@ -160,7 +127,7 @@ export default function LoginPage() {
                 <input
                   type="password"
                   className="h-12 w-full rounded-xl border border-white/10 bg-slate-900/60 px-4 pl-10 text-white placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/30"
-                  placeholder="admin123"
+                  placeholder="••••••••"
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
                   required
@@ -191,24 +158,9 @@ export default function LoginPage() {
             </button>
           </form>
 
-          <div className="mt-6 space-y-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-xs text-slate-300">
-            <p className="font-semibold text-white">📝 Test Accounts:</p>
-            <div className="space-y-2 font-mono text-xs">
-              <div className="flex items-center justify-between">
-                <span><span className="text-emerald-300">Admin:</span> admin1@gmail.com / Admin@123</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span><span className="text-blue-300">Manager:</span> rahul.sharma@gmail.com / Manager@123</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span><span className="text-purple-300">Driver:</span> driver@test.com / driver123</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span><span className="text-orange-300">Super Admin:</span> superadmin@gmail.com / admin@123</span>
-              </div>
-            </div>
-            <p className="mt-3 border-t border-white/10 pt-3 text-slate-400">
-              ℹ️ Admin, Manager, Driver → /dashboard | Super Admin → /superadmin
+          <div className="mt-6 p-4 rounded-2xl border border-white/10 bg-white/5 text-center">
+            <p className="text-xs text-slate-400">
+              Authorized personnel only. All access is logged.
             </p>
           </div>
         </div>

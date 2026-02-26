@@ -3,7 +3,10 @@ import { baseApi } from "./baseApi";
 export const deviceMappingApi = baseApi.injectEndpoints({
     endpoints: (builder) => ({
         getDeviceMappings: builder.query({
-            query: () => "/devicemapping",
+            query: (params) => ({
+                url: "/devicemapping",
+                params,
+            }),
             providesTags: ["DeviceMapping"],
         }),
         assignDevice: builder.mutation({

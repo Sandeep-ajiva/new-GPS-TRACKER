@@ -50,7 +50,11 @@ export default function UsersPage() {
   const canEditUser = userRole === "admin" || userRole === "manager";
   const canDeleteUser = userRole === "admin";
   const [filters, setFilters] = useState({
+    name: "",
+    email: "",
+    mobile: "",
     role: "",
+    status: "",
     organizationId: "",
   });
 
@@ -104,12 +108,37 @@ export default function UsersPage() {
 
   const filteredUsers = useMemo(() => {
     let filtered = users;
+
+    if (filters.name) {
+      filtered = filtered.filter((u) =>
+        `${u.firstName} ${u.lastName}`
+          .toLowerCase()
+          .includes(filters.name.toLowerCase()),
+      );
+    }
+
+    if (filters.email) {
+      filtered = filtered.filter((u) =>
+        (u.email || "").toLowerCase().includes(filters.email.toLowerCase()),
+      );
+    }
+
+    if (filters.mobile) {
+      filtered = filtered.filter((u) =>
+        (u.mobile || "").toLowerCase().includes(filters.mobile.toLowerCase()),
+      );
+    }
+
     if (filters.role) {
       filtered = filtered.filter((u) => u.role === filters.role);
     }
-    // No need to filter by organizationId - the API already does that
+
+    if (filters.status) {
+      filtered = filtered.filter((u) => u.status === filters.status);
+    }
+
     return filtered;
-  }, [users, filters.role]);
+  }, [users, filters.name, filters.email, filters.mobile, filters.role, filters.status]);
 
   const handleSubmit = async (
     data: Record<string, string | number | boolean | File>,
@@ -246,7 +275,14 @@ export default function UsersPage() {
   };
 
   const clearFilters = () => {
-    setFilters({ role: "", organizationId: "" });
+    setFilters({
+      name: "",
+      email: "",
+      mobile: "",
+      role: "",
+      status: "",
+      organizationId: "",
+    });
   };
 
   const columns = [
@@ -350,7 +386,46 @@ export default function UsersPage() {
 
         {showFilters && (
           <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div>
+                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
+                  Name
+                </label>
+                <input
+                  className="w-full rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
+                  value={filters.name}
+                  onChange={(e) =>
+                    setFilters({ ...filters, name: e.target.value })
+                  }
+                  placeholder="Search name"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
+                  Email
+                </label>
+                <input
+                  className="w-full rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
+                  value={filters.email}
+                  onChange={(e) =>
+                    setFilters({ ...filters, email: e.target.value })
+                  }
+                  placeholder="Search email"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
+                  Mobile
+                </label>
+                <input
+                  className="w-full rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
+                  value={filters.mobile}
+                  onChange={(e) =>
+                    setFilters({ ...filters, mobile: e.target.value })
+                  }
+                  placeholder="Search mobile"
+                />
+              </div>
               <div>
                 <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
                   Role
@@ -367,6 +442,22 @@ export default function UsersPage() {
                   <option value="manager">Manager</option>
                   <option value="driver">Driver</option>
                   <option value="viewer">Viewer</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
+                  Status
+                </label>
+                <select
+                  className="w-full rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
+                  value={filters.status}
+                  onChange={(e) =>
+                    setFilters({ ...filters, status: e.target.value })
+                  }
+                >
+                  <option value="">All Status</option>
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
                 </select>
               </div>
               <div>

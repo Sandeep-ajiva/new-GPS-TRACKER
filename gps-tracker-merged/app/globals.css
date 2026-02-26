@@ -54,6 +54,22 @@ select::placeholder {
   opacity: 1 !important;
 }
 
+/* Ensure light-page filter dropdown text stays readable */
+.admin-filter-select,
+.admin-filter-select option,
+.admin-filter-select optgroup {
+  color: #0f172a !important;
+  background-color: #ffffff !important;
+}
+
+/* Device-mapping modal/select readability */
+.admin-select-readable,
+.admin-select-readable option,
+.admin-select-readable optgroup {
+  color: #0f172a !important;
+  background-color: #ffffff !important;
+}
+
 /* Smooth transitions globally */
 * {
   transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, transform 0.2s ease;

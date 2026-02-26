@@ -32,12 +32,14 @@ const menuGroups = [
             { name: "Vehicles", icon: Car, href: "/admin/vehicles", roles: ["admin", "manager"] },
             { name: "GPS Devices", icon: Radio, href: "/admin/gps-devices", roles: ["admin", "manager"] },
             { name: "Users", icon: Users, href: "/admin/users", roles: ["admin", "manager"] },
+            { name: "Drivers", icon: Users, href: "/admin/drivers", roles: ["admin", "manager"] },
         ]
     },
     {
         title: "Operations",
         items: [
             { name: "Device Mapping", icon: LinkIcon, href: "/admin/device-mapping", roles: ["admin", "manager"] },
+            { name: "Driver Mapping", icon: LinkIcon, href: "/admin/driver-mapping", roles: ["admin", "manager"] },
             { name: "History Playback", icon: History, href: "/admin/history", roles: ["admin", "manager"] },
         ]
     },
@@ -124,8 +126,8 @@ export default function Sidebar({ className, showClose, onClose, onNavigate, rol
                                                     onNavigate?.();
                                                 }}
                                                 className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold transition-all w-full relative ${isActive
-                                                        ? "bg-blue-50 text-slate-900 before:absolute before:left-0 before:top-0 before:bottom-0 before:w-0.75 before:bg-blue-500 before:rounded-r"
-                                                        : "text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+                                                    ? "bg-blue-50 text-slate-900 before:absolute before:left-0 before:top-0 before:bottom-0 before:w-0.75 before:bg-blue-500 before:rounded-r"
+                                                    : "text-slate-500 hover:bg-slate-100 hover:text-slate-900"
                                                     }`}
                                                 aria-current={isActive ? "page" : undefined}
                                             >

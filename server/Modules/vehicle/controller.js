@@ -187,8 +187,11 @@ exports.update = async (req, res) => {
 
 exports.getAll = async (req, res) => {
   try {
+    const { page, limit, search } = req.query;
+
     const filter = {};
 
+    // 🔐 orgScope filter
     if (req.user.role !== "superadmin" && req.orgScope !== "ALL") {
       filter.organizationId = { $in: req.orgScope };
     }
@@ -196,15 +199,28 @@ exports.getAll = async (req, res) => {
     const result = await paginate(
       VehicleModel,
       filter,
-      req.query.page,
-      req.query.limit,
-      ["createdBy"],
+      page,
+      limit,
+
+      // ✅ populate
+      [
+        { path: "organizationId", select: "name" },
+      ],
+
+      // ✅ searchable fields
       ["vehicleNumber", "model", "vehicleType"],
-      req.query.search,
+
+      search,
+
+      // ✅ latest first
+      { createdAt: -1 }
     );
 
     return res.status(200).json(result);
+
   } catch (error) {
+    console.error("Get All VehicleModels Error:", error);
+
     return res.status(500).json({
       status: false,
       message: error.message,

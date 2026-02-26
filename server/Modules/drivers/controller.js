@@ -16,6 +16,7 @@ const validateDriverData = async (data) => {
         photo: "string",
         address: "string",
         status: "in:active,inactive,blocked",
+        organizationId: "string",
     }
     const validator = new Validator(data, rules);
     await validator.validate()
@@ -36,6 +37,26 @@ const validateDriverUserData = async (data) => {
     const validator = new Validator(data, rules);
     await validator.validate()
 }
+
+const resolveDriverOrganizationId = (payload, req) => {
+    const candidate = payload?.organizationId;
+    if (req.user.role === "superadmin" && candidate) {
+        return candidate.toString();
+    }
+
+    if (candidate) {
+        const candidateId = candidate.toString();
+        if (
+            req.orgScope === "ALL" ||
+            (Array.isArray(req.orgScope) &&
+                req.orgScope.some((id) => id.toString() === candidateId))
+        ) {
+            return candidateId;
+        }
+    }
+
+    return req.orgId;
+};
 
 const validateUpdateDriverData = async (data) => {
     const rules = {
@@ -76,6 +97,10 @@ const validateUpdateDriverData = async (data) => {
         "availability",
         "assignedVehicleId"
     ];
+    if (data.organizationId) {
+        allowedFields.push("organizationId");
+        rules.organizationId = "string";
+    }
 
     Object.keys(data).forEach((key) => {
         if (!allowedFields.includes(key)) {
@@ -94,9 +119,9 @@ exports.create = async (req, res) => {
     try {
         await validateDriverData(req.body);
 
-        const { assignedVehicleId, firstName, lastName, phone, email, licenseNumber, licenseExpiry, photo, address } = req.body;
+        const { assignedVehicleId, firstName, lastName, phone, email, licenseNumber, licenseExpiry, photo, address, organizationId: orgPayload } = req.body;
 
-        const organizationId = req.orgId;
+        const organizationId = resolveDriverOrganizationId({ organizationId: orgPayload }, req);
 
         if (!organizationId) {
             return res.status(400).json({
@@ -177,9 +202,13 @@ exports.getAll = async (req, res) => {
             filter,
             page,
             limit,
-            ["organizationId", "assignedVehicleId"],
+            [
+                { path: "organizationId", select: "name" },
+                { path: "assignedVehicleId", select: "vehicleNumber" }
+            ],
             ["firstName", "lastName", "email", "phone"],
-            search
+            search,
+            { createdAt: -1 }   // 👈 newest first
         );
 
         return res.status(200).json(result);
@@ -266,9 +295,21 @@ exports.update = async (req, res) => {
         }
 
         // Check for duplicate unique fields if updating them
+        let targetOrganizationId = driver.organizationId;
+        if (req.body.organizationId) {
+            const resolvedOrgId = resolveDriverOrganizationId({ organizationId: req.body.organizationId }, req);
+            if (!resolvedOrgId) {
+                return res.status(400).json({
+                    status: false,
+                    message: "Invalid organization selection"
+                });
+            }
+            targetOrganizationId = resolvedOrgId;
+        }
+
         if (req.body.email || req.body.phone || req.body.licenseNumber) {
             const query = {
-                organizationId: driver.organizationId,
+                organizationId: targetOrganizationId,
                 _id: { $ne: driver._id }
             };
 
@@ -295,6 +336,10 @@ exports.update = async (req, res) => {
                 status: false,
                 message: "Invalid assigned vehicle ID"
             });
+        }
+
+        if (req.body.organizationId) {
+            req.body.organizationId = targetOrganizationId;
         }
 
         // Trim and normalize string fields
@@ -375,11 +420,26 @@ exports.createDriverUser = async (req, res) => {
 
         const {
             firstName, lastName, phone, email, passwordHash,
-            licenseNumber, licenseExpiry, photo, address, assignedVehicleId
+            licenseNumber, licenseExpiry, photo, address, assignedVehicleId, organizationId: organizationPayload
         } = req.body;
 
-        // Get organization ID from middleware (always set by checkOrganization)
-        const organizationId = req.orgId;
+        if (
+            organizationPayload &&
+            req.user.role !== "superadmin" &&
+            req.orgScope !== "ALL" &&
+            (!Array.isArray(req.orgScope) ||
+                !req.orgScope.some((id) => id.toString() === organizationPayload.toString()))
+        ) {
+            return res.status(403).json({
+                status: false,
+                message: "Forbidden: Cannot create driver in this organization"
+            });
+        }
+
+        const organizationId = resolveDriverOrganizationId(
+            { organizationId: organizationPayload },
+            req
+        );
 
         if (!organizationId) {
             return res.status(400).json({
@@ -440,7 +500,8 @@ exports.createDriverUser = async (req, res) => {
             availability: true,
             totalTrips: 0,
             rating: 0,
-            joiningDate: new Date()
+            joiningDate: new Date(),
+            createdBy: req.user._id,
         });
 
         // Create User record with role="driver" and link to driver
@@ -499,4 +560,3 @@ exports.createDriverUser = async (req, res) => {
         });
     }
 };
-

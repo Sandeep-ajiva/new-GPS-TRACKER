@@ -16,6 +16,14 @@ router.post(
     Controller.assignDriverToVehicle
 );
 
+router.get(
+    "/",
+    verifyToken,
+    checkAuthorization(["admin", "superadmin"], "vehicleDriverMapping", "read"),
+    checkOrganization,
+    Controller.getAll
+);
+
 // Unassign driver from vehicle
 router.post(
     "/unassign",

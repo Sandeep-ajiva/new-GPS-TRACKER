@@ -72,7 +72,8 @@
       "organizations": [
         "create",
         "read",
-        "update"
+        "update",
+        "delete"
       ],
       "users": [
         "create",

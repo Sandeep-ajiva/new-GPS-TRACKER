@@ -40,7 +40,8 @@ import {
 export interface GPSDevice {
   _id: string;
   organizationId: string | { _id: string; name: string };
-  vehicleId?: string;
+  vehicleId?: string | { _id: string; vehicleNumber?: string };
+  vehicleNumber?: string;
   imei: string;
   deviceModel?: string;
   manufacturer?: string;
@@ -171,10 +172,21 @@ export default function GpsDevicesPage() {
 
     if (filters.vehicleNumber) {
       filtered = filtered.filter((d) => {
-        const vehicle = vehiclesData.find((v) => v._id === d.vehicleId);
-        return vehicle
-          ? vehicle.vehicleNumber.toLowerCase().includes(filters.vehicleNumber.toLowerCase())
-          : false;
+        const fromDevice =
+          (typeof d.vehicleId === "object" ? d.vehicleId?.vehicleNumber : null) ||
+          d.vehicleNumber;
+
+        if (fromDevice) {
+          return fromDevice
+            .toLowerCase()
+            .includes(filters.vehicleNumber.toLowerCase());
+        }
+
+        const vehicleId =
+          typeof d.vehicleId === "object" ? d.vehicleId?._id : d.vehicleId;
+        const vehicle = vehiclesData.find((v) => v._id === vehicleId);
+        return !!vehicle?.vehicleNumber
+          && vehicle.vehicleNumber.toLowerCase().includes(filters.vehicleNumber.toLowerCase());
       });
     }
 
@@ -290,16 +302,6 @@ export default function GpsDevicesPage() {
       type: "date",
     },
     {
-      name: "connectionStatus",
-      label: "Connection Status",
-      type: "select",
-      required: true,
-      options: [
-        { label: "Online", value: "online" },
-        { label: "Offline", value: "offline" },
-      ],
-    },
-    {
       name: "status",
       label: "Status",
       type: "select",
@@ -373,7 +375,10 @@ export default function GpsDevicesPage() {
   /* ================= TABLE ================= */
 
   const columns = [
-    { header: "IMEI", accessor: "imei" },
+    {
+    header: "IMEI",
+      accessor: "imei",
+    },
     {
       header: "Model",
       accessor: (row: GPSDevice) => row.deviceModel || row.manufacturer || "-",
@@ -384,10 +389,25 @@ export default function GpsDevicesPage() {
     },
     { header: "SIM", accessor: "simNumber" },
     {
+      header: "Organization",
+      accessor: (row: GPSDevice) => {
+        const org =
+          typeof row.organizationId === "object" ? row.organizationId : null;
+        return org?.name || "-";
+      },
+    },
+    {
       header: "Vehicle",
       accessor: (row: GPSDevice) => {
-        const vehicle = vehiclesData.find((v) => v._id === row.vehicleId);
-        return vehicle ? vehicle.vehicleNumber : "-";
+        const fromDevice =
+          (typeof row.vehicleId === "object" ? row.vehicleId?.vehicleNumber : null) ||
+          row.vehicleNumber;
+        if (fromDevice) return fromDevice;
+
+        const vehicleId =
+          typeof row.vehicleId === "object" ? row.vehicleId?._id : row.vehicleId;
+        const vehicle = vehiclesData.find((v) => v._id === vehicleId);
+        return vehicle?.vehicleNumber || "-";
       },
     },
     {
@@ -454,7 +474,7 @@ export default function GpsDevicesPage() {
           <div className="flex flex-col gap-3 sm:flex-row">
             <button
               onClick={() => setShowFilters(!showFilters)}
-              className="bg-slate-100 text-slate-700 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 hover:bg-slate-200 transition-colors"
+              className="bg-slate-100 text-slate-900 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 hover:bg-slate-200 transition-colors"
             >
               <Filter size={16} /> Filters
             </button>
@@ -478,7 +498,7 @@ export default function GpsDevicesPage() {
                   IMEI
                 </label>
                 <input
-                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-blue-500/20 outline-none"
+                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 outline-none"
                   value={filters.imei}
                   onChange={(e) =>
                     setFilters({ ...filters, imei: e.target.value })
@@ -491,7 +511,7 @@ export default function GpsDevicesPage() {
                   Model
                 </label>
                 <input
-                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-blue-500/20 outline-none"
+                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 outline-none"
                   value={filters.model}
                   onChange={(e) =>
                     setFilters({ ...filters, model: e.target.value })
@@ -504,7 +524,7 @@ export default function GpsDevicesPage() {
                   Firmware
                 </label>
                 <input
-                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-blue-500/20 outline-none"
+                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 outline-none"
                   value={filters.firmware}
                   onChange={(e) =>
                     setFilters({ ...filters, firmware: e.target.value })
@@ -517,7 +537,7 @@ export default function GpsDevicesPage() {
                   SIM Number
                 </label>
                 <input
-                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-blue-500/20 outline-none"
+                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 outline-none"
                   value={filters.simNumber}
                   onChange={(e) =>
                     setFilters({ ...filters, simNumber: e.target.value })
@@ -530,7 +550,7 @@ export default function GpsDevicesPage() {
                   Assignment
                 </label>
                 <select
-                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-blue-500/20 outline-none"
+                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 outline-none"
                   value={filters.assigned}
                   onChange={(e) =>
                     setFilters({ ...filters, assigned: e.target.value })
@@ -546,7 +566,7 @@ export default function GpsDevicesPage() {
                   Status
                 </label>
                 <select
-                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-blue-500/20 outline-none"
+                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 outline-none"
                   value={filters.status}
                   onChange={(e) =>
                     setFilters({ ...filters, status: e.target.value })
@@ -562,7 +582,7 @@ export default function GpsDevicesPage() {
                   Connection
                 </label>
                 <select
-                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-blue-500/20 outline-none"
+                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 outline-none"
                   value={filters.connectionStatus}
                   onChange={(e) =>
                     setFilters({ ...filters, connectionStatus: e.target.value })
@@ -578,7 +598,7 @@ export default function GpsDevicesPage() {
                   Vehicle Number
                 </label>
                 <input
-                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-blue-500/20 outline-none"
+                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 outline-none"
                   value={filters.vehicleNumber}
                   onChange={(e) =>
                     setFilters({ ...filters, vehicleNumber: e.target.value })
@@ -592,7 +612,7 @@ export default function GpsDevicesPage() {
                 </label>
                 <input
                   type="date"
-                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-blue-500/20 outline-none"
+                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 outline-none"
                   value={filters.warrantyExpiry}
                   onChange={(e) =>
                     setFilters({ ...filters, warrantyExpiry: e.target.value })
@@ -604,7 +624,7 @@ export default function GpsDevicesPage() {
                   Organization
                 </label>
                 <select
-                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-blue-500/20 outline-none"
+                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 outline-none"
                   value={filters.organizationId}
                   onChange={(e) =>
                     setFilters({ ...filters, organizationId: e.target.value })
@@ -672,9 +692,6 @@ export default function GpsDevicesPage() {
                 warrantyExpiry: editingDevice.warrantyExpiry
                   ? editingDevice.warrantyExpiry.split("T")[0]
                   : "",
-                connectionStatus:
-                  editingDevice.connectionStatus ||
-                  (editingDevice.isOnline ? "online" : "offline"),
                 status: editingDevice.status,
               }
               : undefined

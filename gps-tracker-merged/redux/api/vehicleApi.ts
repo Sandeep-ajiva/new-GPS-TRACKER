@@ -3,7 +3,10 @@ import { baseApi } from "./baseApi";
 export const vehicleApi = baseApi.injectEndpoints({
   endpoints: (builder) => ({
     getVehicles: builder.query({
-      query: () => "/vehicle",
+      query: (params) => ({
+        url: "/vehicle",
+        params,
+      }),
       providesTags: ["Vehicle"],
     }),
     getVehicle: builder.query({

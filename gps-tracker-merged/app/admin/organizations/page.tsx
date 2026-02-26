@@ -115,9 +115,11 @@ export default function OrganizationsPage() {
     });
   }, [organizations, filters]);
 
+  const formFields = useMemo(() => getFormFields(!!editingOrg), [editingOrg]);
+
   /* ---------------------------------------
      Modal handlers
-  ---------------------------------------- */
+    ---------------------------------------- */
   const openCreateModal = () => {
     setEditingOrg(null);
     setIsModalOpen(true);
@@ -300,7 +302,7 @@ export default function OrganizationsPage() {
               ? "Edit Organization"
               : "Create Sub Organization & Manager"
           }
-          fields={useMemo(() => getFormFields(!!editingOrg), [editingOrg])}
+          fields={formFields}
           initialData={
 
             editingOrg

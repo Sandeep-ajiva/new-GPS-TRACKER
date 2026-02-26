@@ -91,6 +91,8 @@ module.exports = async function healthHandler(socket, packet) {
       { _id: socket.gpsDeviceId },
       {
         $set: {
+          isOnline: true,
+          connectionStatus: "online",
           lastSeen: new Date(),
           softwareVersion,
         },

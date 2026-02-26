@@ -548,7 +548,7 @@ export default function VehiclesPage() {
                   Number
                 </label>
                 <input
-                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-blue-500/20 outline-none"
+                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 outline-none"
                   value={filters.number}
                   onChange={(e) =>
                     setFilters({ ...filters, number: e.target.value })
@@ -561,7 +561,7 @@ export default function VehiclesPage() {
                   Type
                 </label>
                 <select
-                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-blue-500/20 outline-none"
+                  className="admin-filter-select w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 outline-none"
                   value={filters.type}
                   onChange={(e) =>
                     setFilters({ ...filters, type: e.target.value })
@@ -580,7 +580,7 @@ export default function VehiclesPage() {
                   Organization
                 </label>
                 <select
-                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-blue-500/20 outline-none"
+                  className="admin-filter-select w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 outline-none"
                   value={filters.organizationId}
                   onChange={(e) =>
                     setFilters({ ...filters, organizationId: e.target.value })
@@ -612,7 +612,7 @@ export default function VehiclesPage() {
                   Driver
                 </label>
                 <select
-                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-blue-500/20 outline-none"
+                  className="admin-filter-select w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 outline-none"
                   value={filters.driverId}
                   onChange={(e) =>
                     setFilters({ ...filters, driverId: e.target.value })
@@ -631,7 +631,7 @@ export default function VehiclesPage() {
                   Status
                 </label>
                 <select
-                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-blue-500/20 outline-none"
+                  className="admin-filter-select w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 outline-none"
                   value={filters.status}
                   onChange={(e) =>
                     setFilters({ ...filters, status: e.target.value })
@@ -647,7 +647,7 @@ export default function VehiclesPage() {
                   Running
                 </label>
                 <select
-                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-blue-500/20 outline-none"
+                  className="admin-filter-select w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 outline-none"
                   value={filters.runningStatus}
                   onChange={(e) =>
                     setFilters({ ...filters, runningStatus: e.target.value })
@@ -665,7 +665,7 @@ export default function VehiclesPage() {
                   Device
                 </label>
                 <select
-                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-blue-500/20 outline-none"
+                  className="admin-filter-select w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 outline-none"
                   value={filters.deviceAssigned}
                   onChange={(e) =>
                     setFilters({ ...filters, deviceAssigned: e.target.value })

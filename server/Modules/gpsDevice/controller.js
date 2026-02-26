@@ -26,14 +26,6 @@ const normalizeGpsDevicePayload = (data = {}) => {
     payload.firmwareVersion = payload.softwareVersion;
   }
 
-  if (typeof payload.connectionStatus === "string") {
-    const status = payload.connectionStatus.toLowerCase();
-    if (status === "online" || status === "offline") {
-      payload.connectionStatus = status;
-      payload.isOnline = status === "online";
-    }
-  }
-
   return payload;
 };
 
@@ -62,7 +54,6 @@ const validateUpdateGpsDevice = async (data, user) => {
     softwareVersion: "string",
     vehicleRegistrationNumber: "string",
     status: "in:active,inactive,suspended",
-    isOnline: "boolean",
     organizationId: "string",
     vehicleId: "string",
     configuration: "object",
@@ -73,7 +64,6 @@ const validateUpdateGpsDevice = async (data, user) => {
     firmwareVersion: "string",
     hardwareVersion: "string",
     warrantyExpiry: "string",
-    connectionStatus: "string",
   };
 
   const allowedFields = Object.keys(rules);
@@ -98,10 +88,27 @@ const validateUpdateGpsDevice = async (data, user) => {
 exports.create = async (req, res) => {
   try {
     const payload = normalizeGpsDevicePayload(req.body);
+    delete payload.isOnline;
+    delete payload.connectionStatus;
     await validateCreateGpsDevice(payload, req.user);
 
-    const organizationId =
-      req.user.role === "superadmin" ? payload.organizationId : req.orgId;
+    let organizationId = null;
+    if (req.user.role === "superadmin") {
+      organizationId = payload.organizationId;
+    } else if (payload.organizationId) {
+      const candidate = payload.organizationId.toString();
+      if (
+        req.orgScope === "ALL" ||
+        (Array.isArray(req.orgScope) &&
+          req.orgScope.some((id) => id.toString() === candidate))
+      ) {
+        organizationId = candidate;
+      }
+    }
+
+    if (!organizationId) {
+      organizationId = req.orgId;
+    }
 
     if (!organizationId) {
       return res.status(400).json({
@@ -123,6 +130,8 @@ exports.create = async (req, res) => {
 
     const device = await GpsDevice.create({
       ...payload,
+      isOnline: false,
+      connectionStatus: "offline",
       organizationId,
       createdBy: req.user._id,
     });
@@ -151,10 +160,12 @@ exports.getAll = async (req, res) => {
 
     const filter = {};
 
+    // 🔐 orgScope filter
     if (req.user.role !== "superadmin" && req.orgScope !== "ALL") {
       filter.organizationId = { $in: req.orgScope };
     }
 
+    // 🎯 extra filters
     if (status) filter.status = status;
     if (isOnline !== undefined) filter.isOnline = isOnline === "true";
 
@@ -163,14 +174,27 @@ exports.getAll = async (req, res) => {
       filter,
       page,
       limit,
-      ["organizationId", "vehicleId"],
+
+      // ✅ populate (correct format)
+      [
+        { path: "vehicleId", select: "vehicleNumber" },
+        { path: "organizationId", select: "name" }
+      ],
+
+      // ✅ searchable fields
       ["imei", "vehicleRegistrationNumber", "softwareVersion"],
+
       search,
+
+      // ✅ latest first
+      { createdAt: -1 }
     );
 
     return res.status(200).json(result);
+
   } catch (error) {
     console.error("Get All GPS Devices Error:", error);
+
     return res.status(500).json({
       status: false,
       message: error.message || "Internal server error",
@@ -234,6 +258,8 @@ exports.getById = async (req, res) => {
 exports.update = async (req, res) => {
   try {
     const payload = normalizeGpsDevicePayload(req.body);
+    delete payload.isOnline;
+    delete payload.connectionStatus;
     await validateUpdateGpsDevice(payload, req.user);
 
     const device = await GpsDevice.findById(req.params.id);
@@ -295,51 +321,10 @@ exports.update = async (req, res) => {
 /* -------------------------------------------------------------------------- */
 
 exports.updateConnectionStatus = async (req, res) => {
-  try {
-    const { isOnline } = req.body;
-
-    if (typeof isOnline !== "boolean") {
-      return res.status(400).json({
-        status: false,
-        message: "isOnline must be boolean",
-      });
-    }
-
-    const device = await GpsDevice.findById(req.params.id);
-
-    if (!device) {
-      return res.status(404).json({
-        status: false,
-        message: "GPS Device not found",
-      });
-    }
-
-    if (
-      req.user.role !== "superadmin" &&
-      device.organizationId.toString() !== req.orgId.toString()
-    ) {
-      return res.status(403).json({
-        status: false,
-        message: "Forbidden",
-      });
-    }
-
-    device.isOnline = isOnline;
-    device.lastSeen = isOnline ? new Date() : device.lastSeen;
-    await device.save();
-
-    return res.json({
-      status: true,
-      message: "Device connection status updated",
-      data: device,
-    });
-  } catch (error) {
-    console.error("Update Connection Status Error:", error);
-    return res.status(500).json({
-      status: false,
-      message: error.message || "Internal server error",
-    });
-  }
+  return res.status(403).json({
+    status: false,
+    message: "Connection status is managed by TCP server only",
+  });
 };
 
 /* -------------------------------------------------------------------------- */

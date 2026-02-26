@@ -1,5 +1,6 @@
 const net = require("net");
 const packetRouter = require("./packetRouter");
+const GpsDevice = require("../Modules/gpsDevice/model");
 
 const TCP_PORT = process.env.TCP_PORT || 6000;
 
@@ -60,6 +61,20 @@ const server = net.createServer((socket) => {
     console.log(
       `📴 Device disconnected ${socket.imei ? `IMEI: ${socket.imei}` : ""}`,
     );
+    if (socket.gpsDeviceId) {
+      GpsDevice.updateOne(
+        { _id: socket.gpsDeviceId },
+        {
+          $set: {
+            isOnline: false,
+            connectionStatus: "offline",
+            lastSeen: new Date(),
+          },
+        },
+      ).catch((err) => {
+        console.error("❌ Failed to update offline status on close:", err.message);
+      });
+    }
   });
 
   // ─────────────────────────────────────────
@@ -67,6 +82,20 @@ const server = net.createServer((socket) => {
   // ─────────────────────────────────────────
   socket.on("timeout", () => {
     console.warn("⏱️ Socket timeout, closing connection");
+    if (socket.gpsDeviceId) {
+      GpsDevice.updateOne(
+        { _id: socket.gpsDeviceId },
+        {
+          $set: {
+            isOnline: false,
+            connectionStatus: "offline",
+            lastSeen: new Date(),
+          },
+        },
+      ).catch((err) => {
+        console.error("❌ Failed to update offline status on timeout:", err.message);
+      });
+    }
     socket.end();
   });
 
@@ -74,6 +103,20 @@ const server = net.createServer((socket) => {
   // SOCKET ERROR
   // ─────────────────────────────────────────
   socket.on("error", (err) => {
+    if (socket.gpsDeviceId) {
+      GpsDevice.updateOne(
+        { _id: socket.gpsDeviceId },
+        {
+          $set: {
+            isOnline: false,
+            connectionStatus: "offline",
+            lastSeen: new Date(),
+          },
+        },
+      ).catch((updateErr) => {
+        console.error("❌ Failed to update offline status on error:", updateErr.message);
+      });
+    }
     if (err.code === "ECONNRESET") {
       console.log(
         `⚠️ Device disconnected abruptly (ECONNRESET) ${socket.imei || ""}`,

@@ -165,7 +165,15 @@ exports.getManagerByOrganization = async (req, res) => {
     let usersQuery = {};
 
     if (req.orgScope !== "ALL") {
-      usersQuery.organizationId = { $in: req.orgScope };
+      const scopedOrgIds = req.orgScope.map((id) => id.toString());
+      const parentOrgId = req.user.organizationId
+        ? req.user.organizationId.toString()
+        : null;
+      const subOrgIdsOnly = parentOrgId
+        ? scopedOrgIds.filter((id) => id !== parentOrgId)
+        : scopedOrgIds;
+
+      usersQuery.organizationId = { $in: subOrgIdsOnly };
     }
 
     const users = await User.find(usersQuery)
@@ -337,12 +345,44 @@ exports.deleteUser = async (req, res) => {
         .json({ status: false, message: "Invalid user ID" });
     }
 
-    const user = await User.findByIdAndDelete(id);
+    const user = await User.findById(id);
     if (!user) {
       return res
         .status(404)
         .json({ status: false, message: "User not found" });
     }
+
+    if (req.user.role !== "superadmin") {
+      if (!req.orgScope) {
+        return res.status(400).json({
+          status: false,
+          message: "Organization scope missing",
+        });
+      }
+
+      if (user.role === "superadmin") {
+        return res.status(403).json({
+          status: false,
+          message: "Forbidden: Cannot delete superadmin user",
+        });
+      }
+
+      const userOrgId = user.organizationId ? user.organizationId.toString() : null;
+      const canDeleteInScope =
+        req.orgScope === "ALL" ||
+        (Array.isArray(req.orgScope) &&
+          userOrgId &&
+          req.orgScope.some((orgId) => orgId.toString() === userOrgId));
+
+      if (!canDeleteInScope) {
+        return res.status(403).json({
+          status: false,
+          message: "Forbidden: Cannot delete user from another organization",
+        });
+      }
+    }
+
+    await user.deleteOne();
 
     return res.status(200).json({
       status: true,

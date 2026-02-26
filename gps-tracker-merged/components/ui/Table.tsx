@@ -48,7 +48,7 @@ export default function Table({ columns, data, loading, variant = "light" }: Tab
   return (
     <div className={`${containerClass} overflow-hidden`}>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[640px] text-sm">
+        <table className="w-full table-fixed text-sm">
         <thead>
           <tr className={headerClass}>
             {columns.map((col, idx) => (

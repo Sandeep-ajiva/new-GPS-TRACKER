@@ -94,6 +94,7 @@ module.exports = async function loginHandler(socket, packet) {
       {
         $set: {
           isOnline: true,
+          connectionStatus: "online",
           lastLoginTime: new Date(),
           lastSeen: new Date(),
           softwareVersion,

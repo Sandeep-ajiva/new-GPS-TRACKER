@@ -11,8 +11,12 @@ const mongoose = require("mongoose");
 
 const parseJsonFields = (body, fields = []) => {
   fields.forEach((field) => {
-    if (typeof body[field] === "string") {
-      body[field] = JSON.parse(body[field]);
+    if (typeof body[field] === "string" && body[field].trim().startsWith("{")) {
+      try {
+        body[field] = JSON.parse(body[field]);
+      } catch (e) {
+        console.warn(`Failed to parse field ${field}:`, e.message);
+      }
     }
   });
 };
@@ -90,13 +94,27 @@ const resolveParentOrganizationId = (req, requestedParentOrganizationId) => {
 
 const validateAddressData = (address) => {
   if (!address) return true;
-  if (typeof address !== "object") {
+  if (typeof address !== "object" && typeof address !== "string") {
     throw {
       status: 400,
       message:
-        "Address must be an object with addressLine, city, state, country, pincode",
+        "Address must be an object or a string",
     };
   }
+};
+
+const normalizeAddress = (address) => {
+  if (!address) return { addressLine: "", city: "", state: "", country: "", pincode: "" };
+  if (typeof address === "string") {
+    return { addressLine: address, city: "", state: "", country: "", pincode: "" };
+  }
+  return {
+    addressLine: address.addressLine || "",
+    city: address.city || "",
+    state: address.state || "",
+    country: address.country || "",
+    pincode: address.pincode || "",
+  };
 };
 
 const validateGeoData = (geo) => {
@@ -128,6 +146,9 @@ exports.createOrganizationWithAdmin = async (req, res) => {
     parseJsonFields(req.body, ["address", "geo", "settings"]);
 
     await validateOrganizationWithAdminData(req.body);
+    validateAddressData(req.body.address);
+    validateGeoData(req.body.geo);
+    validateSettingsData(req.body.settings);
 
     const {
       name,
@@ -173,7 +194,7 @@ exports.createOrganizationWithAdmin = async (req, res) => {
       email: email.toLowerCase().trim(),
       phone: phone.trim(),
       logo,
-      address: address || {},
+      address: normalizeAddress(address),
       geo: geo || { timezone: "Asia/Kolkata" },
       settings: settings || {},
       parentOrganizationId: null,
@@ -387,12 +408,26 @@ exports.update = async (req, res) => {
 
 exports.delete = async (req, res) => {
   try {
-    const organization = await Organization.findByIdAndDelete(req.params.id);
+    const organization = await Organization.findById(req.params.id);
     if (!organization) {
       return res
         .status(404)
         .json({ status: false, message: "Organization not found" });
     }
+
+    if (
+      req.user.role !== "superadmin" &&
+      req.orgScope !== "ALL" &&
+      !req.orgScope.some((id) => id.toString() === organization._id.toString())
+    ) {
+      return res.status(403).json({
+        status: false,
+        message: "You are not allowed to delete this organization",
+      });
+    }
+
+    await Organization.findByIdAndDelete(req.params.id);
+
     return res.status(200).json({
       status: true,
       message: "Organization Deleted Successfully",

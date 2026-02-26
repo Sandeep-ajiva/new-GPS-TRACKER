@@ -9,20 +9,20 @@ import { toast } from "sonner";
 import OrganizationCreateModal from "@/components/admin/Modals/OrganizationCreateModal";
 
 import {
-  useGetOrganizationsQuery,
-  useCreateOrganizationMutation,
-  useUpdateOrganizationMutation,
-  useDeleteOrganizationMutation,
+    useGetOrganizationsQuery,
+    useCreateOrganizationMutation,
+    useUpdateOrganizationMutation,
+    useDeleteOrganizationMutation,
 } from "@/redux/api/organizationApi";
 
 interface ApiOrg {
-  _id: string;
-  name: string;
-  email: string;
-  phone: string;
-  address?: { city?: string; state?: string } | any;
-  status: string;
-  adminUser?: string; // or object
+    _id: string;
+    name: string;
+    email: string;
+    phone: string;
+    address?: { city?: string; state?: string } | any;
+    status: string;
+    adminUser?: string; // or object
 }
 
 export default function OrganizationsPage() {
@@ -32,7 +32,7 @@ export default function OrganizationsPage() {
     const [updateOrg] = useUpdateOrganizationMutation();
     const [deleteOrg] = useDeleteOrganizationMutation();
 
-    const organizations: ApiOrg[] = useMemo(() => orgsData?.docs || [], [orgsData]);
+    const organizations: ApiOrg[] = useMemo(() => orgsData?.data || [], [orgsData]);
     const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
     const [searchTerm, setSearchTerm] = useState("");
 
@@ -45,12 +45,12 @@ export default function OrganizationsPage() {
         e.preventDefault();
         try {
             if (editingOrg) {
-                 await updateOrg({ id: editingOrg._id, ...formData }).unwrap();
-                 toast.success("Organization updated successfully");
+                await updateOrg({ id: editingOrg._id, ...formData }).unwrap();
+                toast.success("Organization updated successfully");
             }
             closeEditModal();
         } catch (error: any) {
-             toast.error(error.data?.message || "Failed to update organization");
+            toast.error(error.data?.message || "Failed to update organization");
         }
     };
 
@@ -80,7 +80,7 @@ export default function OrganizationsPage() {
                 await deleteOrg(id).unwrap();
                 toast.success("Organization deleted");
             } catch (error: any) {
-                 toast.error(error.data?.message || "Failed to delete organization");
+                toast.error(error.data?.message || "Failed to delete organization");
             }
         }
     }
@@ -158,11 +158,10 @@ export default function OrganizationsPage() {
                             <button
                                 key={status}
                                 onClick={() => setStatusFilter(status)}
-                                className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-widest transition ${
-                                    statusFilter === status
-                                        ? "border-emerald-500/40 bg-emerald-500/20 text-emerald-200"
-                                        : "border-slate-800/80 bg-slate-950/60 text-slate-400 hover:text-slate-200"
-                                }`}
+                                className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-widest transition ${statusFilter === status
+                                    ? "border-emerald-500/40 bg-emerald-500/20 text-emerald-200"
+                                    : "border-slate-800/80 bg-slate-950/60 text-slate-400 hover:text-slate-200"
+                                    }`}
                             >
                                 {status}
                             </button>
@@ -177,60 +176,59 @@ export default function OrganizationsPage() {
                     />
                 </div>
 
-            <Table columns={columns} data={filteredOrganizations} loading={isLoading} variant="dark" />
+                <Table columns={columns} data={filteredOrganizations} loading={isLoading} variant="dark" />
 
-            <OrganizationCreateModal
-                isOpen={isCreateModalOpen}
-                onClose={() => setIsCreateModalOpen(false)}
-                variant="dark"
-                onCreate={async (payload) => {
-                    try {
-                        await createOrg({
-                            ...payload,
-                            organizationType: "logistics", // Default or add to modal
-                            settings: { speedLimit: 80 }
-                        }).unwrap();
-                        toast.success("Organization created successfully");
-                    } catch (error: any) {
-                        toast.error(error.data?.message || "Failed to create organization");
-                    }
-                }}
-            />
+                <OrganizationCreateModal
+                    isOpen={isCreateModalOpen}
+                    onClose={() => setIsCreateModalOpen(false)}
+                    variant="dark"
+                    onCreate={async (payload) => {
+                        try {
+                            await createOrg({
+                                ...payload,
+                                settings: { speedLimit: 80 }
+                            }).unwrap();
+                            toast.success("Organization created successfully");
+                        } catch (error: any) {
+                            toast.error(error.data?.message || "Failed to create organization");
+                        }
+                    }}
+                />
 
-            {isEditModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
-                    <div className="w-full max-w-md rounded-2xl border border-slate-800/80 bg-slate-900/90 p-6 shadow-[0_30px_80px_-40px_rgba(15,23,42,0.9)]">
-                        <h2 className="text-xl font-black text-slate-100">{editingOrg ? "Edit Organization" : "New Organization"}</h2>
-                        <p className="text-xs text-slate-400">Keep branches aligned with admin access.</p>
-                        <form onSubmit={handleEditSubmit} className="space-y-4">
-                            <div>
-                                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Name</label>
-                                <input type="text" required className="w-full rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
-                                    value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} />
-                            </div>
-                            <div>
-                                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Email</label>
-                                <input type="email" required className="w-full rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
-                                    value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })} />
-                            </div>
-                            <div>
-                                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Phone</label>
-                                <input type="text" required className="w-full rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
-                                    value={formData.phone} onChange={e => setFormData({ ...formData, phone: e.target.value })} />
-                            </div>
-                            <div>
-                                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Address</label>
-                                <textarea className="w-full rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
-                                    value={formData.address} onChange={e => setFormData({ ...formData, address: e.target.value })} />
-                            </div>
-                            <div className="flex gap-3 mt-6">
-                                <button type="button" onClick={closeEditModal} className="flex-1 rounded-xl border border-slate-800 bg-slate-950/70 py-2.5 text-[11px] font-black uppercase tracking-widest text-slate-200 hover:bg-slate-900">Cancel</button>
-                                <button type="submit" className="flex-1 rounded-xl bg-emerald-500/30 py-2.5 text-[11px] font-black uppercase tracking-widest text-emerald-100 hover:bg-emerald-500/40">Save</button>
-                            </div>
-                        </form>
+                {isEditModalOpen && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
+                        <div className="w-full max-w-md rounded-2xl border border-slate-800/80 bg-slate-900/90 p-6 shadow-[0_30px_80px_-40px_rgba(15,23,42,0.9)]">
+                            <h2 className="text-xl font-black text-slate-100">{editingOrg ? "Edit Organization" : "New Organization"}</h2>
+                            <p className="text-xs text-slate-400">Keep branches aligned with admin access.</p>
+                            <form onSubmit={handleEditSubmit} className="space-y-4">
+                                <div>
+                                    <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Name</label>
+                                    <input type="text" required className="w-full rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
+                                        value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} />
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Email</label>
+                                    <input type="email" required className="w-full rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
+                                        value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })} />
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Phone</label>
+                                    <input type="text" required className="w-full rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
+                                        value={formData.phone} onChange={e => setFormData({ ...formData, phone: e.target.value })} />
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Address</label>
+                                    <textarea className="w-full rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
+                                        value={formData.address} onChange={e => setFormData({ ...formData, address: e.target.value })} />
+                                </div>
+                                <div className="flex gap-3 mt-6">
+                                    <button type="button" onClick={closeEditModal} className="flex-1 rounded-xl border border-slate-800 bg-slate-950/70 py-2.5 text-[11px] font-black uppercase tracking-widest text-slate-200 hover:bg-slate-900">Cancel</button>
+                                    <button type="submit" className="flex-1 rounded-xl bg-emerald-500/30 py-2.5 text-[11px] font-black uppercase tracking-widest text-emerald-100 hover:bg-emerald-500/40">Save</button>
+                                </div>
+                            </form>
+                        </div>
                     </div>
-                </div>
-            )}
+                )}
             </div>
         </ApiErrorBoundary>
     );

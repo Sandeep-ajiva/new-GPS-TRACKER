@@ -100,7 +100,8 @@ router.put(
 router.delete(
   "/:id",
   requireAuth,
-  checkAuthorization(["superadmin"], "organizations", "delete"),
+  checkAuthorization(["superadmin", "admin"], "organizations", "delete"),
+  checkOrganization,
   Controller.delete
 );
 

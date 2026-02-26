@@ -89,10 +89,22 @@ const checkAuthorization = (
       const permissions = loadPermissions();
       const rolePermissions = permissions[userRole]?.modules;
 
+      if (!rolePermissions) {
+        return res.status(403).json({
+          status: false,
+          message: `Forbidden: ${userRole} has no permissions defined`,
+        });
+      }
+
+      // Find the module key in a case-insensitive way
+      const moduleKey = Object.keys(rolePermissions).find(
+        (key) => key.toLowerCase() === resolvedModule.toLowerCase()
+      );
+
       if (
-        !rolePermissions ||
-        !Array.isArray(rolePermissions[resolvedModule]) ||
-        !rolePermissions[resolvedModule].includes(resolvedAction)
+        !moduleKey ||
+        !Array.isArray(rolePermissions[moduleKey]) ||
+        !rolePermissions[moduleKey].includes(resolvedAction)
       ) {
         return res.status(403).json({
           status: false,

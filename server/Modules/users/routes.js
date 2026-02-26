@@ -28,7 +28,8 @@ router.put(
 router.delete(
   "/:id",
   verifyToken,
-  checkAuthorization(["superadmin"], "users", "delete"),
+  checkAuthorization(["superadmin", "admin"], "users", "delete"),
+  checkOrganization,
   Controller.deleteUser
 );
 

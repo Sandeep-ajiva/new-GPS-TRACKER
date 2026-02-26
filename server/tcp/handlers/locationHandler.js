@@ -5,6 +5,7 @@
 
 const Service = require("../../Modules/gpsLiveData/service");
 const { AIS140PacketParser } = require("../../Modules/gpsLiveData/controller");
+const GpsDevice = require("../../Modules/gpsDevice/model");
 
 module.exports = async function locationHandler(socket, packet) {
   try {
@@ -46,6 +47,17 @@ module.exports = async function locationHandler(socket, packet) {
       organizationId: socket.organizationId,
       vehicleId: socket.vehicleId,
     });
+
+    await GpsDevice.updateOne(
+      { _id: socket.gpsDeviceId },
+      {
+        $set: {
+          isOnline: true,
+          connectionStatus: "online",
+          lastSeen: new Date(),
+        },
+      },
+    );
 
     if (result?.success) {
       socket.write("ACK\n");

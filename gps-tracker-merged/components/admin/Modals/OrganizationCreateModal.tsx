@@ -8,13 +8,16 @@ type OrganizationCreateModalProps = {
   onClose: () => void;
   onCreate?: (payload: {
     name: string;
-    orgType: string;
+    organizationType: string;
     email: string;
     phone: string;
     address: string;
+    firstName: string;
+    lastName: string;
     password: string;
     logoUrl?: string;
   }) => void;
+  variant?: "light" | "dark";
 };
 
 const splitOrgName = (name: string) => {
@@ -31,7 +34,7 @@ export default function OrganizationCreateModal({
 }: OrganizationCreateModalProps) {
   const [formData, setFormData] = useState({
     name: "",
-    orgType: "",
+    organizationType: "logistics",
     email: "",
     phone: "",
     address: "",
@@ -46,21 +49,25 @@ export default function OrganizationCreateModal({
     e.preventDefault();
     setIsSaving(true);
     const { firstName, lastName } = splitOrgName(formData.name);
-    setTimeout(() => {
-      setIsSaving(false);
-      toast.success(`Organization created for ${firstName} ${lastName} (demo)`);
-      onCreate?.({
-        name: formData.name,
-        orgType: formData.orgType,
-        email: formData.email,
-        phone: formData.phone,
-        address: formData.address,
-        password: formData.password,
-        logoUrl: formData.logoUrl || undefined,
-      });
+
+    try {
+      if (onCreate) {
+        await onCreate({
+          name: formData.name,
+          organizationType: formData.organizationType,
+          email: formData.email,
+          phone: formData.phone,
+          address: formData.address,
+          firstName,
+          lastName,
+          password: formData.password,
+          logoUrl: formData.logoUrl || undefined,
+        });
+      }
+
       setFormData({
         name: "",
-        orgType: "",
+        organizationType: "logistics",
         email: "",
         phone: "",
         address: "",
@@ -68,7 +75,12 @@ export default function OrganizationCreateModal({
         logoUrl: "",
       });
       onClose();
-    }, 400);
+    } catch (error: any) {
+      console.error("Creation failed:", error);
+      // Parent handle error with toast
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -119,14 +131,14 @@ export default function OrganizationCreateModal({
                 <select
                   required
                   className="w-full rounded-xl px-4 py-3 text-sm font-bold outline-none transition-all bg-slate-50 border border-slate-200 text-slate-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                  value={formData.orgType}
-                  onChange={(e) => setFormData({ ...formData, orgType: e.target.value })}
+                  value={formData.organizationType}
+                  onChange={(e) => setFormData({ ...formData, organizationType: e.target.value })}
                 >
-                  <option value="">Select type</option>
                   <option value="logistics">Logistics</option>
-                  <option value="public-transport">Public Transport</option>
-                  <option value="rental">Rental Fleet</option>
-                  <option value="enterprise">Enterprise</option>
+                  <option value="transport">Public Transport</option>
+                  <option value="taxi">Taxi / Rental</option>
+                  <option value="school">School / Campus</option>
+                  <option value="fleet">Enterprise Fleet</option>
                 </select>
               </div>
               <div>

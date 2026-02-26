@@ -5,20 +5,20 @@ const Validator = require('../../helpers/validators');
 const mongoose = require('mongoose');
 
 const validateAssignData = async (data) => {
-    const rules = {
-        vehicleId: "required|string",
-        driverId: "required|string"
-    };
-    const validator = new Validator(data, rules);
-    await validator.validate();
+  const rules = {
+    vehicleId: "required|string",
+    driverId: "required|string"
+  };
+  const validator = new Validator(data, rules);
+  await validator.validate();
 };
 
 const validateUnassignData = async (data) => {
-    const rules = {
-        vehicleId: "required|string"
-    };
-    const validator = new Validator(data, rules);
-    await validator.validate();
+  const rules = {
+    vehicleId: "required|string"
+  };
+  const validator = new Validator(data, rules);
+  await validator.validate();
 };
 
 // Assign driver to vehicle (only one active driver per vehicle)
@@ -30,20 +30,25 @@ exports.assignDriverToVehicle = async (req, res) => {
     await validateAssignData(req.body);
 
     const { vehicleId, driverId } = req.body;
-    const organizationId = req.orgId;
+    const orgScope = req.orgScope;
 
-    if (!organizationId) {
-      throw { status: 400, message: "OrganizationId is required" };
+    if (!orgScope) {
+      throw { status: 400, message: "Organization scope missing" };
     }
 
     if (!mongoose.isValidObjectId(vehicleId) || !mongoose.isValidObjectId(driverId)) {
       throw { status: 400, message: "Invalid vehicleId or driverId" };
     }
 
+    const orgFilter =
+      orgScope === "ALL"
+        ? { $exists: true }
+        : { $in: orgScope };
+
     // 🔍 Fetch vehicle
     const vehicle = await Vehicle.findOne({
       _id: vehicleId,
-      organizationId
+      organizationId: orgFilter
     }).session(session);
 
     if (!vehicle) {
@@ -53,7 +58,7 @@ exports.assignDriverToVehicle = async (req, res) => {
     // 🔍 Fetch driver
     const driver = await Driver.findOne({
       _id: driverId,
-      organizationId
+      organizationId: orgFilter
     }).session(session);
 
     if (!driver) {
@@ -86,7 +91,7 @@ exports.assignDriverToVehicle = async (req, res) => {
     // 🧩 Create new mapping
     const mapping = await VehicleDriverMapping.create(
       [{
-        organizationId,
+        organizationId: vehicle.organizationId,
         vehicleId,
         driverId,
         assignedAt: new Date(),
@@ -135,160 +140,184 @@ exports.assignDriverToVehicle = async (req, res) => {
 
 // Unassign driver from vehicle
 exports.unassignDriverFromVehicle = async (req, res) => {
-    try {
-        await validateUnassignData(req.body);
+  try {
+    await validateUnassignData(req.body);
 
-        const { vehicleId } = req.body;
-        const organizationId = req.orgId;
+    const { vehicleId } = req.body;
+    const organizationId = req.orgId;
 
-        if (!organizationId) {
-            return res.status(400).json({
-                status: false,
-                message: "OrganizationId is required"
-            });
-        }
-
-        // Validate ObjectId
-        if (!mongoose.isValidObjectId(vehicleId)) {
-            return res.status(400).json({
-                status: false,
-                message: "Invalid vehicle ID"
-            });
-        }
-
-        // Verify vehicle exists and belongs to organization
-        const vehicle = await Vehicle.findById(vehicleId);
-        if (!vehicle) {
-            return res.status(404).json({
-                status: false,
-                message: "Vehicle not found"
-            });
-        }
-
-        if (vehicle.organizationId.toString() !== organizationId.toString()) {
-            return res.status(403).json({
-                status: false,
-                message: "Forbidden: Vehicle does not belong to your organization"
-            });
-        }
-
-        // Find active mapping
-        const activeMapping = await VehicleDriverMapping.findOne({
-            vehicleId,
-            unassignedAt: null,
-            status: "assigned"
-        });
-
-        if (!activeMapping) {
-            return res.status(404).json({
-                status: false,
-                message: "No active driver assignment found for this vehicle"
-            });
-        }
-
-        // Unassign
-        activeMapping.unassignedAt = new Date();
-        activeMapping.status = "unassigned";
-        await activeMapping.save();
-
-        await activeMapping.populate(['vehicleId', 'driverId']);
-
-        return res.status(200).json({
-            status: true,
-            message: "Driver unassigned from vehicle successfully",
-            data: {
-                _id: activeMapping._id,
-                vehicleId: activeMapping.vehicleId._id,
-                vehicleName: activeMapping.vehicleId.vehicleNumber,
-                driverId: activeMapping.driverId._id,
-                driverName: `${activeMapping.driverId.firstName} ${activeMapping.driverId.lastName}`,
-                assignedAt: activeMapping.assignedAt,
-                unassignedAt: activeMapping.unassignedAt,
-                status: activeMapping.status
-            }
-        });
-    } catch (error) {
-        console.error("Unassign Driver Error:", error);
-        return res.status(error.status || 500).json({
-            status: false,
-            message: error.message || "Internal server error"
-        });
+    if (!organizationId) {
+      return res.status(400).json({
+        status: false,
+        message: "OrganizationId is required"
+      });
     }
+
+    // Validate ObjectId
+    if (!mongoose.isValidObjectId(vehicleId)) {
+      return res.status(400).json({
+        status: false,
+        message: "Invalid vehicle ID"
+      });
+    }
+
+    // Verify vehicle exists and belongs to organization
+    const vehicle = await Vehicle.findById(vehicleId);
+    if (!vehicle) {
+      return res.status(404).json({
+        status: false,
+        message: "Vehicle not found"
+      });
+    }
+
+    if (vehicle.organizationId.toString() !== organizationId.toString()) {
+      return res.status(403).json({
+        status: false,
+        message: "Forbidden: Vehicle does not belong to your organization"
+      });
+    }
+
+    // Find active mapping
+    const activeMapping = await VehicleDriverMapping.findOne({
+      vehicleId,
+      unassignedAt: null,
+      status: "assigned"
+    });
+
+    if (!activeMapping) {
+      return res.status(404).json({
+        status: false,
+        message: "No active driver assignment found for this vehicle"
+      });
+    }
+
+    // Unassign
+    activeMapping.unassignedAt = new Date();
+    activeMapping.status = "unassigned";
+    await activeMapping.save();
+
+    await activeMapping.populate(['vehicleId', 'driverId']);
+
+    return res.status(200).json({
+      status: true,
+      message: "Driver unassigned from vehicle successfully",
+      data: {
+        _id: activeMapping._id,
+        vehicleId: activeMapping.vehicleId._id,
+        vehicleName: activeMapping.vehicleId.vehicleNumber,
+        driverId: activeMapping.driverId._id,
+        driverName: `${activeMapping.driverId.firstName} ${activeMapping.driverId.lastName}`,
+        assignedAt: activeMapping.assignedAt,
+        unassignedAt: activeMapping.unassignedAt,
+        status: activeMapping.status
+      }
+    });
+  } catch (error) {
+    console.error("Unassign Driver Error:", error);
+    return res.status(error.status || 500).json({
+      status: false,
+      message: error.message || "Internal server error"
+    });
+  }
 };
 
 // Get current driver assigned to vehicle
 exports.getCurrentDriverByVehicle = async (req, res) => {
-    try {
-        const { vehicleId } = req.params;
-        const organizationId = req.orgId;
+  try {
+    const { vehicleId } = req.params;
+    const organizationId = req.orgId;
 
-        if (!organizationId) {
-            return res.status(400).json({
-                status: false,
-                message: "OrganizationId is required"
-            });
-        }
-
-        // Validate ObjectId
-        if (!mongoose.isValidObjectId(vehicleId)) {
-            return res.status(400).json({
-                status: false,
-                message: "Invalid vehicle ID"
-            });
-        }
-
-        // Verify vehicle exists and belongs to organization
-        const vehicle = await Vehicle.findById(vehicleId);
-        if (!vehicle) {
-            return res.status(404).json({
-                status: false,
-                message: "Vehicle not found"
-            });
-        }
-
-        if (vehicle.organizationId.toString() !== organizationId.toString()) {
-            return res.status(403).json({
-                status: false,
-                message: "Forbidden: Vehicle does not belong to your organization"
-            });
-        }
-
-        // Find active driver assignment
-        const activeMapping = await VehicleDriverMapping.findOne({
-            vehicleId,
-            unassignedAt: null,
-            status: "assigned"
-        }).populate(['vehicleId', 'driverId']);
-
-        if (!activeMapping) {
-            return res.status(200).json({
-                status: true,
-                message: "No active driver assigned to this vehicle",
-                data: null
-            });
-        }
-
-        return res.status(200).json({
-            status: true,
-            message: "Current driver fetched successfully",
-            data: {
-                _id: activeMapping._id,
-                vehicleId: activeMapping.vehicleId._id,
-                vehicleName: activeMapping.vehicleId.vehicleNumber,
-                driverId: activeMapping.driverId._id,
-                driverName: `${activeMapping.driverId.firstName} ${activeMapping.driverId.lastName}`,
-                driverEmail: activeMapping.driverId.email,
-                driverPhone: activeMapping.driverId.phone,
-                driverStatus: activeMapping.driverId.status,
-                assignedAt: activeMapping.assignedAt,
-                status: activeMapping.status
-            }
-        });
-    } catch (error) {
-        console.error("Get Current Driver Error:", error);
-        return res.status(error.status || 500).json({
-            status: false,
-            message: error.message || "Internal server error"
-        });
+    if (!organizationId) {
+      return res.status(400).json({
+        status: false,
+        message: "OrganizationId is required"
+      });
     }
+
+    // Validate ObjectId
+    if (!mongoose.isValidObjectId(vehicleId)) {
+      return res.status(400).json({
+        status: false,
+        message: "Invalid vehicle ID"
+      });
+    }
+
+    // Verify vehicle exists and belongs to organization
+    const vehicle = await Vehicle.findById(vehicleId);
+    if (!vehicle) {
+      return res.status(404).json({
+        status: false,
+        message: "Vehicle not found"
+      });
+    }
+
+    if (vehicle.organizationId.toString() !== organizationId.toString()) {
+      return res.status(403).json({
+        status: false,
+        message: "Forbidden: Vehicle does not belong to your organization"
+      });
+    }
+
+    // Find active driver assignment
+    const activeMapping = await VehicleDriverMapping.findOne({
+      vehicleId,
+      unassignedAt: null,
+      status: "assigned"
+    }).populate(['vehicleId', 'driverId']);
+
+    if (!activeMapping) {
+      return res.status(200).json({
+        status: true,
+        message: "No active driver assigned to this vehicle",
+        data: null
+      });
+    }
+
+    return res.status(200).json({
+      status: true,
+      message: "Current driver fetched successfully",
+      data: {
+        _id: activeMapping._id,
+        vehicleId: activeMapping.vehicleId._id,
+        vehicleName: activeMapping.vehicleId.vehicleNumber,
+        driverId: activeMapping.driverId._id,
+        driverName: `${activeMapping.driverId.firstName} ${activeMapping.driverId.lastName}`,
+        driverEmail: activeMapping.driverId.email,
+        driverPhone: activeMapping.driverId.phone,
+        driverStatus: activeMapping.driverId.status,
+        assignedAt: activeMapping.assignedAt,
+        status: activeMapping.status
+      }
+    });
+  } catch (error) {
+    console.error("Get Current Driver Error:", error);
+    return res.status(error.status || 500).json({
+      status: false,
+      message: error.message || "Internal server error"
+    });
+  }
+};
+
+exports.getAll = async (req, res) => {
+  try {
+    const organizationId = req.orgId;
+    const filter = { unassignedAt: null };
+
+    if (req.user.role !== "superadmin") {
+      filter.organizationId = { $in: req.orgScope };
+    }
+
+    const mappings = await VehicleDriverMapping.find(filter)
+      .populate('organizationId', 'name')
+      .populate('vehicleId')
+      .populate('driverId');
+
+    return res.status(200).json({
+      status: true,
+      data: mappings
+    });
+  } catch (error) {
+    console.error("Get All Mappings Error:", error);
+    return res.status(500).json({ status: false, message: error.message });
+  }
 };

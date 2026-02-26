@@ -3,32 +3,35 @@
 import { useMemo, useState } from "react";
 import Table from "@/components/ui/Table";
 import ApiErrorBoundary from "@/components/admin/ErrorBoundary/ApiErrorBoundary";
-import { Link2, Trash2, Loader2, Filter, Car, Cpu, ArrowRight, X, Info } from "lucide-react";
+import { Trash2, Loader2, UserPlus, Filter, Car, User, ArrowRight, X, Info } from "lucide-react";
 import { toast } from "sonner";
 import {
-    useGetDeviceMappingsQuery,
-    useAssignDeviceMutation,
-    useUnassignDeviceMutation
-} from "@/redux/api/deviceMappingApi";
+    useGetVehicleDriverMappingsQuery,
+    useAssignDriverMutation,
+    useUnassignDriverMutation
+} from "@/redux/api/vehicleDriverMappingApi";
 import { useGetVehiclesQuery } from "@/redux/api/vehicleApi";
+import { useGetDriversQuery } from "@/redux/api/driversApi";
 import { useGetGpsDevicesQuery } from "@/redux/api/gpsDeviceApi";
 import { useGetOrganizationsQuery } from "@/redux/api/organizationApi";
 import { getSecureItem } from "@/app/admin/Helpers/encryptionHelper";
 
-export default function DeviceMappingPage() {
+export default function DriverMappingPage() {
     // API Hooks
-    const { data: mappingData, isLoading: isMappingLoading } = useGetDeviceMappingsQuery({ page: 0, limit: 1000 }, { refetchOnMountOrArgChange: true });
+    const { data: mappingData, isLoading: isMappingLoading } = useGetVehicleDriverMappingsQuery(undefined, { refetchOnMountOrArgChange: true });
     const { data: vehData, isLoading: isVehLoading } = useGetVehiclesQuery({ page: 0, limit: 1000 }, { refetchOnMountOrArgChange: true });
-    const { data: devData, isLoading: isDevLoading } = useGetGpsDevicesQuery({ page: 0, limit: 1000 }, { refetchOnMountOrArgChange: true });
+    const { data: driverData, isLoading: isDriverLoading } = useGetDriversQuery({ page: 0, limit: 1000 }, { refetchOnMountOrArgChange: true });
+    const { data: gpsData, isLoading: isGpsLoading } = useGetGpsDevicesQuery({ page: 0, limit: 1000 }, { refetchOnMountOrArgChange: true });
     const { data: orgData, isLoading: isOrgLoading } = useGetOrganizationsQuery(undefined, { refetchOnMountOrArgChange: true });
 
     // Mutations
-    const [assignDevice, { isLoading: isAssigning }] = useAssignDeviceMutation();
-    const [unassignDevice, { isLoading: isUnassigning }] = useUnassignDeviceMutation();
+    const [assignDriver, { isLoading: isAssigning }] = useAssignDriverMutation();
+    const [unassignDriver, { isLoading: isUnassigning }] = useUnassignDriverMutation();
 
     const mappings = Array.isArray(mappingData?.data) ? mappingData.data : [];
     const vehicles = Array.isArray(vehData?.data) ? vehData.data : [];
-    const devices = Array.isArray(devData?.data) ? devData.data : [];
+    const drivers = Array.isArray(driverData?.data) ? driverData.data : [];
+    const gpsDevices = Array.isArray(gpsData?.data) ? gpsData.data : [];
     const organizations = useMemo(() => (orgData?.data as any[]) || [], [orgData]);
     const userRole = getSecureItem("userRole");
     const canAssign = userRole === "admin";
@@ -36,10 +39,11 @@ export default function DeviceMappingPage() {
 
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [showFilters, setShowFilters] = useState(false);
-    const [formData, setFormData] = useState({ vehicleId: "", deviceId: "" });
+    const [formData, setFormData] = useState({ vehicleId: "", driverId: "" });
     const [filters, setFilters] = useState({
         vehicleNumber: "",
-        imei: "",
+        driverName: "",
+        driverPhone: "",
         organizationId: "",
         assignedDate: "",
     });
@@ -53,26 +57,26 @@ export default function DeviceMappingPage() {
     const assignedVehicleIds = new Set(
         mappings.map((m: any) => getEntityId(m.vehicleId)).filter(Boolean),
     );
-    const assignedDeviceIds = new Set(
-        mappings.map((m: any) => getEntityId(m.gpsDeviceId)).filter(Boolean),
+    const assignedDriverIds = new Set(
+        mappings.map((m: any) => getEntityId(m.driverId)).filter(Boolean),
     );
 
     const availableVehicles = useMemo(
         () => vehicles.filter((v: any) => !assignedVehicleIds.has(v._id?.toString())),
         [vehicles, assignedVehicleIds],
     );
-    const availableDevices = useMemo(
-        () => devices.filter((d: any) => !assignedDeviceIds.has(d._id?.toString())),
-        [devices, assignedDeviceIds],
+    const availableDrivers = useMemo(
+        () => drivers.filter((d: any) => !assignedDriverIds.has(d._id?.toString())),
+        [drivers, assignedDriverIds],
     );
 
     const selectedVehicle = useMemo(
         () => availableVehicles.find((v: any) => v._id === formData.vehicleId) || null,
         [availableVehicles, formData.vehicleId],
     );
-    const selectedDevice = useMemo(
-        () => availableDevices.find((d: any) => d._id === formData.deviceId) || null,
-        [availableDevices, formData.deviceId],
+    const selectedDriver = useMemo(
+        () => availableDrivers.find((d: any) => d._id === formData.driverId) || null,
+        [availableDrivers, formData.driverId],
     );
 
     const getMappedVehicle = (row: any) => {
@@ -81,21 +85,36 @@ export default function DeviceMappingPage() {
         return vehicles.find((item: any) => item._id === vehicle) || null;
     };
 
+    const getMappedDriver = (row: any) => {
+        const driver = row.driverId;
+        if (driver && typeof driver === "object") return driver;
+        return drivers.find((item: any) => item._id === driver) || null;
+    };
+
     const getMappedDevice = (row: any) => {
-        const device = row.gpsDeviceId;
-        if (device && typeof device === "object") return device;
-        return devices.find((item: any) => item._id === device) || null;
-    };
+        const directDevice = row.deviceId;
+        if (directDevice && typeof directDevice === "object") return directDevice;
+        if (typeof directDevice === "string") {
+            const foundDirect = gpsDevices.find((item: any) => item._id === directDevice);
+            if (foundDirect) return foundDirect;
+        }
 
-    const getVehicleNumber = (row: any) => {
         const vehicle = getMappedVehicle(row);
-        return vehicle?.vehicleNumber || "";
+        const vehicleDevice = vehicle?.deviceId;
+        if (vehicleDevice && typeof vehicleDevice === "object") return vehicleDevice;
+        return gpsDevices.find((item: any) => item._id === vehicleDevice) || null;
     };
 
-    const getDeviceImei = (row: any) => {
-        const device = getMappedDevice(row);
-        return device?.imei || "";
+    const getVehicleNumber = (row: any) => getMappedVehicle(row)?.vehicleNumber || "";
+    const getVehicleImei = (row: any) => getMappedDevice(row)?.imei || "";
+
+    const getDriverName = (row: any) => {
+        const driver = getMappedDriver(row);
+        if (!driver) return "";
+        return `${driver.firstName || ""} ${driver.lastName || ""}`.trim();
     };
+
+    const getDriverPhone = (row: any) => getMappedDriver(row)?.phone || "";
 
     const getOrganizationId = (row: any) => {
         const directOrg = row.organizationId;
@@ -106,9 +125,9 @@ export default function DeviceMappingPage() {
         if (vehicleOrg && typeof vehicleOrg === "object") return vehicleOrg._id || "";
         if (typeof vehicleOrg === "string") return vehicleOrg;
 
-        const deviceOrg = getMappedDevice(row)?.organizationId;
-        if (deviceOrg && typeof deviceOrg === "object") return deviceOrg._id || "";
-        if (typeof deviceOrg === "string") return deviceOrg;
+        const driverOrg = getMappedDriver(row)?.organizationId;
+        if (driverOrg && typeof driverOrg === "object") return driverOrg._id || "";
+        if (typeof driverOrg === "string") return driverOrg;
 
         return "";
     };
@@ -120,8 +139,8 @@ export default function DeviceMappingPage() {
         const vehicleOrg = getMappedVehicle(row)?.organizationId;
         if (vehicleOrg && typeof vehicleOrg === "object" && vehicleOrg.name) return vehicleOrg.name;
 
-        const deviceOrg = getMappedDevice(row)?.organizationId;
-        if (deviceOrg && typeof deviceOrg === "object" && deviceOrg.name) return deviceOrg.name;
+        const driverOrg = getMappedDriver(row)?.organizationId;
+        if (driverOrg && typeof driverOrg === "object" && driverOrg.name) return driverOrg.name;
 
         const orgId = getOrganizationId(row);
         const org = organizations.find((item: any) => item._id === orgId);
@@ -129,7 +148,7 @@ export default function DeviceMappingPage() {
     };
 
     const getAssignedDate = (row: any) => {
-        const date = row.createdAt || row.assignedAt;
+        const date = row.assignedAt || row.createdAt;
         return date ? new Date(date).toISOString().split("T")[0] : "";
     };
 
@@ -144,11 +163,19 @@ export default function DeviceMappingPage() {
             );
         }
 
-        if (filters.imei) {
+        if (filters.driverName) {
             filtered = filtered.filter((row: any) =>
-                getDeviceImei(row)
+                getDriverName(row)
                     .toLowerCase()
-                    .includes(filters.imei.toLowerCase()),
+                    .includes(filters.driverName.toLowerCase()),
+            );
+        }
+
+        if (filters.driverPhone) {
+            filtered = filtered.filter((row: any) =>
+                getDriverPhone(row)
+                    .toLowerCase()
+                    .includes(filters.driverPhone.toLowerCase()),
             );
         }
 
@@ -165,38 +192,36 @@ export default function DeviceMappingPage() {
         }
 
         return filtered;
-    }, [mappings, filters, vehicles, devices, organizations]);
+    }, [mappings, filters, vehicles, drivers, organizations]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!formData.vehicleId || !formData.deviceId) {
-            toast.error("Select both vehicle and device");
+        if (!formData.vehicleId || !formData.driverId) {
+            toast.error("Select both vehicle and driver");
             return;
         }
 
         try {
-            await assignDevice({
+            await assignDriver({
                 vehicleId: formData.vehicleId,
-                gpsDeviceId: formData.deviceId
+                driverId: formData.driverId
             }).unwrap();
-            toast.success("Device assigned successfully");
+            toast.success("Driver assigned successfully");
             closeModal();
         } catch (err: any) {
             toast.error(err?.data?.message || "Assignment failed");
         }
     };
 
-    const handleUnassign = async (id: string) => {
+    const handleUnassign = async (vehicleId: string) => {
         if (!canUnassign) {
-            toast.error("You do not have permission to unassign devices.");
+            toast.error("You do not have permission to unassign drivers.");
             return;
         }
-        if (confirm("Are you sure you want to unassign this device?")) {
+        if (confirm("Are you sure you want to unassign this driver?")) {
             try {
-                // unassignDevice endpoint usually expects mappingId or vehicle/deviceId combo.
-                // deviceMappingApi.ts has unassignDevice accepting ID.
-                await unassignDevice(id).unwrap();
-                toast.success("Device unassigned");
+                await unassignDriver({ vehicleId }).unwrap();
+                toast.success("Driver unassigned");
             } catch (err: any) {
                 toast.error(err?.data?.message || "Unassignment failed");
             }
@@ -204,7 +229,7 @@ export default function DeviceMappingPage() {
     }
 
     const openCreateModal = () => {
-        setFormData({ vehicleId: "", deviceId: "" });
+        setFormData({ vehicleId: "", driverId: "" });
         setIsModalOpen(true);
     };
 
@@ -215,7 +240,8 @@ export default function DeviceMappingPage() {
     const clearFilters = () => {
         setFilters({
             vehicleNumber: "",
-            imei: "",
+            driverName: "",
+            driverPhone: "",
             organizationId: "",
             assignedDate: "",
         });
@@ -227,24 +253,28 @@ export default function DeviceMappingPage() {
             accessor: (row: any) => getVehicleNumber(row) || "Unknown",
         },
         {
+            header: "IMEI",
+            accessor: (row: any) => getVehicleImei(row) || "N/A",
+        },
+        {
+            header: "Driver",
+            accessor: (row: any) => getDriverName(row) || "Unknown",
+        },
+        {
             header: "Organization",
             accessor: (row: any) => getOrganizationName(row),
         },
         {
-            header: "Device IMEI",
-            accessor: (row: any) => getDeviceImei(row) || "Unknown",
-        },
-        {
             header: "Assigned Date",
             accessor: (row: any) => {
-                const date = row.createdAt || row.assignedAt;
+                const date = row.assignedAt || row.createdAt;
                 return date ? new Date(date).toLocaleDateString() : "-";
             },
         },
         {
             header: "Actions", accessor: (row: any) => (
                 <button
-                    onClick={() => handleUnassign(row._id)}
+                    onClick={() => handleUnassign(row.vehicleId?._id || row.vehicleId)}
                     disabled={!canUnassign || isUnassigning}
                     className="inline-flex items-center gap-1 text-[11px] font-black uppercase tracking-widest text-rose-600 hover:text-rose-700 disabled:opacity-50"
                 >
@@ -254,7 +284,7 @@ export default function DeviceMappingPage() {
         }
     ];
 
-    const isLoading = isMappingLoading || isVehLoading || isDevLoading || isOrgLoading;
+    const isLoading = isMappingLoading || isVehLoading || isDriverLoading || isGpsLoading || isOrgLoading;
 
     if (isLoading) {
         return (
@@ -270,8 +300,8 @@ export default function DeviceMappingPage() {
                 <div className="flex flex-wrap items-center justify-between gap-4">
                     <div>
                         <p className="text-[11px] font-black uppercase tracking-[0.3em] text-slate-400">Operations</p>
-                        <h1 className="text-2xl font-black text-slate-900">Device Mapping</h1>
-                        <p className="text-sm text-slate-500">Associate GPS devices with vehicles.</p>
+                        <h1 className="text-2xl font-black text-slate-900">Driver Mapping</h1>
+                        <p className="text-sm text-slate-500">Associate active drivers with fleet vehicles.</p>
                     </div>
                     <div className="flex flex-col gap-3 sm:flex-row">
                         <button
@@ -285,7 +315,7 @@ export default function DeviceMappingPage() {
                             className="rounded-xl bg-blue-600 px-4 py-2 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-blue-200 transition hover:bg-blue-700 disabled:opacity-60"
                             disabled={!canAssign}
                         >
-                            <span className="inline-flex items-center gap-2"><Link2 size={16} /> Assign Device</span>
+                            <span className="inline-flex items-center gap-2"><UserPlus size={16} /> Assign Driver</span>
                         </button>
                     </div>
                 </div>
@@ -306,13 +336,24 @@ export default function DeviceMappingPage() {
                             </div>
                             <div>
                                 <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
-                                    Device IMEI
+                                    Driver Name
                                 </label>
                                 <input
                                     className="w-full rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
-                                    value={filters.imei}
-                                    onChange={(e) => setFilters({ ...filters, imei: e.target.value })}
-                                    placeholder="Search IMEI"
+                                    value={filters.driverName}
+                                    onChange={(e) => setFilters({ ...filters, driverName: e.target.value })}
+                                    placeholder="Search driver"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
+                                    Driver Phone
+                                </label>
+                                <input
+                                    className="w-full rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
+                                    value={filters.driverPhone}
+                                    onChange={(e) => setFilters({ ...filters, driverPhone: e.target.value })}
+                                    placeholder="Search phone"
                                 />
                             </div>
                             <div>
@@ -320,7 +361,7 @@ export default function DeviceMappingPage() {
                                     Organization
                                 </label>
                                 <select
-                                    className="admin-select-readable w-full rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
+                                    className="w-full rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
                                     value={filters.organizationId}
                                     onChange={(e) => setFilters({ ...filters, organizationId: e.target.value })}
                                 >
@@ -341,7 +382,7 @@ export default function DeviceMappingPage() {
                                     onChange={(e) => setFilters({ ...filters, assignedDate: e.target.value })}
                                 />
                             </div>
-                            <div className="sm:col-span-2 lg:col-span-4">
+                            <div className="sm:col-span-2 lg:col-span-3 flex items-end">
                                 <button
                                     onClick={clearFilters}
                                     className="w-full bg-slate-100 text-slate-700 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-slate-200 transition-colors"
@@ -401,18 +442,18 @@ export default function DeviceMappingPage() {
 
                                     <div className="md:col-span-5">
                                         <label className="mb-2 block text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">
-                                            <span className="inline-flex items-center gap-2"><Cpu size={12} className="text-indigo-500" /> Select Device</span>
+                                            <span className="inline-flex items-center gap-2"><User size={12} className="text-indigo-500" /> Select Driver</span>
                                         </label>
                                         <select
                                             required
                                             className="admin-select-readable w-full h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20"
-                                            value={formData.deviceId}
-                                            onChange={(e) => setFormData({ ...formData, deviceId: e.target.value })}
+                                            value={formData.driverId}
+                                            onChange={(e) => setFormData({ ...formData, driverId: e.target.value })}
                                         >
-                                            <option value="">Search device IMEI...</option>
-                                            {availableDevices.map((d: any) => (
+                                            <option value="">Search driver name...</option>
+                                            {availableDrivers.map((d: any) => (
                                                 <option key={d._id} value={d._id}>
-                                                    {d.imei}
+                                                    {d.firstName} {d.lastName}
                                                 </option>
                                             ))}
                                         </select>
@@ -424,14 +465,14 @@ export default function DeviceMappingPage() {
                                         <Info size={14} /> {selectedVehicle ? selectedVehicle.vehicleNumber : "Select Vehicle"}
                                     </div>
                                     <div className="h-10 rounded-full border border-dashed border-slate-200 bg-slate-50/60 px-4 text-[11px] font-black uppercase tracking-[0.16em] text-slate-900 flex items-center justify-center gap-2">
-                                        <Info size={14} /> {selectedDevice ? selectedDevice.imei : "Select Device"}
+                                        <Info size={14} /> {selectedDriver ? `${selectedDriver.firstName} ${selectedDriver.lastName}` : "Select Driver"}
                                     </div>
                                 </div>
 
-                                {(availableVehicles.length === 0 || availableDevices.length === 0) && (
+                                {(availableVehicles.length === 0 || availableDrivers.length === 0) && (
                                     <div className="mt-4 text-[11px] font-semibold text-rose-500">
                                         {availableVehicles.length === 0 ? "No available vehicles found. " : ""}
-                                        {availableDevices.length === 0 ? "No available devices found." : ""}
+                                        {availableDrivers.length === 0 ? "No available drivers found." : ""}
                                     </div>
                                 )}
 
@@ -445,7 +486,7 @@ export default function DeviceMappingPage() {
                                     </button>
                                     <button
                                         type="submit"
-                                        disabled={!canAssign || !formData.vehicleId || !formData.deviceId || isAssigning}
+                                        disabled={!canAssign || !formData.vehicleId || !formData.driverId || isAssigning}
                                         className="min-w-[245px] h-10 rounded-2xl bg-slate-300 px-6 text-[11px] font-black uppercase tracking-[0.14em] text-white disabled:opacity-100 disabled:cursor-not-allowed enabled:bg-slate-900 enabled:hover:bg-black transition-colors"
                                     >
                                         {isAssigning ? "Processing..." : "Confirm Mapping Connection"}

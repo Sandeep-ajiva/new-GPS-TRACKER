@@ -3,7 +3,10 @@ import { baseApi } from "./baseApi";
 export const gpsDeviceApi = baseApi.injectEndpoints({
     endpoints: (builder) => ({
         getGpsDevices: builder.query({
-            query: () => "/gpsdevice",
+            query: (params) => ({
+                url: "/gpsdevice",
+                params,
+            }),
             providesTags: ["GPSDevice"],
         }),
         getGpsDevice: builder.query({
