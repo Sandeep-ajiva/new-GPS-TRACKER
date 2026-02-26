@@ -4,10 +4,10 @@ const PACKET_TYPES = require("./packetTypes");
 const loginHandler = require("./handlers/loginHandler");
 const healthHandler = require("./handlers/healthHandler");
 const locationHandler = require("./handlers/locationHandler");
-// const alertHandler = require("./handlers/alertHandler");
-// const emergencyHandler = require("./handlers/emergencyHandler");
-// const otaHandler = require("./handlers/otaHandler");
-// const activationHandler = require("./handlers/activationHandler");
+const alertHandler = require("./handlers/alertHandler");
+const emergencyHandler = require("./handlers/emergencyHandler");
+const otaHandler = require("./handlers/otaHandler");
+const activationHandler = require("./handlers/activationHandler");
 
 /**
  * Packet type → handler map
@@ -17,10 +17,10 @@ const   PACKET_HANDLER_MAP = {
   [PACKET_TYPES.LOGIN]: loginHandler,
   [PACKET_TYPES.HEALTH]: healthHandler,
   [PACKET_TYPES.NORMAL]: locationHandler,
-  // [PACKET_TYPES.ALERT]: alertHandler,
-  // [PACKET_TYPES.EMERGENCY]: emergencyHandler,
-  // [PACKET_TYPES.OTA]: otaHandler,
-  // [PACKET_TYPES.ACTIVATION]: activationHandler,
+  [PACKET_TYPES.ALERT]: alertHandler,
+  [PACKET_TYPES.EMERGENCY]: emergencyHandler,
+  [PACKET_TYPES.OTA]: otaHandler,
+  [PACKET_TYPES.ACTIVATION]: activationHandler,
 };
 
 /**
