@@ -26,6 +26,7 @@ import { capitalizeFirstLetter } from "../Helpers/CapitalizeFirstLetter";
 import { DynamicModal } from "@/components/common";
 import { FormField } from "@/lib/formTypes";
 import { getSecureItem } from "@/app/admin/Helpers/encryptionHelper";
+import ImportExportButton from "@/components/admin/import-export/ImportExportButton";
 
 import {
   Cpu,
@@ -66,7 +67,7 @@ export default function GpsDevicesPage() {
 
   /* ================= API ================= */
 
-  const { data: devData, isLoading: isDevLoading } =
+  const { data: devData, isLoading: isDevLoading, refetch: refetchDevices } =
     useGetGpsDevicesQuery(undefined, { refetchOnMountOrArgChange: true });
 
   const { data: vehData, isLoading: isVehLoading } =
@@ -475,6 +476,36 @@ export default function GpsDevicesPage() {
             </p>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row">
+            <ImportExportButton
+              moduleName="devices"
+              importUrl="/importexport/import/devices"
+              exportUrl="/importexport/export/devices"
+              allowedFields={[
+                "organizationId",
+                "imei",
+                "softwareVersion",
+                "vendorId",
+                "deviceModel",
+                "manufacturer",
+                "simNumber",
+                "serialNumber",
+                "firmwareVersion",
+                "hardwareVersion",
+                "warrantyExpiry",
+                "status",
+                "vehicleRegistrationNumber",
+              ]}
+              requiredFields={["organizationId", "imei", "softwareVersion"]}
+              filters={{
+                imei: filters.imei,
+                status: filters.status,
+                connectionStatus: filters.connectionStatus,
+                organizationId: filters.organizationId,
+              }}
+              onCompleted={() => {
+                void refetchDevices();
+              }}
+            />
             <button
               onClick={() => setShowFilters(!showFilters)}
               className="bg-slate-100 text-slate-900 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 hover:bg-slate-200 transition-colors"

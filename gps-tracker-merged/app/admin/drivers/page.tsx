@@ -20,6 +20,7 @@ import { capitalizeFirstLetter } from "@/app/admin/Helpers/CapitalizeFirstLetter
 import { DynamicModal } from "@/components/common";
 import { FormField } from "@/lib/formTypes";
 import { getSecureItem } from "@/app/admin/Helpers/encryptionHelper";
+import ImportExportButton from "@/components/admin/import-export/ImportExportButton";
 
 export default function DriversPage() {
     const { openPopup, closePopup, isPopupOpen } = usePopups();
@@ -42,7 +43,7 @@ export default function DriversPage() {
     const [editingDriver, setEditingDriver] = useState<any>(null);
 
     // API Hooks
-    const { data: driversData, isLoading: isDriversLoading } = useGetDriversQuery(undefined, { refetchOnMountOrArgChange: true });
+    const { data: driversData, isLoading: isDriversLoading, refetch: refetchDrivers } = useGetDriversQuery(undefined, { refetchOnMountOrArgChange: true });
     const { data: orgData, isLoading: isOrgLoading } = useGetOrganizationsQuery(undefined, { refetchOnMountOrArgChange: true });
     const { data: subOrgData, isLoading: isSubOrgLoading } = useGetSubOrganizationsQuery(undefined, { refetchOnMountOrArgChange: true });
     const { data: vehData, isLoading: isVehLoading } = useGetVehiclesQuery(undefined, { refetchOnMountOrArgChange: true });
@@ -368,6 +369,32 @@ export default function DriversPage() {
                         </p>
                     </div>
                     <div className="flex flex-col gap-3 sm:flex-row">
+                        <ImportExportButton
+                            moduleName="drivers"
+                            importUrl="/importexport/import/drivers"
+                            exportUrl="/importexport/export/drivers"
+                            allowedFields={[
+                                "organizationId",
+                                "firstName",
+                                "lastName",
+                                "email",
+                                "phone",
+                                "licenseNumber",
+                                "licenseExpiry",
+                                "status",
+                            ]}
+                            requiredFields={["organizationId", "firstName", "phone", "licenseNumber"]}
+                            filters={{
+                                name: filters.name,
+                                phone: filters.phone,
+                                licenseNumber: filters.licenseNumber,
+                                status: filters.status,
+                                organizationId: filters.organizationId,
+                            }}
+                            onCompleted={() => {
+                                void refetchDrivers();
+                            }}
+                        />
                         <button
                             onClick={() => setShowFilters(!showFilters)}
                             className="bg-slate-100 text-slate-700 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 hover:bg-slate-200 transition-colors"

@@ -18,6 +18,7 @@ import {
 
 import { DynamicModal } from "@/components/common";
 import { FormField } from "@/lib/formTypes";
+import ImportExportButton from "@/components/admin/import-export/ImportExportButton";
 
 /* ================= TYPES ================= */
 
@@ -67,7 +68,7 @@ export default function OrganizationsPage() {
   /* ---------------------------------------
      3️⃣ Fetch sub-organizations (NO parentId param)
   ---------------------------------------- */
-  const { data: subOrgResponse, isLoading, error } =
+  const { data: subOrgResponse, isLoading, error, refetch: refetchSubOrgs } =
     useGetSubOrganizationsQuery(undefined);
 
   const organizations: Organization[] = useMemo(
@@ -275,6 +276,31 @@ export default function OrganizationsPage() {
             <p className="text-sm text-slate-500">Parent: {parentOrg?.name}</p>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row">
+            <ImportExportButton
+              moduleName="organizations"
+              importUrl="/importexport/import/organizations"
+              exportUrl="/importexport/export/organizations"
+              allowedFields={[
+                "name",
+                "organizationType",
+                "email",
+                "phone",
+                "addressLine",
+                "city",
+                "state",
+                "country",
+                "pincode",
+              ]}
+              requiredFields={["name", "organizationType", "email", "phone"]}
+              filters={{
+                name: filters.name,
+                organizationType: filters.type,
+                status: filters.status,
+              }}
+              onCompleted={() => {
+                void refetchSubOrgs();
+              }}
+            />
             <button
               onClick={() => setShowFilters(!showFilters)}
               className="bg-slate-100 text-slate-700 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 hover:bg-slate-200 transition-colors"

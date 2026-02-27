@@ -21,6 +21,7 @@ import { capitalizeFirstLetter } from "../Helpers/CapitalizeFirstLetter";
 import { DynamicModal } from "@/components/common";
 import { FormField } from "@/lib/formTypes";
 import { getSecureItem } from "@/app/admin/Helpers/encryptionHelper";
+import ImportExportButton from "@/components/admin/import-export/ImportExportButton";
 import {
   Building2,
   Car,
@@ -57,7 +58,7 @@ export default function VehiclesPage() {
   const searchQueryParam = searchParams.get("search");
 
   // API Hooks
-  const { data: vehData, isLoading: isVehLoading } =
+  const { data: vehData, isLoading: isVehLoading, refetch: refetchVehicles } =
     useGetVehiclesQuery(undefined, { refetchOnMountOrArgChange: true });
   const { data: orgData, isLoading: isOrgLoading } =
     useGetOrganizationsQuery(undefined, { refetchOnMountOrArgChange: true });
@@ -524,6 +525,38 @@ export default function VehiclesPage() {
             </p>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row">
+            <ImportExportButton
+              moduleName="vehicles"
+              importUrl="/importexport/import/vehicles"
+              exportUrl="/importexport/export/vehicles"
+              allowedFields={[
+                "organizationId",
+                "vehicleType",
+                "vehicleNumber",
+                "ais140Compliant",
+                "ais140CertificateNumber",
+                "make",
+                "model",
+                "year",
+                "color",
+                "status",
+                "runningStatus",
+                "lastUpdated",
+                "deviceImei",
+              ]}
+              requiredFields={["organizationId", "vehicleType", "vehicleNumber"]}
+              filters={{
+                vehicleNumber: filters.number,
+                vehicleType: filters.type,
+                organizationId: filters.organizationId,
+                status: filters.status,
+                runningStatus: filters.runningStatus,
+                driverId: filters.driverId,
+              }}
+              onCompleted={() => {
+                void refetchVehicles();
+              }}
+            />
             <button
               onClick={() => setShowFilters(!showFilters)}
               className="bg-slate-100 text-slate-700 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 hover:bg-slate-200 transition-colors"

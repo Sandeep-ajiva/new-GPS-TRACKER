@@ -8,7 +8,6 @@ import { StatusCards, VehicleStatusFilter } from "@/components/dashboard/status-
 import { ActionToolbar } from "@/components/dashboard/action-toolbar"
 import { VehicleSidebar } from "@/components/dashboard/vehicle-sidebar"
 import { MapWrapper } from "@/components/dashboard/map-wrapper"
-import { ActivityStats } from "@/components/dashboard/activity-stats"
 import { VehicleDetails } from "@/components/dashboard/vehicle-details"
 import { useVehiclePositions } from "@/lib/use-vehicle-positions"
 import { type Vehicle } from "@/lib/vehicles"
@@ -55,6 +54,7 @@ type LiveGpsItem = {
   gsmSignalStrength?: number
   fuelPercentage?: number
   temperature?: string
+  poi?: string
 }
 
 const LIVE_STALE_TIMEOUT_MS = 60 * 1000
@@ -635,7 +635,7 @@ export default function DashboardPage() {
 
           {/* Map Area (Right 50%) */}
           <div className={`${mobileView === "map" ? "flex" : "hidden md:flex"} lg:flex lg:col-span-6 xl:col-span-6 flex-col min-h-[450px] lg:h-full overflow-hidden border border-white/10 bg-slate-950 rounded-2xl shadow-2xl`}>
-            <ActionToolbar compact className="bg-slate-950/80 backdrop-blur-md border-b border-white/10" alertCount={notificationCount} />
+            <ActionToolbar compact className="bg-slate-950/80 backdrop-blur-md border-b border-white/10" />
             <div className="flex-1 min-h-0">
               <MapWrapper />
             </div>
@@ -644,18 +644,7 @@ export default function DashboardPage() {
 
         {currentVehicleSelection && (
           <div className="border-t border-white/10 bg-slate-950/95 backdrop-blur-xl p-2 shadow-2xl z-40">
-            <div className="grid grid-cols-1 gap-2 xl:grid-cols-[1fr_2.5fr]">
-              <div className="min-h-0">
-                <ActivityStats
-                  vehicles={uiVehicles}
-                  alertCount={alerts.length}
-                  alerts={alerts}
-                  selectedVehicleId={currentVehicleId}
-                  selectedVehicleObj={currentVehicleSelection}
-                  compact
-                  dailyStats={dailyStats}
-                />
-              </div>
+            <div className="grid grid-cols-1 gap-2">
               <div className="min-h-0 overflow-x-auto">
                 <VehicleDetails 
                   vehicleId={currentVehicleId} 

@@ -21,6 +21,7 @@ import { capitalizeFirstLetter } from "../Helpers/CapitalizeFirstLetter";
 import { DynamicModal } from "@/components/common";
 import { FormField } from "@/lib/formTypes";
 import { getSecureItem } from "@/app/admin/Helpers/encryptionHelper";
+import ImportExportButton from "@/components/admin/import-export/ImportExportButton";
 import {
   User as UserIcon,
   Mail,
@@ -66,7 +67,7 @@ export default function UsersPage() {
   // API Hooks - Conditionally fetch users
   // If organizationId filter is set, use the dedicated endpoint
   // Otherwise, fetch all users (for superadmin)
-  const { data: usersData, isLoading: isUsersLoading } = useGetUsersQuery(
+  const { data: usersData, isLoading: isUsersLoading, refetch: refetchUsers } = useGetUsersQuery(
     undefined,
     {
       skip: !!filters.organizationId, // Skip if filtering by org
@@ -74,7 +75,7 @@ export default function UsersPage() {
     },
   );
 
-  const { data: orgUsersData, isLoading: isOrgUsersLoading } =
+  const { data: orgUsersData, isLoading: isOrgUsersLoading, refetch: refetchOrgUsers } =
     useGetManagerByOrganizationQuery(filters.organizationId, {
       skip: !filters.organizationId, // Skip if NOT filtering by org
       refetchOnMountOrArgChange: true,
@@ -376,6 +377,33 @@ export default function UsersPage() {
             </p>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row">
+            <ImportExportButton
+              moduleName="users"
+              importUrl="/importexport/import/users"
+              exportUrl="/importexport/export/users"
+              allowedFields={[
+                "firstName",
+                "lastName",
+                "email",
+                "mobile",
+                "role",
+                "status",
+                "organizationId",
+              ]}
+              requiredFields={["firstName", "lastName", "email", "mobile", "role"]}
+              filters={{
+                name: filters.name,
+                email: filters.email,
+                mobile: filters.mobile,
+                role: filters.role,
+                status: filters.status,
+                organizationId: filters.organizationId,
+              }}
+              onCompleted={() => {
+                void refetchUsers();
+                void refetchOrgUsers();
+              }}
+            />
             <button
               onClick={() => setShowFilters(!showFilters)}
               className="rounded-xl bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-widest text-slate-700 shadow-sm transition hover:bg-slate-200"
