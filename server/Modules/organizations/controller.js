@@ -321,11 +321,14 @@ exports.getAll = async (req, res) => {
 
 exports.getById = async (req, res) => {
   try {
-    const organization = await Organization.findById(req.params.id);
+    // 🔐 ORG SCOPE FIX
+    const orgFilter = req.orgScope === "ALL" ? {} : { _id: { $in: req.orgScope } };
+    const organization = await Organization.findOne({ _id: req.params.id, ...orgFilter });
+
     if (!organization) {
       return res
         .status(404)
-        .json({ status: false, message: "Organization not found" });
+        .json({ status: false, message: "Organization not found or access denied" });
     }
     return res.status(200).json({
       status: true,
@@ -344,22 +347,14 @@ exports.getById = async (req, res) => {
 
 exports.update = async (req, res) => {
   try {
-    const organization = await Organization.findById(req.params.id);
+    // 🔐 ORG SCOPE FIX
+    const orgFilter = req.orgScope === "ALL" ? {} : { _id: { $in: req.orgScope } };
+    const organization = await Organization.findOne({ _id: req.params.id, ...orgFilter });
+
     if (!organization) {
       return res
         .status(404)
-        .json({ status: false, message: "Organization not found" });
-    }
-
-    if (
-      req.user.role !== "superadmin" &&
-      req.orgScope !== "ALL" &&
-      !req.orgScope.some((id) => id.toString() === organization._id.toString())
-    ) {
-      return res.status(403).json({
-        status: false,
-        message: "You are not allowed to update this organization",
-      });
+        .json({ status: false, message: "Organization not found or access denied" });
     }
 
     if (req.file) {
@@ -408,22 +403,14 @@ exports.update = async (req, res) => {
 
 exports.delete = async (req, res) => {
   try {
-    const organization = await Organization.findById(req.params.id);
+    // 🔐 ORG SCOPE FIX
+    const orgFilter = req.orgScope === "ALL" ? {} : { _id: { $in: req.orgScope } };
+    const organization = await Organization.findOne({ _id: req.params.id, ...orgFilter });
+
     if (!organization) {
       return res
         .status(404)
-        .json({ status: false, message: "Organization not found" });
-    }
-
-    if (
-      req.user.role !== "superadmin" &&
-      req.orgScope !== "ALL" &&
-      !req.orgScope.some((id) => id.toString() === organization._id.toString())
-    ) {
-      return res.status(403).json({
-        status: false,
-        message: "You are not allowed to delete this organization",
-      });
+        .json({ status: false, message: "Organization not found or access denied" });
     }
 
     await Organization.findByIdAndDelete(req.params.id);
@@ -449,12 +436,12 @@ exports.createSubOrganizationWithManager = async (req, res) => {
     if (typeof req.body.organizationData === "string") {
       try {
         req.body.organizationData = JSON.parse(req.body.organizationData);
-      } catch (_) {}
+      } catch (_) { }
     }
     if (typeof req.body.managerData === "string") {
       try {
         req.body.managerData = JSON.parse(req.body.managerData);
-      } catch (_) {}
+      } catch (_) { }
     }
 
     const organizationData = req.body.organizationData || {};

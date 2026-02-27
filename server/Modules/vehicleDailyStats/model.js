@@ -51,6 +51,12 @@ const vehicleDailyStatsSchema = {
     min: 0,
   },
 
+  speedSampleCount: {
+    type: Number,
+    default: 0,
+    min: 0,
+  },
+
   // Time metrics (seconds)
   runningTime: {
     type: Number,

@@ -92,21 +92,17 @@ exports.create = async (req, res) => {
     delete payload.connectionStatus;
     await validateCreateGpsDevice(payload, req.user);
 
-    let organizationId = null;
+    // 🔐 ORG SCOPE FIX
+    let organizationId;
     if (req.user.role === "superadmin") {
+      organizationId = payload.organizationId || req.orgId;
+    } else if (
+      payload.organizationId &&
+      req.orgScope !== "ALL" &&
+      req.orgScope.some(id => id.toString() === payload.organizationId.toString())
+    ) {
       organizationId = payload.organizationId;
-    } else if (payload.organizationId) {
-      const candidate = payload.organizationId.toString();
-      if (
-        req.orgScope === "ALL" ||
-        (Array.isArray(req.orgScope) &&
-          req.orgScope.some((id) => id.toString() === candidate))
-      ) {
-        organizationId = candidate;
-      }
-    }
-
-    if (!organizationId) {
+    } else {
       organizationId = req.orgId;
     }
 
@@ -217,24 +213,16 @@ exports.getById = async (req, res) => {
       });
     }
 
-    const device = await GpsDevice.findById(id)
+    // 🔐 ORG SCOPE FIX
+    const orgFilter = req.orgScope === "ALL" ? {} : { organizationId: { $in: req.orgScope } };
+    const device = await GpsDevice.findOne({ _id: id, ...orgFilter })
       .populate("organizationId")
       .populate("vehicleId");
 
     if (!device) {
       return res.status(404).json({
         status: false,
-        message: "GPS Device not found",
-      });
-    }
-
-    if (
-      req.user.role !== "superadmin" &&
-      device.organizationId._id.toString() !== req.orgId.toString()
-    ) {
-      return res.status(403).json({
-        status: false,
-        message: "Forbidden",
+        message: "GPS Device not found or access denied",
       });
     }
 
@@ -262,22 +250,14 @@ exports.update = async (req, res) => {
     delete payload.connectionStatus;
     await validateUpdateGpsDevice(payload, req.user);
 
-    const device = await GpsDevice.findById(req.params.id);
+    // 🔐 ORG SCOPE FIX
+    const orgFilter = req.orgScope === "ALL" ? {} : { organizationId: { $in: req.orgScope } };
+    const device = await GpsDevice.findOne({ _id: req.params.id, ...orgFilter });
 
     if (!device) {
       return res.status(404).json({
         status: false,
-        message: "GPS Device not found",
-      });
-    }
-
-    if (
-      req.user.role !== "superadmin" &&
-      device.organizationId.toString() !== req.orgId.toString()
-    ) {
-      return res.status(403).json({
-        status: false,
-        message: "Forbidden",
+        message: "GPS Device not found or access denied",
       });
     }
 
@@ -335,8 +315,9 @@ exports.getAvailable = async (req, res) => {
   try {
     const filter = { isOnline: true };
 
-    if (req.user.role !== "superadmin") {
-      filter.organizationId = req.orgId;
+    // 🔐 ORG SCOPE FIX
+    if (req.user.role !== "superadmin" && req.orgScope !== "ALL") {
+      filter.organizationId = { $in: req.orgScope };
     }
 
     const devices = await GpsDevice.find(filter)
@@ -362,22 +343,14 @@ exports.getAvailable = async (req, res) => {
 
 exports.delete = async (req, res) => {
   try {
-    const device = await GpsDevice.findById(req.params.id);
+    // 🔐 ORG SCOPE FIX
+    const orgFilter = req.orgScope === "ALL" ? {} : { organizationId: { $in: req.orgScope } };
+    const device = await GpsDevice.findOne({ _id: req.params.id, ...orgFilter });
 
     if (!device) {
       return res.status(404).json({
         status: false,
-        message: "GPS Device not found",
-      });
-    }
-
-    if (
-      req.user.role !== "superadmin" &&
-      device.organizationId.toString() !== req.orgId.toString()
-    ) {
-      return res.status(403).json({
-        status: false,
-        message: "Forbidden",
+        message: "GPS Device not found or access denied",
       });
     }
 

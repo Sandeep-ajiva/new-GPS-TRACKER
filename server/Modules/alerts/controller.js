@@ -16,9 +16,21 @@ const validateAlertData = async (data) => {
 
 exports.create = async (req, res) => {
     try {
-        await validateAlertData(req.body);
+        // 🔐 ORG SCOPE FIX
+        let organizationId;
+        if (req.user.role === "superadmin") {
+            organizationId = req.body.organizationId || req.orgId;
+        } else if (
+            req.body.organizationId &&
+            req.orgScope !== "ALL" &&
+            req.orgScope.some(id => id.toString() === req.body.organizationId.toString())
+        ) {
+            organizationId = req.body.organizationId;
+        } else {
+            organizationId = req.orgId;
+        }
 
-        const { organizationId, gpsDeviceId, vehicleId, type, message, locationType, locationCoordinates } = req.body;
+        const { gpsDeviceId, vehicleId, type, message, locationType, locationCoordinates } = req.body;
 
         const alert = await Alert.create({
             organizationId,
@@ -47,7 +59,7 @@ exports.create = async (req, res) => {
 exports.getAll = async (req, res) => {
     try {
         const { page, limit, search, type, acknowledged } = req.query;
-        
+
         const filter = {};
         if (req.user.role !== "superadmin" && req.orgScope !== "ALL") {
             filter.organizationId = { $in: req.orgScope };
@@ -73,24 +85,14 @@ exports.getAll = async (req, res) => {
 
 exports.getById = async (req, res) => {
     try {
-        const alert = await Alert.findById(req.params.id)
+        // 🔐 ORG SCOPE FIX
+        const orgFilter = req.orgScope === "ALL" ? {} : { organizationId: { $in: req.orgScope } };
+        const alert = await Alert.findOne({ _id: req.params.id, ...orgFilter })
             .populate('organizationId')
             .populate('gpsDeviceId')
             .populate('vehicleId');
-        if (!alert) return res.status(404).json({ status: false, message: "Alert not found" });
 
-        // Verify organization ownership
-        if (req.user.role !== "superadmin") {
-            const allowedOrgIds = (req.orgScope || []).map(id => id.toString());
-            const alertOrgId = alert.organizationId._id ? alert.organizationId._id.toString() : alert.organizationId.toString();
-            
-            if (!allowedOrgIds.includes(alertOrgId)) {
-                return res.status(403).json({
-                    status: false,
-                    message: "Forbidden: Cannot access this alert"
-                });
-            }
-        }
+        if (!alert) return res.status(404).json({ status: false, message: "Alert not found" });
 
         return res.status(200).json({ status: true, data: alert });
     } catch (error) {
@@ -100,27 +102,16 @@ exports.getById = async (req, res) => {
 
 exports.update = async (req, res) => {
     try {
-        const alert = await Alert.findById(req.params.id);
-        if (!alert) return res.status(404).json({ status: false, message: "Alert not found" });
-
-        // Verify organization ownership
-        if (req.user.role !== "superadmin") {
-            const allowedOrgIds = (req.orgScope || []).map(id => id.toString());
-            const alertOrgId = alert.organizationId.toString();
-            
-            if (!allowedOrgIds.includes(alertOrgId)) {
-                return res.status(403).json({
-                    status: false,
-                    message: "Forbidden: Cannot update this alert"
-                });
-            }
-        }
+        // 🔐 ORG SCOPE FIX
+        const orgFilter = req.orgScope === "ALL" ? {} : { organizationId: { $in: req.orgScope } };
+        const alert = await Alert.findOne({ _id: req.params.id, ...orgFilter });
+        if (!alert) return res.status(404).json({ status: false, message: "Alert not found or access denied" });
 
         const updatedAlert = await Alert.findByIdAndUpdate(req.params.id, req.body, { new: true })
             .populate('organizationId')
             .populate('gpsDeviceId')
             .populate('vehicleId');
-        
+
         return res.status(200).json({ status: true, message: "Updated Successfully", data: updatedAlert });
     } catch (error) {
         return res.status(500).json({ status: false, message: error.message });
@@ -129,21 +120,10 @@ exports.update = async (req, res) => {
 
 exports.acknowledge = async (req, res) => {
     try {
-        const alert = await Alert.findById(req.params.id);
-        if (!alert) return res.status(404).json({ status: false, message: "Alert not found" });
-
-        // Verify organization ownership
-        if (req.user.role !== "superadmin") {
-            const allowedOrgIds = (req.orgScope || []).map(id => id.toString());
-            const alertOrgId = alert.organizationId.toString();
-            
-            if (!allowedOrgIds.includes(alertOrgId)) {
-                return res.status(403).json({
-                    status: false,
-                    message: "Forbidden: Cannot acknowledge this alert"
-                });
-            }
-        }
+        // 🔐 ORG SCOPE FIX
+        const orgFilter = req.orgScope === "ALL" ? {} : { organizationId: { $in: req.orgScope } };
+        const alert = await Alert.findOne({ _id: req.params.id, ...orgFilter });
+        if (!alert) return res.status(404).json({ status: false, message: "Alert not found or access denied" });
 
         const updatedAlert = await Alert.findByIdAndUpdate(
             req.params.id,
@@ -152,7 +132,7 @@ exports.acknowledge = async (req, res) => {
         ).populate('organizationId')
             .populate('gpsDeviceId')
             .populate('vehicleId');
-        
+
         return res.status(200).json({ status: true, message: "Alert Acknowledged", data: updatedAlert });
     } catch (error) {
         return res.status(500).json({ status: false, message: error.message });
@@ -182,21 +162,10 @@ exports.acknowledgeAll = async (req, res) => {
 
 exports.delete = async (req, res) => {
     try {
-        const alert = await Alert.findById(req.params.id);
-        if (!alert) return res.status(404).json({ status: false, message: "Alert not found" });
-
-        // Verify organization ownership
-        if (req.user.role !== "superadmin") {
-            const allowedOrgIds = (req.orgScope || []).map(id => id.toString());
-            const alertOrgId = alert.organizationId.toString();
-            
-            if (!allowedOrgIds.includes(alertOrgId)) {
-                return res.status(403).json({
-                    status: false,
-                    message: "Forbidden: Cannot delete this alert"
-                });
-            }
-        }
+        // 🔐 ORG SCOPE FIX
+        const orgFilter = req.orgScope === "ALL" ? {} : { organizationId: { $in: req.orgScope } };
+        const alert = await Alert.findOne({ _id: req.params.id, ...orgFilter });
+        if (!alert) return res.status(404).json({ status: false, message: "Alert not found or access denied" });
 
         await alert.deleteOne();
         return res.status(200).json({ status: true, message: "Deleted Successfully" });
@@ -226,8 +195,9 @@ exports.deleteAll = async (req, res) => {
 exports.getByVehicle = async (req, res) => {
     try {
         const { page, limit, search, type, acknowledged } = req.query;
-        
+
         const filter = { vehicleId: req.params.vehicleId };
+        // 🔐 ORG SCOPE FIX
         if (req.user.role !== "superadmin" && req.orgScope !== "ALL") {
             filter.organizationId = { $in: req.orgScope };
         }
@@ -253,7 +223,7 @@ exports.getByVehicle = async (req, res) => {
 exports.getUnacknowledged = async (req, res) => {
     try {
         const { page, limit, search, type } = req.query;
-        
+
         const filter = { acknowledged: false };
         if (req.user.role !== "superadmin" && req.orgScope !== "ALL") {
             filter.organizationId = { $in: req.orgScope };

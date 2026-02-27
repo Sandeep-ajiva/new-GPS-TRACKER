@@ -19,7 +19,7 @@ router.get("/", verifyToken, (req, res) => {
 router.get(
   "/imei/:imei/latest",
   verifyToken,
-  checkAuthorization(["admin", "superadmin"], "health", "read"),
+  checkAuthorization(["admin", "superadmin"], "healthmonitoring", "read"),
   checkOrganization,
   controller.getLatestByImei,
 );
@@ -28,7 +28,7 @@ router.get(
 router.get(
   "/imei/:imei/history",
   verifyToken,
-  checkAuthorization(["admin", "superadmin"], "health", "read"),
+  checkAuthorization(["admin", "superadmin"], "healthmonitoring", "read"),
   checkOrganization,
   controller.getHistoryByImei,
 );
@@ -37,9 +37,27 @@ router.get(
 router.get(
   "/vehicle/:vehicleId/latest",
   verifyToken,
-  checkAuthorization(["admin", "superadmin"], "health", "read"),
+  checkAuthorization(["admin", "superadmin"], "healthmonitoring", "read"),
   checkOrganization,
   controller.getLatestByVehicle,
+);
+
+// latest list
+router.get(
+  "/latest",
+  verifyToken,
+  checkAuthorization(["admin", "superadmin"], "healthmonitoring", "read"),
+  checkOrganization,
+  controller.getLatestList,
+);
+
+// history by vehicle
+router.get(
+  "/vehicle/:vehicleId/history",
+  verifyToken,
+  checkAuthorization(["admin", "superadmin"], "healthmonitoring", "read"),
+  checkOrganization,
+  controller.getHistoryByVehicle,
 );
 
 module.exports = router;

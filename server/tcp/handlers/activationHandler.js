@@ -1,71 +1,60 @@
-const Alert = require("../../Modules/alerts/model");
+/**
+ * ACTIVATION HANDLER
+ * Handles $ACT packets (Device Activation acknowledgement)
+ */
+
 const GpsDevice = require("../../Modules/gpsDevice/model");
-const {
-  splitPacket,
-  findImeiInParts,
-  ensureSocketContext,
-  getFallbackLive,
-  parseEventState,
-} = require("./_common");
 
 module.exports = async function activationHandler(socket, packet) {
   try {
-    const parts = splitPacket(packet);
-    const imei = findImeiInParts(parts) || socket.imei;
-    const ctx = await ensureSocketContext(socket, imei);
-
-    if (!ctx) {
-      socket.write("DENY\r\n");
+    /* ------------------------------------------------------------ */
+    /* 1️⃣ BASIC SAFETY CHECK                                        */
+    /* ------------------------------------------------------------ */
+    if (!socket.imei || !socket.gpsDeviceId) {
+      console.warn("⚠️ ACT packet before login, ignored");
       return;
     }
 
-    const isActivated = parseEventState(parts[2], true);
-    const details = parts.slice(3).join(",") || null;
-    const now = new Date();
+    /* ------------------------------------------------------------ */
+    /* 2️⃣ PARSE PACKET                                              */
+    /* ------------------------------------------------------------ */
+    const clean = packet.replace("*", "").trim();
+    const parts = clean.split(",");
 
+    /**
+     * Expected:
+     * $ACT,IMEI,STATUS(ON/OFF),details
+     */
+    const imei = parts[1];
+    const status = (parts[2] || "ON").toUpperCase();
+    const details = parts[3] || "";
+
+    /* ------------------------------------------------------------ */
+    /* 3️⃣ UPDATE DEVICE STATUS                                      */
+    /* ------------------------------------------------------------ */
     await GpsDevice.updateOne(
-      { _id: ctx.gpsDeviceId },
+      { _id: socket.gpsDeviceId },
       {
         $set: {
-          status: isActivated ? "active" : "inactive",
           isOnline: true,
           connectionStatus: "online",
-          lastSeen: now,
+          lastSeen: new Date(),
+          status: status === "ON" ? "active" : "inactive",
         },
       },
     );
 
-    const fallbackLive = await getFallbackLive(ctx.gpsDeviceId);
-
-    await Alert.create({
-      organizationId: ctx.organizationId,
-      gpsDeviceId: ctx.gpsDeviceId,
-      vehicleId: ctx.vehicleId || null,
-      imei: ctx.imei,
-      alertId: isActivated ? 6 : 3,
-      alertName: isActivated ? "Main Power Connected" : "Main Power Disconnected",
-      packetType: isActivated ? "BL" : "BD",
-      severity: "info",
-      latitude: fallbackLive?.latitude ?? null,
-      longitude: fallbackLive?.longitude ?? null,
-      locationCoordinates:
-        fallbackLive?.latitude !== undefined &&
-          fallbackLive?.latitude !== null &&
-          fallbackLive?.longitude !== undefined &&
-          fallbackLive?.longitude !== null
-          ? [fallbackLive.longitude, fallbackLive.latitude]
-          : undefined,
-      gpsTimestamp: now,
-      speed: Number(fallbackLive?.currentSpeed || 0),
-      heading: Number(fallbackLive?.heading || 0),
-      rawPacketData: `${packet} | details=${details || "NA"}`,
-      receivedAt: now,
-    });
-
+    /* ------------------------------------------------------------ */
+    /* 4️⃣ ACK                                                       */
+    /* ------------------------------------------------------------ */
     socket.write("ON\n");
+
+    console.log("✅ ACTIVATION", {
+      imei,
+      status,
+      details,
+    });
   } catch (err) {
     console.error("❌ Activation handler error:", err.message);
-    socket.write("ERROR\n");
   }
 };
-

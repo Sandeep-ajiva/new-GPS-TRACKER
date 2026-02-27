@@ -51,24 +51,65 @@ class AIS140PacketParser {
   }
 
   static parseNR(parts, checksum) {
-    const latitude = this.parseCoordinate(parts[4]);
-    const longitude = this.parseCoordinate(parts[6]);
-    const speed = parseFloat(parts[8]) || 0;
+    const speed = this.parseNumber(parts[8], 0);
+    const statusField = typeof parts[16] === "string" ? parts[16] : "";
+    const ignitionStatus = statusField.charAt(3) === "1";
+    const acStatus = statusField.charAt(4) === "1";
+    const mainPowerBit = statusField.charAt(5);
+
+    const mainInputVoltage = this.parseOptionalNumber(parts[18]);
+    const internalBatteryVoltage = this.parseOptionalNumber(parts[19]);
+    const batteryLevel = this.parseOptionalNumber(parts[20]);
+    const gsmSignalStrength = this.parseOptionalNumber(parts[21]);
+    const fuelPercentage = this.parseOptionalNumber(parts[22]);
+    const temperature =
+      typeof parts[23] === "string" && parts[23].trim()
+        ? parts[23].trim()
+        : null;
+
+    const mainPowerStatus =
+      mainPowerBit === "1"
+        ? true
+        : mainInputVoltage === null
+          ? null
+          : mainInputVoltage > 10.5;
 
     return {
       packetType: "NR",
       imei: parts[1],
       gpsDate: parts[2],
       gpsTime: parts[3],
-      latitude,
-      longitude,
+      latitude: this.parseCoordinate(parts[4], parts[5]),
+      latitudeDirection: parts[5] || null,
+      longitude: this.parseCoordinate(parts[6], parts[7]),
+      longitudeDirection: parts[7] || null,
       currentSpeed: speed,
-      heading: parseFloat(parts[9]) || 0,
-      numberOfSatellites: parseInt(parts[10]) || 0,
-      ignitionStatus: parts[16]?.charAt(3) === "1",
-      currentMileage: parseFloat(parts[17]) || 0,
+      heading: this.parseNumber(parts[9], 0),
+      numberOfSatellites: this.parseNumber(parts[10], 0),
+      altitude: this.parseOptionalNumber(parts[11]),
+      pdop: this.parseOptionalNumber(parts[12]),
+      hdop: this.parseOptionalNumber(parts[13]),
+      operatorName:
+        typeof parts[14] === "string" && parts[14].trim()
+          ? parts[14].trim()
+          : null,
+      mcc:
+        typeof parts[15] === "string" && parts[15].trim()
+          ? parts[15].trim()
+          : null,
+      ignitionStatus,
+      acStatus,
+      mainPowerStatus,
+      digitalInputStatus: statusField || null,
+      currentMileage: this.parseNumber(parts[17], 0),
+      mainInputVoltage,
+      internalBatteryVoltage,
+      batteryLevel,
+      gsmSignalStrength,
+      fuelPercentage,
+      temperature,
       gpsTimestamp: this.parseGpsTimestamp(parts[2], parts[3]),
-      movementStatus: this.getMovement(speed, parts[16]?.charAt(3) === "1"),
+      movementStatus: this.getMovement(speed, ignitionStatus),
       checksum,
     };
   }
@@ -81,12 +122,27 @@ class AIS140PacketParser {
     };
   }
 
-  static parseCoordinate(value) {
+  static parseCoordinate(value, direction) {
     if (!value) return 0;
-    const v = parseFloat(value);
+    const v = this.parseNumber(value, NaN);
+    if (!Number.isFinite(v)) return 0;
     const deg = Math.floor(v / 100);
     const min = v - deg * 100;
-    return deg + min / 60;
+    const signed = deg + min / 60;
+    if (direction === "S" || direction === "W") {
+      return -signed;
+    }
+    return signed;
+  }
+
+  static parseNumber(value, fallback = 0) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }
+
+  static parseOptionalNumber(value) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
   }
 
   static parseGpsTimestamp(date, time) {
@@ -219,28 +275,46 @@ const GpsLiveDataController = {
   /* ------------------------------ GETTERS ---------------------------------- */
 
   getLiveData: async (req, res) => {
-    const data = await GpsLiveData.find()
+    const filter = {};
+    // 🔐 ORG SCOPE FIX
+    if (req.user.role !== "superadmin" && req.orgScope !== "ALL") {
+      filter.organizationId = { $in: req.orgScope };
+    }
+    const data = await GpsLiveData.find(filter)
       .populate("vehicleId")
       .populate("gpsDeviceId");
     res.json({ status: true, data });
   },
 
   getByVehicle: async (req, res) => {
-    const data = await GpsLiveData.findOne({ vehicleId: req.params.vehicleId });
+    const filter = { vehicleId: req.params.vehicleId };
+    // 🔐 ORG SCOPE FIX
+    if (req.user.role !== "superadmin" && req.orgScope !== "ALL") {
+      filter.organizationId = { $in: req.orgScope };
+    }
+    const data = await GpsLiveData.findOne(filter);
     if (!data) return res.status(404).json({ status: false, message: "Details not found.." });
     res.json({ status: true, data });
   },
 
   getByDevice: async (req, res) => {
-    const data = await GpsLiveData.findOne({
-      gpsDeviceId: req.params.gpsDeviceId,
-    });
+    const filter = { gpsDeviceId: req.params.gpsDeviceId };
+    // 🔐 ORG SCOPE FIX
+    if (req.user.role !== "superadmin" && req.orgScope !== "ALL") {
+      filter.organizationId = { $in: req.orgScope };
+    }
+    const data = await GpsLiveData.findOne(filter);
     if (!data) return res.status(404).json({ status: false });
     res.json({ status: true, data });
   },
 
   getByImei: async (req, res) => {
-    const data = await GpsLiveData.findOne({ imei: req.params.imei });
+    const filter = { imei: req.params.imei };
+    // 🔐 ORG SCOPE FIX
+    if (req.user.role !== "superadmin" && req.orgScope !== "ALL") {
+      filter.organizationId = { $in: req.orgScope };
+    }
+    const data = await GpsLiveData.findOne(filter);
     if (!data) return res.status(404).json({ status: false });
     res.json({ status: true, data });
   },

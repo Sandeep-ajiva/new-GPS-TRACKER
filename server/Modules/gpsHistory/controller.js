@@ -11,9 +11,9 @@ exports.getAll = async (req, res) => {
 
     const filter = {};
 
-    // Org scope
-    if (req.user.role !== "superadmin") {
-      filter.organizationId = req.orgId;
+    // 🔐 ORG SCOPE FIX
+    if (req.user.role !== "superadmin" && req.orgScope !== "ALL") {
+      filter.organizationId = { $in: req.orgScope };
     }
 
     if (vehicleId && mongoose.isValidObjectId(vehicleId)) {

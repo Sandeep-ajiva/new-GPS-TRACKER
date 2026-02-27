@@ -16,20 +16,18 @@ exports.create = async (req, res) => {
     try {
         await validatePOIData(req.body);
 
-        let organizationId = req.orgId;
-
+        // 🔐 ORG SCOPE FIX
+        let organizationId;
         if (req.user.role === "superadmin") {
             organizationId = req.body.organizationId || req.orgId;
-        } else if (req.body.organizationId) {
-            const allowedOrgIds = (req.orgScope || []).map(id => id.toString());
-            if (allowedOrgIds.includes(req.body.organizationId.toString())) {
-                organizationId = req.body.organizationId;
-            } else {
-                return res.status(403).json({
-                    status: false,
-                    message: "Forbidden: Cannot create POI for this organization"
-                });
-            }
+        } else if (
+            req.body.organizationId &&
+            req.orgScope !== "ALL" &&
+            req.orgScope.some(id => id.toString() === req.body.organizationId.toString())
+        ) {
+            organizationId = req.body.organizationId;
+        } else {
+            organizationId = req.orgId;
         }
 
         if (!organizationId) {
@@ -38,6 +36,8 @@ exports.create = async (req, res) => {
                 message: "OrganizationId is required",
             });
         }
+
+        const { name, description, type, locationType, locationCoordinates, radius, tags } = req.body;
 
         const poi = await POI.create({
             organizationId,
@@ -66,7 +66,7 @@ exports.create = async (req, res) => {
 exports.getAll = async (req, res) => {
     try {
         const { page, limit, search, type } = req.query;
-        
+
         const filter = {};
         if (req.user.role !== "superadmin" && req.orgScope !== "ALL") {
             filter.organizationId = { $in: req.orgScope };
@@ -91,21 +91,16 @@ exports.getAll = async (req, res) => {
 
 exports.getById = async (req, res) => {
     try {
-        const poi = await POI.findById(req.params.id)
+        // 🔐 ORG SCOPE FIX
+        const orgFilter = req.orgScope === "ALL" ? {} : { organizationId: { $in: req.orgScope } };
+        const poi = await POI.findOne({ _id: req.params.id, ...orgFilter })
             .populate('organizationId');
-        if (!poi) return res.status(404).json({ status: false, message: "POI not found" });
 
-        // Verify organization ownership
-        if (req.user.role !== "superadmin") {
-            const allowedOrgIds = (req.orgScope || []).map(id => id.toString());
-            const poiOrgId = poi.organizationId._id ? poi.organizationId._id.toString() : poi.organizationId.toString();
-            
-            if (!allowedOrgIds.includes(poiOrgId)) {
-                return res.status(403).json({
-                    status: false,
-                    message: "Forbidden: Cannot access this POI"
-                });
-            }
+        if (!poi) {
+            return res.status(404).json({
+                status: false,
+                message: "POI not found or access denied"
+            });
         }
 
         return res.status(200).json({ status: true, data: poi });
@@ -116,25 +111,20 @@ exports.getById = async (req, res) => {
 
 exports.update = async (req, res) => {
     try {
-        const poi = await POI.findById(req.params.id);
-        if (!poi) return res.status(404).json({ status: false, message: "POI not found" });
+        // 🔐 ORG SCOPE FIX
+        const orgFilter = req.orgScope === "ALL" ? {} : { organizationId: { $in: req.orgScope } };
+        const poi = await POI.findOne({ _id: req.params.id, ...orgFilter });
 
-        // Verify organization ownership
-        if (req.user.role !== "superadmin") {
-            const allowedOrgIds = (req.orgScope || []).map(id => id.toString());
-            const poiOrgId = poi.organizationId.toString();
-            
-            if (!allowedOrgIds.includes(poiOrgId)) {
-                return res.status(403).json({
-                    status: false,
-                    message: "Forbidden: Cannot update this POI"
-                });
-            }
+        if (!poi) {
+            return res.status(404).json({
+                status: false,
+                message: "POI not found or access denied"
+            });
         }
 
         const updatedPoi = await POI.findByIdAndUpdate(req.params.id, req.body, { new: true })
             .populate('organizationId');
-        
+
         return res.status(200).json({ status: true, message: "Updated Successfully", data: updatedPoi });
     } catch (error) {
         return res.status(500).json({ status: false, message: error.message });
@@ -143,20 +133,15 @@ exports.update = async (req, res) => {
 
 exports.delete = async (req, res) => {
     try {
-        const poi = await POI.findById(req.params.id);
-        if (!poi) return res.status(404).json({ status: false, message: "POI not found" });
+        // 🔐 ORG SCOPE FIX
+        const orgFilter = req.orgScope === "ALL" ? {} : { organizationId: { $in: req.orgScope } };
+        const poi = await POI.findOne({ _id: req.params.id, ...orgFilter });
 
-        // Verify organization ownership
-        if (req.user.role !== "superadmin") {
-            const allowedOrgIds = (req.orgScope || []).map(id => id.toString());
-            const poiOrgId = poi.organizationId.toString();
-            
-            if (!allowedOrgIds.includes(poiOrgId)) {
-                return res.status(403).json({
-                    status: false,
-                    message: "Forbidden: Cannot delete this POI"
-                });
-            }
+        if (!poi) {
+            return res.status(404).json({
+                status: false,
+                message: "POI not found or access denied"
+            });
         }
 
         await poi.deleteOne();

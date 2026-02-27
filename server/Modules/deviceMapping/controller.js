@@ -38,11 +38,13 @@ exports.assign = async (req, res) => {
     /**
      * 🔍 Validate existence and get organization from vehicle
      */
-    const vehicle = await VehicleModel.findById(vehicleId).session(session);
-    const device = await DeviceModel.findById(gpsDeviceId).session(session);
+    // 🔐 ORG SCOPE FIX
+    const orgFilter = req.orgScope === "ALL" ? {} : { organizationId: { $in: req.orgScope } };
+    const vehicle = await VehicleModel.findOne({ _id: vehicleId, ...orgFilter }).session(session);
+    const device = await DeviceModel.findOne({ _id: gpsDeviceId, ...orgFilter }).session(session);
 
     if (!vehicle || !device) {
-      throw { status: 404, message: "Vehicle or GPS device not found" };
+      throw { status: 404, message: "Vehicle or GPS device not found or access denied" };
     }
 
     const organizationId = vehicle.organizationId;
@@ -167,10 +169,12 @@ exports.unassignById = async (req, res) => {
       return res.status(400).json({ status: false, message: "Invalid mapping ID" });
     }
 
-    const mapping = await VehicleMapping.findById(id).session(session);
+    // 🔐 ORG SCOPE FIX
+    const orgFilter = req.orgScope === "ALL" ? {} : { organizationId: { $in: req.orgScope } };
+    const mapping = await VehicleMapping.findOne({ _id: id, ...orgFilter }).session(session);
 
     if (!mapping || mapping.unassignedAt) {
-      throw { status: 404, message: "Active mapping not found" };
+      throw { status: 404, message: "Active mapping not found or access denied" };
     }
 
     const { vehicleId, gpsDeviceId } = mapping;
@@ -247,18 +251,21 @@ exports.unassign = async (req, res) => {
       });
     }
 
+    // 🔐 ORG SCOPE FIX
+    const orgFilter = req.orgScope === "ALL" ? {} : { organizationId: { $in: req.orgScope } };
     const mapping = await VehicleMapping.findOneAndUpdate(
       {
         vehicleId,
         gpsDeviceId,
         unassignedAt: null,
+        ...orgFilter
       },
       { unassignedAt: new Date() },
       { new: true, session },
     );
 
     if (!mapping) {
-      throw { status: 404, message: "Active mapping not found" };
+      throw { status: 404, message: "Active mapping not found or access denied" };
     }
 
     await VehicleModel.findByIdAndUpdate(
@@ -321,6 +328,7 @@ exports.getByVehicle = async (req, res) => {
     const { page, limit, search } = req.query;
 
     const filter = { vehicleId };
+    // 🔐 ORG SCOPE FIX
     if (req.user.role !== "superadmin" && req.orgScope !== "ALL") {
       filter.organizationId = { $in: req.orgScope };
     }
@@ -347,6 +355,7 @@ exports.getByDevice = async (req, res) => {
     const { page, limit, search } = req.query;
 
     const filter = { gpsDeviceId };
+    // 🔐 ORG SCOPE FIX
     if (req.user.role !== "superadmin" && req.orgScope !== "ALL") {
       filter.organizationId = { $in: req.orgScope };
     }

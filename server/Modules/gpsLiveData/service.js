@@ -123,6 +123,15 @@ const Service = {
         speed,
         ignition,
         movementStatus,
+        gpsTimestamp: data.gpsTimestamp ?? timestamp,
+        mainPowerStatus: data.mainPowerStatus ?? null,
+        acStatus: data.acStatus ?? null,
+        internalBatteryVoltage: data.internalBatteryVoltage ?? null,
+        batteryLevel: data.batteryLevel ?? null,
+        numberOfSatellites: data.numberOfSatellites ?? null,
+        gsmSignalStrength: data.gsmSignalStrength ?? null,
+        fuelPercentage: data.fuelPercentage ?? null,
+        temperature: data.temperature ?? null,
         updatedAt: timestamp,
       };
 
@@ -150,6 +159,8 @@ const Service = {
         updatedAt: timestamp,
 
         // Additional fields from parser
+        latitudeDirection: data.latitudeDirection ?? null,
+        longitudeDirection: data.longitudeDirection ?? null,
         heading: data.heading ?? null,
         numberOfSatellites: data.numberOfSatellites ?? null,
         currentMileage: data.currentMileage ?? null,
@@ -157,10 +168,14 @@ const Service = {
         gpsTime: data.gpsTime ?? null,
         packetType: data.packetType ?? "NR",
         altitude: data.altitude ?? null,
+        pdop: data.pdop ?? null,
+        hdop: data.hdop ?? null,
+        digitalInputStatus: data.digitalInputStatus ?? null,
 
         // Status fields
         emergencyStatus: data.emergencyStatus ?? false,
         tamperAlert: data.tamperAlert ?? "C",
+        acStatus: data.acStatus ?? false,
 
         // Power fields
         mainPowerStatus: data.mainPowerStatus ?? null,
@@ -171,6 +186,11 @@ const Service = {
         // Network fields
         gsmSignalStrength: data.gsmSignalStrength ?? null,
         operatorName: data.operatorName ?? null,
+        mcc: data.mcc ?? null,
+
+        // Sensor fields
+        fuelPercentage: data.fuelPercentage ?? null,
+        temperature: data.temperature ?? null,
       };
 
       if (ignition && !(prev && prev.ignitionStatus)) {
@@ -260,14 +280,35 @@ const Service = {
           date: day,
           totalDistance: distanceIncrement,
           maxSpeed: speed,
-          avgSpeed: 0,
+          avgSpeed: speed,
+          speedSampleCount: 1,
           runningTime: movementStatus === "running" ? 1 : 0,
           idleTime: movementStatus === "idle" ? 1 : 0,
           stoppedTime: movementStatus === "stopped" ? 1 : 0,
           firstIgnitionOn: ignition ? timestamp : null,
         });
       } else {
-        const inc = { totalDistance: distanceIncrement };
+        const historicalSampleCount =
+          typeof stats.speedSampleCount === "number" &&
+            Number.isFinite(stats.speedSampleCount)
+            ? stats.speedSampleCount
+            : Number(stats.runningTime || 0) +
+            Number(stats.idleTime || 0) +
+            Number(stats.stoppedTime || 0);
+
+        const prevSampleCount = Math.max(0, historicalSampleCount);
+        const nextSampleCount = prevSampleCount + 1;
+        const previousAvg = Number.isFinite(Number(stats.avgSpeed))
+          ? Number(stats.avgSpeed)
+          : 0;
+        const nextAvgSpeed = Number(
+          (
+            (previousAvg * prevSampleCount + speed) /
+            Math.max(1, nextSampleCount)
+          ).toFixed(2),
+        );
+
+        const inc = { totalDistance: distanceIncrement, speedSampleCount: 1 };
         if (movementStatus === "running") inc.runningTime = 1;
         if (movementStatus === "idle") inc.idleTime = 1;
         if (movementStatus === "stopped") inc.stoppedTime = 1;
@@ -277,6 +318,7 @@ const Service = {
           {
             $inc: inc,
             $max: { maxSpeed: speed },
+            $set: { avgSpeed: nextAvgSpeed, lastCalculatedAt: timestamp },
           },
         );
       }

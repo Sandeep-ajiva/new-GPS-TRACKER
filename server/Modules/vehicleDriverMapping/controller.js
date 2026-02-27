@@ -144,36 +144,14 @@ exports.unassignDriverFromVehicle = async (req, res) => {
     await validateUnassignData(req.body);
 
     const { vehicleId } = req.body;
-    const organizationId = req.orgId;
 
-    if (!organizationId) {
-      return res.status(400).json({
-        status: false,
-        message: "OrganizationId is required"
-      });
-    }
-
-    // Validate ObjectId
-    if (!mongoose.isValidObjectId(vehicleId)) {
-      return res.status(400).json({
-        status: false,
-        message: "Invalid vehicle ID"
-      });
-    }
-
-    // Verify vehicle exists and belongs to organization
-    const vehicle = await Vehicle.findById(vehicleId);
+    // 🔐 ORG SCOPE FIX
+    const orgFilter = req.orgScope === "ALL" ? {} : { organizationId: { $in: req.orgScope } };
+    const vehicle = await Vehicle.findOne({ _id: vehicleId, ...orgFilter });
     if (!vehicle) {
       return res.status(404).json({
         status: false,
-        message: "Vehicle not found"
-      });
-    }
-
-    if (vehicle.organizationId.toString() !== organizationId.toString()) {
-      return res.status(403).json({
-        status: false,
-        message: "Forbidden: Vehicle does not belong to your organization"
+        message: "Vehicle not found or access denied"
       });
     }
 
@@ -229,36 +207,14 @@ exports.unassignDriverFromVehicle = async (req, res) => {
 exports.getCurrentDriverByVehicle = async (req, res) => {
   try {
     const { vehicleId } = req.params;
-    const organizationId = req.orgId;
 
-    if (!organizationId) {
-      return res.status(400).json({
-        status: false,
-        message: "OrganizationId is required"
-      });
-    }
-
-    // Validate ObjectId
-    if (!mongoose.isValidObjectId(vehicleId)) {
-      return res.status(400).json({
-        status: false,
-        message: "Invalid vehicle ID"
-      });
-    }
-
-    // Verify vehicle exists and belongs to organization
-    const vehicle = await Vehicle.findById(vehicleId);
+    // 🔐 ORG SCOPE FIX
+    const orgFilter = req.orgScope === "ALL" ? {} : { organizationId: { $in: req.orgScope } };
+    const vehicle = await Vehicle.findOne({ _id: vehicleId, ...orgFilter });
     if (!vehicle) {
       return res.status(404).json({
         status: false,
-        message: "Vehicle not found"
-      });
-    }
-
-    if (vehicle.organizationId.toString() !== organizationId.toString()) {
-      return res.status(403).json({
-        status: false,
-        message: "Forbidden: Vehicle does not belong to your organization"
+        message: "Vehicle not found or access denied"
       });
     }
 
@@ -304,10 +260,9 @@ exports.getCurrentDriverByVehicle = async (req, res) => {
 
 exports.getAll = async (req, res) => {
   try {
-    const organizationId = req.orgId;
     const filter = { unassignedAt: null };
 
-    if (req.user.role !== "superadmin") {
+    if (req.user.role !== "superadmin" && req.orgScope !== "ALL") {
       filter.organizationId = { $in: req.orgScope };
     }
 

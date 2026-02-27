@@ -153,7 +153,7 @@ function buildDeviceScenarioPackets(device, index = 0) {
         vehicleNo,
         softwareVersion,
       }),
-      waitAfterMs: 250,
+      waitAfterMs: 3000,
     },
     {
       label: "LOGIN#2",
@@ -162,7 +162,7 @@ function buildDeviceScenarioPackets(device, index = 0) {
         vehicleNo,
         softwareVersion,
       }),
-      waitAfterMs: 250,
+      waitAfterMs: 2000,
     },
     {
       label: "HLM#1",
@@ -175,7 +175,7 @@ function buildDeviceScenarioPackets(device, index = 0) {
         dataUpdateRateIgnitionOn: 60,
         dataUpdateRateIgnitionOff: 60,
       }),
-      waitAfterMs: 300,
+      waitAfterMs: 5000,
     },
     {
       label: "HLM#2",
@@ -188,7 +188,7 @@ function buildDeviceScenarioPackets(device, index = 0) {
         dataUpdateRateIgnitionOn: 60,
         dataUpdateRateIgnitionOff: 60,
       }),
-      waitAfterMs: 300,
+      waitAfterMs: 5000,
     },
     {
       label: "NRM#1",
@@ -202,7 +202,7 @@ function buildDeviceScenarioPackets(device, index = 0) {
         ignition: true,
         currentMileage: mileage0,
       }),
-      waitAfterMs: 1000,
+      waitAfterMs: 60000, // 1 minute
     },
     {
       label: "NRM#2(<4s)",
@@ -216,7 +216,7 @@ function buildDeviceScenarioPackets(device, index = 0) {
         ignition: true,
         currentMileage: mileage0 + 0.09,
       }),
-      waitAfterMs: 4700,
+      waitAfterMs: 60000, // 1 minute
     },
     {
       label: "ALT#1",
@@ -230,7 +230,7 @@ function buildDeviceScenarioPackets(device, index = 0) {
         severity: "warning",
         message: "Speed threshold exceeded",
       }),
-      waitAfterMs: 350,
+      waitAfterMs: 30000,
     },
     {
       label: "EPB#1(ON)",
@@ -242,7 +242,7 @@ function buildDeviceScenarioPackets(device, index = 0) {
         speed: 28,
         heading: 67,
       }),
-      waitAfterMs: 350,
+      waitAfterMs: 30000,
     },
     {
       label: "OTA#1",
@@ -253,7 +253,7 @@ function buildDeviceScenarioPackets(device, index = 0) {
         toVersion: "2.6AIS",
         details: "Firmware update success",
       }),
-      waitAfterMs: 350,
+      waitAfterMs: 10000,
     },
     {
       label: "ACT#1",
@@ -262,7 +262,7 @@ function buildDeviceScenarioPackets(device, index = 0) {
         status: "ON",
         details: "Activated by server",
       }),
-      waitAfterMs: 350,
+      waitAfterMs: 10000,
     },
     {
       label: "NRM#3(overspeed)",
@@ -276,7 +276,7 @@ function buildDeviceScenarioPackets(device, index = 0) {
         ignition: true,
         currentMileage: mileage0 + 0.2,
       }),
-      waitAfterMs: 800,
+      waitAfterMs: 60000, // 1 minute
     },
     {
       label: "EPB#2(OFF)",
@@ -288,7 +288,7 @@ function buildDeviceScenarioPackets(device, index = 0) {
         speed: 7,
         heading: 20,
       }),
-      waitAfterMs: 300,
+      waitAfterMs: 10000,
     },
     {
       label: "NRM#4(ignition_off)",
@@ -302,7 +302,7 @@ function buildDeviceScenarioPackets(device, index = 0) {
         ignition: false,
         currentMileage: mileage0 + 0.21,
       }),
-      waitAfterMs: 400,
+      waitAfterMs: 10000,
     },
   ];
 }
