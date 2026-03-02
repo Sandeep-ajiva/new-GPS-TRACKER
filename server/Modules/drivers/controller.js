@@ -382,12 +382,16 @@ exports.delete = async (req, res) => {
             });
         }
 
-        const driver = await Driver.findById(id);
+        // 🔐 ORG SCOPE FIX
+        const driver = await Driver.findOne({
+            _id: id,
+            organizationId: { $in: req.orgScope }
+        });
 
         if (!driver) {
-            return res.status(404).json({
+            return res.status(403).json({
                 status: false,
-                message: "Driver not found"
+                message: "Forbidden: Access denied or driver not found"
             });
         }
 

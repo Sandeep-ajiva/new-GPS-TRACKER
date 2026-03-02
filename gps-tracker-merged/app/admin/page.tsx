@@ -202,22 +202,15 @@ export default function DashboardPage() {
   }, [displayVehicles, displayLiveData, orgPositionMap]);
 
   /* =========================
-     FILTERING
-  ========================= */
-  const filteredVehicles = useMemo(() => {
-    if (!selectedOrgId) return [];
-    return uiVehicles.filter((v) => {
-      const raw = displayVehicles.find((r: any) => r._id === v.id);
-      return (
-        (raw?.organizationId?._id || raw?.organizationId) === selectedOrgId
-      );
-    });
-  }, [uiVehicles, displayVehicles, selectedOrgId]);
-
-  const visibleVehicles =
-    statusFilter === "all"
-      ? filteredVehicles
-      : filteredVehicles.filter((v) => v.status === statusFilter);
+     FILTERING (REMOVED - TRUST BACKEND)
+     ========================= */
+  const visibleVehicles = useMemo(() => {
+    // 🔐 ORG CONTEXT UPDATE
+    // No longer filtering by selectedOrgId in frontend.
+    // Backend already scopes displayVehicles based on user hierarchy.
+    if (statusFilter === "all") return uiVehicles;
+    return uiVehicles.filter((v) => v.status === statusFilter);
+  }, [uiVehicles, statusFilter]);
 
   const positions = useVehiclePositions(visibleVehicles);
 

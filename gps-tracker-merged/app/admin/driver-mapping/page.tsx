@@ -14,15 +14,24 @@ import { useGetVehiclesQuery } from "@/redux/api/vehicleApi";
 import { useGetDriversQuery } from "@/redux/api/driversApi";
 import { useGetGpsDevicesQuery } from "@/redux/api/gpsDeviceApi";
 import { useGetOrganizationsQuery } from "@/redux/api/organizationApi";
-import { getSecureItem } from "@/app/admin/Helpers/encryptionHelper";
+// 🔐 ORG CONTEXT UPDATE
+import { useOrgContext } from "@/hooks/useOrgContext";
 
 export default function DriverMappingPage() {
+    // 🔐 ORG CONTEXT UPDATE
+    const { role ,orgId, isSuperAdmin, isRootOrgAdmin } = useOrgContext();
+
     // API Hooks
     const { data: mappingData, isLoading: isMappingLoading } = useGetVehicleDriverMappingsQuery(undefined, { refetchOnMountOrArgChange: true });
     const { data: vehData, isLoading: isVehLoading } = useGetVehiclesQuery({ page: 0, limit: 1000 }, { refetchOnMountOrArgChange: true });
     const { data: driverData, isLoading: isDriverLoading } = useGetDriversQuery({ page: 0, limit: 1000 }, { refetchOnMountOrArgChange: true });
     const { data: gpsData, isLoading: isGpsLoading } = useGetGpsDevicesQuery({ page: 0, limit: 1000 }, { refetchOnMountOrArgChange: true });
-    const { data: orgData, isLoading: isOrgLoading } = useGetOrganizationsQuery(undefined, { refetchOnMountOrArgChange: true });
+
+    // 🔐 Only superadmin needs full org list
+    const { data: orgData, isLoading: isOrgLoading } = useGetOrganizationsQuery(undefined, {
+        skip: !isSuperAdmin,
+        refetchOnMountOrArgChange: true
+    });
 
     // Mutations
     const [assignDriver, { isLoading: isAssigning }] = useAssignDriverMutation();
@@ -33,9 +42,12 @@ export default function DriverMappingPage() {
     const drivers = Array.isArray(driverData?.data) ? driverData.data : [];
     const gpsDevices = Array.isArray(gpsData?.data) ? gpsData.data : [];
     const organizations = useMemo(() => (orgData?.data as any[]) || [], [orgData]);
-    const userRole = getSecureItem("userRole");
-    const canAssign = userRole === "admin";
-    const canUnassign = userRole === "admin";
+
+    // 🔐 ORG CONTEXT UPDATE
+
+    const isAdminUser = role === "admin";
+    const canAssign = isSuperAdmin || isAdminUser;
+    const canUnassign = isSuperAdmin || isAdminUser;
 
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [showFilters, setShowFilters] = useState(false);
@@ -358,21 +370,24 @@ export default function DriverMappingPage() {
                                     placeholder="Search phone"
                                 />
                             </div>
-                            <div>
-                                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
-                                    Organization
-                                </label>
-                                <select
-                                    className="w-full rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
-                                    value={filters.organizationId}
-                                    onChange={(e) => setFilters({ ...filters, organizationId: e.target.value })}
-                                >
-                                    <option value="">All Organizations</option>
-                                    {organizations.map((org: any) => (
-                                        <option key={org._id} value={org._id}>{org.name}</option>
-                                    ))}
-                                </select>
-                            </div>
+                            {/* 🔐 ORG CONTEXT UPDATE */}
+                            {isSuperAdmin && (
+                                <div>
+                                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
+                                        Organization
+                                    </label>
+                                    <select
+                                        className="w-full rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
+                                        value={filters.organizationId}
+                                        onChange={(e) => setFilters({ ...filters, organizationId: e.target.value })}
+                                    >
+                                        <option value="">All Organizations</option>
+                                        {organizations.map((org: any) => (
+                                            <option key={org._id} value={org._id}>{org.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
                             <div>
                                 <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
                                     Assigned Date

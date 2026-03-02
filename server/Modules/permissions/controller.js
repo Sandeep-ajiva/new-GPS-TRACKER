@@ -17,6 +17,10 @@ const validateData = async (data) => {
 
 /*****************************add starts here*****************************************/
 exports.add = async (req, res) => {
+  // 🔐 SUPERADMIN ONLY
+  if (req.user.role !== "superadmin") {
+    return res.status(403).json({ message: "Forbidden" });
+  }
   try {
     await validateData(req.body);
     const { role, business_type, modules, hierarchy } = req.body;
@@ -46,6 +50,10 @@ exports.add = async (req, res) => {
 /*****************************add ends here*****************************************/
 /*****************************getbyid starts here*****************************************/
 exports.getbyid = async (req, res) => {
+  // 🔐 SUPERADMIN ONLY
+  if (req.user.role !== "superadmin") {
+    return res.status(403).json({ message: "Forbidden" });
+  }
   try {
     const permission = await permissionsModel.findById(req.params.id);
 
@@ -65,6 +73,10 @@ exports.getbyid = async (req, res) => {
 /*****************************getbyid ends here*****************************************/
 /*****************************getAll starts  here*****************************************/
 exports.getAll = async (req, res) => {
+  // 🔐 SUPERADMIN ONLY
+  if (req.user.role !== "superadmin") {
+    return res.status(403).json({ message: "Forbidden" });
+  }
   try {
     var result = [];
     const { role, modules, page, limit, search } = req.query;
@@ -92,6 +104,10 @@ exports.getAll = async (req, res) => {
 /*****************************getAll ends here*****************************************/
 /*******************************************************************************************/
 exports.search = async (req, res) => {
+  // 🔐 SUPERADMIN ONLY
+  if (req.user.role !== "superadmin") {
+    return res.status(403).json({ message: "Forbidden" });
+  }
   try {
     var result = [];
     const { role, page, limit } = req.query;
@@ -110,6 +126,10 @@ exports.search = async (req, res) => {
 
 /*****************************update starts here*****************************************/
 exports.update = async (req, res) => {
+  // 🔐 SUPERADMIN ONLY
+  if (req.user.role !== "superadmin") {
+    return res.status(403).json({ message: "Forbidden" });
+  }
   try {
     await validateData(req.body);
     const { role, modules, hierarchy } = req.body;
@@ -143,6 +163,10 @@ exports.update = async (req, res) => {
 /*****************************delete starts here*****************************************/
 
 exports.delete = async (req, res) => {
+  // 🔐 SUPERADMIN ONLY
+  if (req.user.role !== "superadmin") {
+    return res.status(403).json({ message: "Forbidden" });
+  }
   try {
     // Accept from body or URL param
     let recordIds = req.body?.recordId || req.params?.id;
@@ -190,6 +214,10 @@ exports.delete = async (req, res) => {
 
 /**********************Permission File Creation *************************/
 exports.FileCreate = async (req, res) => {
+  // 🔐 SUPERADMIN ONLY
+  if (req.user.role !== "superadmin") {
+    return res.status(403).json({ message: "Forbidden" });
+  }
   try {
     const allPermissions = await permissionsModel.find();
 
@@ -228,6 +256,10 @@ exports.FileCreate = async (req, res) => {
 /**********************Permissions File Ends******************************** */
 /**********************getPermissions starts******************************** */
 exports.getPermissions = async (req, res) => {
+  // 🔐 SUPERADMIN ONLY
+  if (req.user.role !== "superadmin") {
+    return res.status(403).json({ message: "Forbidden" });
+  }
   try {
     const role = req.user?.role;
     if (!role) {

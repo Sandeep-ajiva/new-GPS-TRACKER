@@ -27,6 +27,14 @@ router.post(
 
 // Standardized unassign (Frontend uses PATCH /api/devicemapping/:id/unassign)
 router.patch(
+  "/unassign",
+  verifyToken,
+  checkAuthorization(["admin", "superadmin"], "deviceMapping", "update"),
+  checkOrganization,
+  Controller.unassign
+);
+
+router.patch(
   "/:id/unassign",
   verifyToken,
   checkAuthorization(["admin", "superadmin"], "deviceMapping", "update"),

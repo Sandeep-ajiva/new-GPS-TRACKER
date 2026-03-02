@@ -13,14 +13,23 @@ import {
 import { useGetVehiclesQuery } from "@/redux/api/vehicleApi";
 import { useGetGpsDevicesQuery } from "@/redux/api/gpsDeviceApi";
 import { useGetOrganizationsQuery } from "@/redux/api/organizationApi";
-import { getSecureItem } from "@/app/admin/Helpers/encryptionHelper";
+// 🔐 ORG CONTEXT UPDATE
+import { useOrgContext } from "@/hooks/useOrgContext";
 
 export default function DeviceMappingPage() {
+    // 🔐 ORG CONTEXT UPDATE
+    const { role, orgId, isSuperAdmin, isRootOrgAdmin } = useOrgContext();
+
     // API Hooks
     const { data: mappingData, isLoading: isMappingLoading } = useGetDeviceMappingsQuery({ page: 0, limit: 1000 }, { refetchOnMountOrArgChange: true });
     const { data: vehData, isLoading: isVehLoading } = useGetVehiclesQuery({ page: 0, limit: 1000 }, { refetchOnMountOrArgChange: true });
     const { data: devData, isLoading: isDevLoading } = useGetGpsDevicesQuery({ page: 0, limit: 1000 }, { refetchOnMountOrArgChange: true });
-    const { data: orgData, isLoading: isOrgLoading } = useGetOrganizationsQuery(undefined, { refetchOnMountOrArgChange: true });
+
+    // 🔐 Only superadmin needs full org list
+    const { data: orgData, isLoading: isOrgLoading } = useGetOrganizationsQuery(undefined, {
+        skip: !isSuperAdmin,
+        refetchOnMountOrArgChange: true
+    });
 
     // Mutations
     const [assignDevice, { isLoading: isAssigning }] = useAssignDeviceMutation();
@@ -30,9 +39,12 @@ export default function DeviceMappingPage() {
     const vehicles = Array.isArray(vehData?.data) ? vehData.data : [];
     const devices = Array.isArray(devData?.data) ? devData.data : [];
     const organizations = useMemo(() => (orgData?.data as any[]) || [], [orgData]);
-    const userRole = getSecureItem("userRole");
-    const canAssign = userRole === "admin";
-    const canUnassign = userRole === "admin";
+
+    const isAdminUser = role === "admin";
+
+    // 🔐 ORG CONTEXT UPDATE
+    const canAssign = isSuperAdmin || isAdminUser;
+    const canUnassign = isSuperAdmin || isAdminUser;
 
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [showFilters, setShowFilters] = useState(false);
@@ -315,21 +327,24 @@ export default function DeviceMappingPage() {
                                     placeholder="Search IMEI"
                                 />
                             </div>
-                            <div>
-                                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
-                                    Organization
-                                </label>
-                                <select
-                                    className="admin-select-readable w-full rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
-                                    value={filters.organizationId}
-                                    onChange={(e) => setFilters({ ...filters, organizationId: e.target.value })}
-                                >
-                                    <option value="">All Organizations</option>
-                                    {organizations.map((org: any) => (
-                                        <option key={org._id} value={org._id}>{org.name}</option>
-                                    ))}
-                                </select>
-                            </div>
+                            {/* 🔐 ORG CONTEXT UPDATE */}
+                            {isSuperAdmin && (
+                                <div>
+                                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
+                                        Organization
+                                    </label>
+                                    <select
+                                        className="admin-select-readable w-full rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
+                                        value={filters.organizationId}
+                                        onChange={(e) => setFilters({ ...filters, organizationId: e.target.value })}
+                                    >
+                                        <option value="">All Organizations</option>
+                                        {organizations.map((org: any) => (
+                                            <option key={org._id} value={org._id}>{org.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
                             <div>
                                 <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
                                     Assigned Date

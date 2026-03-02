@@ -76,7 +76,15 @@ const formatDuration = (fromTs: string, toTs: string) => {
     return `${hrs}h ${rem}m`;
 };
 
+// 🔐 ORG CONTEXT UPDATE
+import { useOrgContext } from "@/hooks/useOrgContext";
+import { useGetOrganizationsQuery } from "@/redux/api/organizationApi";
+
 export default function HistoryPage() {
+    // 🔐 ORG CONTEXT UPDATE
+    const { isSuperAdmin } = useOrgContext();
+    const [selectedOrgId, setSelectedOrgId] = useState("");
+
     // Local state for form
     const [vehicleId, setVehicleId] = useState("");
     const [dateFrom, setDateFrom] = useState("");
@@ -85,7 +93,21 @@ export default function HistoryPage() {
     const [selectedRouteIndex, setSelectedRouteIndex] = useState(0);
 
     // API Hooks
-    const { data: vehData } = useGetVehiclesQuery(undefined);
+    // 🔐 If superadmin, we can filter vehicles by org. 
+    // Backend `getVehicles` should handle this param.
+    const { data: vehData } = useGetVehiclesQuery({
+        page: 0,
+        limit: 1000,
+        ...(selectedOrgId && { organizationId: selectedOrgId })
+    }, { refetchOnMountOrArgChange: true });
+
+    // 🔐 Only superadmin needs full org list
+    const { data: orgData } = useGetOrganizationsQuery(undefined, {
+        skip: !isSuperAdmin,
+        refetchOnMountOrArgChange: true
+    });
+
+    const organizations = orgData?.data || [];
 
     // History Query
     // Only run query when shouldFetch is true and we have all params
@@ -211,6 +233,22 @@ export default function HistoryPage() {
                         <p className="text-sm text-slate-500">Review trips by vehicle and time range.</p>
                     </div>
                     <form onSubmit={handleSearch} className="flex flex-wrap gap-4 items-end w-full">
+                        {/* 🔐 ORG CONTEXT UPDATE */}
+                        {isSuperAdmin && (
+                            <div className="flex-1 min-w-55">
+                                <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-slate-500">Filter by Org</label>
+                                <select
+                                    className="w-full rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
+                                    value={selectedOrgId}
+                                    onChange={e => { setSelectedOrgId(e.target.value); setVehicleId(""); setShouldFetch(false); }}
+                                >
+                                    <option value="">All Organizations</option>
+                                    {organizations.map((org: any) => (
+                                        <option key={org._id} value={org._id}>{org.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
                         <div className="flex-1 min-w-55">
                             <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-slate-500">Select Vehicle</label>
                             <select required className="w-full rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
@@ -249,8 +287,8 @@ export default function HistoryPage() {
                                             key={segment.id}
                                             onClick={() => setSelectedRouteIndex(idx)}
                                             className={`p-3 rounded-lg border cursor-pointer transition ${selectedRouteIndex === idx
-                                                    ? "bg-blue-50 border-blue-200"
-                                                    : "bg-slate-50 border-slate-100 hover:bg-slate-100"
+                                                ? "bg-blue-50 border-blue-200"
+                                                : "bg-slate-50 border-slate-100 hover:bg-slate-100"
                                                 }`}
                                         >
                                             <div className="text-xs font-semibold text-slate-900">{segment.label}</div>

@@ -482,10 +482,12 @@ exports.createSubOrganizationWithManager = async (req, res) => {
       });
     }
 
-    // parent org check
-    const parentOrg = await Organization.findById(parentOrganizationId).session(
-      session
-    );
+    // 🔐 ORG SCOPE FIX
+    const orgFilter = req.orgScope === "ALL" ? {} : { _id: { $in: req.orgScope } };
+    const parentOrg = await Organization.findOne({
+      _id: parentOrganizationId,
+      ...orgFilter
+    }).session(session);
     if (!parentOrg) {
       await session.abortTransaction();
       session.endSession();
@@ -631,7 +633,12 @@ exports.createSubOrganization = async (req, res) => {
     validateGeoData(payload.geo);
     validateSettingsData(payload.settings);
 
-    const parentOrg = await Organization.findById(parentOrganizationId);
+    // 🔐 ORG SCOPE FIX
+    const orgFilter = req.orgScope === "ALL" ? {} : { _id: { $in: req.orgScope } };
+    const parentOrg = await Organization.findOne({
+      _id: parentOrganizationId,
+      ...orgFilter
+    });
     if (!parentOrg) {
       return res.status(404).json({
         status: false,
@@ -709,7 +716,12 @@ exports.createSubAdmin = async (req, res) => {
     const { organizationId, firstName, lastName, email, mobile, password } =
       req.body;
 
-    const organization = await Organization.findById(organizationId).session(session);
+    // 🔐 ORG SCOPE FIX
+    const orgFilter = req.orgScope === "ALL" ? {} : { _id: { $in: req.orgScope } };
+    const organization = await Organization.findOne({
+      _id: organizationId,
+      ...orgFilter
+    }).session(session);
     if (!organization) {
       await session.abortTransaction();
       session.endSession();

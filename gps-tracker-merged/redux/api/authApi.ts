@@ -7,12 +7,17 @@ import { API_ROUTES } from "@/constants/ApiRoutes";
 import { saveSecureItem } from "@/app/admin/Helpers/encryptionHelper";
 
 
+// 🔐 ORG CONTEXT UPDATE
 type LoginResponse = {
   token: string;
   user: {
     _id: string;
-    role: "superadmin" | "admin" | "user";
+    role: "superadmin" | "admin" | "user" | "manager" | "driver";
     organizationId: string | null;
+    organizationName?: string;
+    organizationPath?: string;
+    firstName?: string;
+    lastName?: string;
   };
 };
 
@@ -34,10 +39,11 @@ export const authApi = baseApi.injectEndpoints({
         try {
           const { data } = await queryFulfilled;
 
-          // ✅ LOGIN RESPONSE SE TOKEN UTHAO
+          // 🔐 ORG CONTEXT UPDATE
           if (typeof window !== "undefined") {
             saveSecureItem("token", data.token);
-            saveSecureItem("userRole", data.user.role); // ✅ IMPORTANT
+            saveSecureItem("userRole", data.user.role);
+            saveSecureItem("user", data.user);
           }
 
         } catch (err) {

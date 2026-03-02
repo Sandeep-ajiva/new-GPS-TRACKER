@@ -97,11 +97,11 @@ exports.login = async (req, res) => {
       },
     });
   } catch (error) {
-      console.error("Login Error:", error);
-      return res.status(error.status || 500).json({
-        status: false,
-        message: error.message || "Server error",
-      });
+    console.error("Login Error:", error);
+    return res.status(error.status || 500).json({
+      status: false,
+      message: error.message || "Server error",
+    });
   }
 };
 
@@ -132,12 +132,10 @@ exports.getAll = async (req, res) => {
         query.organizationId = req.query.organizationId;
       }
     } else {
-      if (!req.user.organizationId) {
-        return res
-          .status(403)
-          .json({ status: false, message: "Access denied" });
+      // 🔐 ORG SCOPE FIX
+      if (req.orgScope !== "ALL") {
+        query.organizationId = { $in: req.orgScope };
       }
-      query.organizationId = req.user.organizationId;
     }
 
     const users = await User.find(query)

@@ -15,12 +15,19 @@ import {
 import { useGetOrganizationsQuery } from "@/redux/api/organizationApi";
 import { useGetGpsDevicesQuery } from "@/redux/api/gpsDeviceApi";
 import { useGetDriversQuery } from "@/redux/api/driversApi";
+import {
+  useAssignDeviceMutation,
+  useUnassignDeviceByDetailsMutation,
+} from "@/redux/api/deviceMappingApi";
 
 import { usePopups } from "../Helpers/PopupContext";
 import { capitalizeFirstLetter } from "../Helpers/CapitalizeFirstLetter";
 import { DynamicModal } from "@/components/common";
 import { FormField } from "@/lib/formTypes";
 import { getSecureItem } from "@/app/admin/Helpers/encryptionHelper";
+// 🔐 ORG CONTEXT UPDATE
+import { useOrgContext } from "@/hooks/useOrgContext";
+
 import {
   Building2,
   Car,
@@ -30,7 +37,6 @@ import {
   Palette,
   ToggleLeft,
   ShieldAlert,
-  Image as ImageIcon,
 } from "lucide-react";
 
 export interface Vehicle {
@@ -55,11 +61,17 @@ export default function VehiclesPage() {
   const searchParams = useSearchParams();
   const filterParam = searchParams.get("filter");
 
+  // 🔐 ORG CONTEXT UPDATE
+  const { orgId, isSuperAdmin, isRootOrgAdmin, isSubOrgAdmin } = useOrgContext();
+
   // API Hooks
   const { data: vehData, isLoading: isVehLoading } =
     useGetVehiclesQuery(undefined, { refetchOnMountOrArgChange: true });
   const { data: orgData, isLoading: isOrgLoading } =
-    useGetOrganizationsQuery(undefined, { refetchOnMountOrArgChange: true });
+    useGetOrganizationsQuery(undefined, {
+      skip: !isSuperAdmin, // 🔐 Only superadmin needs full org list
+      refetchOnMountOrArgChange: true,
+    });
   const { data: devData, isLoading: isDevLoading } =
     useGetGpsDevicesQuery(undefined, { refetchOnMountOrArgChange: true });
   const { data: driverData, isLoading: isDriverLoading } =
@@ -68,6 +80,9 @@ export default function VehiclesPage() {
   const [createVehicle, { isLoading: isCreating }] = useCreateVehicleMutation();
   const [updateVehicle, { isLoading: isUpdating }] = useUpdateVehicleMutation();
   const [deleteVehicle, { isLoading: isDeleting }] = useDeleteVehicleMutation();
+
+  const [assignDevice] = useAssignDeviceMutation();
+  const [unassignDeviceByDetails] = useUnassignDeviceByDetailsMutation();
 
   const vehicles = useMemo(() => (vehData?.data as Vehicle[]) || [], [vehData]);
   const organizations = useMemo(
@@ -107,10 +122,11 @@ export default function VehiclesPage() {
     driverId: "",
     deviceAssigned: "",
   });
-  const userRole = getSecureItem("userRole");
-  const canCreateVehicle = userRole === "admin" || userRole === "manager";
-  const canEditVehicle = userRole === "admin" || userRole === "manager";
-  const canDeleteVehicle = userRole === "admin";
+
+  // 🔐 ORG CONTEXT UPDATE
+  const canCreateVehicle = isSuperAdmin || isRootOrgAdmin || isSubOrgAdmin;
+  const canEditVehicle = isSuperAdmin || isRootOrgAdmin || isSubOrgAdmin;
+  const canDeleteVehicle = isSuperAdmin || isRootOrgAdmin;
 
   const [editingVehicle, setEditingVehicle] = useState<Vehicle | null>(null);
 
@@ -200,17 +216,59 @@ export default function VehiclesPage() {
         body.vehicleNumber = String(body.vehicleNumber).toUpperCase().trim();
       }
 
+      // 🔐 SYNC FIX: Detect deviceId changes
+      const oldDeviceId = editingVehicle?.deviceId || null;
+      const newDeviceId = body.deviceId !== undefined ? body.deviceId : oldDeviceId;
+      const isDeviceChanged = oldDeviceId !== newDeviceId;
+
       if (editingVehicle) {
-        // ✅ UPDATE
+        // ✅ UPDATE VEHICLE
+        const { deviceId, ...vehicleUpdateData } = body;
+
+        // If device hasn't changed, we can include it or skip it (it's in vehicleUpdateData if defined)
+        // To be safe and avoid unwanted side effects on other mappings if we were using direct update,
+        // we'll handle device mapping separately.
+
         await updateVehicle({
           id: editingVehicle._id,
-          ...body,
+          ...vehicleUpdateData,
         }).unwrap();
+
+        // Sync Mapping if changed
+        if (isDeviceChanged) {
+          if (newDeviceId) {
+            await assignDevice({
+              vehicleId: editingVehicle._id,
+              gpsDeviceId: newDeviceId as string,
+            }).unwrap();
+          } else if (oldDeviceId) {
+            await unassignDeviceByDetails({
+              vehicleId: editingVehicle._id,
+              gpsDeviceId: oldDeviceId as string,
+            }).unwrap();
+          }
+        }
 
         toast.success("Vehicle updated successfully");
       } else {
-        // ✅ CREATE
-        await createVehicle(body).unwrap();
+        // ✅ CREATE VEHICLE
+        // 🔐 ORG CONTEXT UPDATE
+        if (!isSuperAdmin) {
+          body.organizationId = orgId || "";
+        }
+
+        // Split deviceId out to assign it via mapping API after creation
+        const { deviceId: initialDeviceId, ...createData } = body;
+        const result = await createVehicle(createData).unwrap();
+        const newVehicleId = result.data._id;
+
+        if (initialDeviceId) {
+          await assignDevice({
+            vehicleId: newVehicleId,
+            gpsDeviceId: initialDeviceId as string,
+          }).unwrap();
+        }
+
         toast.success("Vehicle created successfully");
       }
     } catch (err: unknown) {
@@ -222,33 +280,36 @@ export default function VehiclesPage() {
 
 
   const vehicleFormFields: FormField[] = useMemo(() => [
-    {
-      name: "organizationId",
-      label: "Organization",
-      type: "select",
-      required: true,
-      groups: [
-        {
-          label: "Organizations",
-          options: organizations
-            .filter((org) => !org.parentOrganizationId)
-            .map((org) => ({
-              label: org.name,
-              value: org._id,
-            })),
-        },
-        {
-          label: "Sub-Organizations",
-          options: organizations
-            .filter((org) => org.parentOrganizationId)
-            .map((org) => ({
-              label: org.name,
-              value: org._id,
-            })),
-        },
-      ],
-      icon: <Building2 size={14} className="text-slate-500" />,
-    },
+    // 🔐 ORG CONTEXT UPDATE
+    ...(isSuperAdmin ? [
+      {
+        name: "organizationId",
+        label: "Organization",
+        type: "select" as const,
+        required: true,
+        groups: [
+          {
+            label: "Organizations",
+            options: organizations
+              .filter((org) => !org.parentOrganizationId)
+              .map((org) => ({
+                label: org.name,
+                value: org._id,
+              })),
+          },
+          {
+            label: "Sub-Organizations",
+            options: organizations
+              .filter((org) => org.parentOrganizationId)
+              .map((org) => ({
+                label: org.name,
+                value: org._id,
+              })),
+          },
+        ],
+        icon: <Building2 size={14} className="text-slate-500" />,
+      }
+    ] : []),
     {
       name: "vehicleType",
       label: "Vehicle Type",
@@ -347,9 +408,9 @@ export default function VehiclesPage() {
   const handleAssignDevice = async (deviceId: string) => {
     if (!selectedVehicleForAssignment) return;
     try {
-      await updateVehicle({
-        id: selectedVehicleForAssignment._id,
-        deviceId: deviceId,
+      await assignDevice({
+        vehicleId: selectedVehicleForAssignment._id,
+        gpsDeviceId: deviceId,
       }).unwrap();
       toast.success("Device assigned successfully");
       closePopup("assignDeviceModal");
@@ -575,38 +636,41 @@ export default function VehiclesPage() {
                   <option value="other">Other</option>
                 </select>
               </div>
-              <div>
-                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
-                  Organization
-                </label>
-                <select
-                  className="admin-filter-select w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 outline-none"
-                  value={filters.organizationId}
-                  onChange={(e) =>
-                    setFilters({ ...filters, organizationId: e.target.value })
-                  }
-                >
-                  <option value="">All Organizations</option>
-                  <optgroup label="Organizations">
-                    {organizations
-                      .filter((org) => !org.parentOrganizationId)
-                      .map((org) => (
-                        <option key={org._id} value={org._id}>
-                          {org.name}
-                        </option>
-                      ))}
-                  </optgroup>
-                  <optgroup label="Sub-Organizations">
-                    {organizations
-                      .filter((org) => org.parentOrganizationId)
-                      .map((org) => (
-                        <option key={org._id} value={org._id}>
-                          {org.name}
-                        </option>
-                      ))}
-                  </optgroup>
-                </select>
-              </div>
+              {/* 🔐 ORG CONTEXT UPDATE */}
+              {isSuperAdmin && (
+                <div>
+                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
+                    Organization
+                  </label>
+                  <select
+                    className="admin-filter-select w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 outline-none"
+                    value={filters.organizationId}
+                    onChange={(e) =>
+                      setFilters({ ...filters, organizationId: e.target.value })
+                    }
+                  >
+                    <option value="">All Organizations</option>
+                    <optgroup label="Organizations">
+                      {organizations
+                        .filter((org) => !org.parentOrganizationId)
+                        .map((org) => (
+                          <option key={org._id} value={org._id}>
+                            {org.name}
+                          </option>
+                        ))}
+                    </optgroup>
+                    <optgroup label="Sub-Organizations">
+                      {organizations
+                        .filter((org) => org.parentOrganizationId)
+                        .map((org) => (
+                          <option key={org._id} value={org._id}>
+                            {org.name}
+                          </option>
+                        ))}
+                    </optgroup>
+                  </select>
+                </div>
+              )}
               <div>
                 <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
                   Driver
@@ -724,7 +788,7 @@ export default function VehiclesPage() {
         {isPopupOpen("assignDeviceModal") && (
           <div className="fixed inset-0 bg-slate-950/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
             <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl border border-slate-200">
-              <h2 className="text-xl font-bold mb-4">Assign GPS Device</h2>
+              <h2 className="text-xl text-slate-900 font-bold mb-4">Assign GPS Device</h2>
               <p className="text-sm text-slate-500 mb-4">
                 Assign a GPS device to{" "}
                 <strong>{selectedVehicleForAssignment?.vehicleNumber}</strong>
@@ -744,9 +808,13 @@ export default function VehiclesPage() {
                     <button
                       key={device._id}
                       onClick={() => handleAssignDevice(device._id)}
-                      className="w-full p-3 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors text-left"
+                      className="w-full p-4 rounded-xl
+  bg-transparent border border-transparent
+  hover:bg-slate-300
+  transition-colors duration-200
+  text-left cursor-pointer"
                     >
-                      <div className="font-semibold text-sm">{device.imei}</div>
+                      <div className="font-semibold text-sm text-black">{device.imei}</div>
                       <div className="text-xs text-slate-500">
                         {device.deviceModel} • {device.connectionStatus}
                       </div>

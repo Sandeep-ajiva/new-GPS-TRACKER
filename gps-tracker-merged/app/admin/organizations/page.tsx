@@ -8,8 +8,10 @@ import { Plus, Edit, Trash2, Loader2, Eye, Filter } from "lucide-react";
 import { toast } from "sonner";
 import { getSecureItem } from "@/app/admin/Helpers/encryptionHelper";
 
+// 🔐 ORG CONTEXT UPDATE
+import { useOrgContext } from "@/hooks/useOrgContext";
+
 import {
-  useGetOrganizationsQuery,
   useGetSubOrganizationsQuery,
   useCreateSubOrganizationWithManagerMutation,
   useUpdateOrganizationMutation,
@@ -43,29 +45,11 @@ interface Organization {
 export default function OrganizationsPage() {
   const router = useRouter();
 
-  /* ---------------------------------------
-     1️⃣ Fetch all organizations
-  ---------------------------------------- */
-  const { data: allOrgResponse, isLoading: loadingAll } =
-    useGetOrganizationsQuery(undefined, { refetchOnMountOrArgChange: true });
-
-  const allOrganizations: Organization[] = useMemo(
-    () => allOrgResponse?.data || [],
-    [allOrgResponse]
-  );
+  // 🔐 ORG CONTEXT UPDATE
+  const { role , orgId, orgName, isSuperAdmin, isRootOrgAdmin } = useOrgContext();
 
   /* ---------------------------------------
-     2️⃣ Find parent organization
-  ---------------------------------------- */
-  const parentOrg = useMemo(
-    () => allOrganizations.find((o) => o.parentOrganizationId === null),
-    [allOrganizations]
-  );
-
-  const parentOrgId = parentOrg?._id;
-
-  /* ---------------------------------------
-     3️⃣ Fetch sub-organizations (NO parentId param)
+     1️⃣ Fetch sub-organizations (NO parentId param)
   ---------------------------------------- */
   const { data: subOrgResponse, isLoading, error } =
     useGetSubOrganizationsQuery(undefined);
@@ -94,10 +78,11 @@ export default function OrganizationsPage() {
     type: "",
     status: "",
   });
-  const userRole = getSecureItem("userRole");
-  const canCreateOrg = userRole === "admin";
-  const canEditOrg = userRole === "admin";
-  const canDeleteOrg = userRole === "admin";
+
+  // 🔐 ORG CONTEXT UPDATE
+  const canCreateOrg = isSuperAdmin || isRootOrgAdmin;
+  const canEditOrg = isSuperAdmin || isRootOrgAdmin;
+  const canDeleteOrg = isSuperAdmin || isRootOrgAdmin;
 
   const filteredOrganizations = useMemo(() => {
     const nameFilter = filters.name.trim().toLowerCase();
@@ -160,8 +145,9 @@ export default function OrganizationsPage() {
 
         toast.success("Organization updated successfully");
       } else {
+        // 🔐 ORG CONTEXT UPDATE
         await createSubOrganizationWithManager({
-          parentOrganizationId: parentOrgId,
+          parentOrganizationId: orgId, // use current org as parent
           organizationData: {
             name: form.name,
             organizationType: form.organizationType,
@@ -229,7 +215,7 @@ export default function OrganizationsPage() {
       accessor: (row: Organization) => (
         <div className="flex gap-2">
           <button
-            onClick={() => router.push(`/dashboard?organizationId=${row._id}`)}
+            onClick={() => router.push(`/admin?organizationId=${row._id}`)}
           >
             <Eye size={16} />
           </button>
@@ -251,7 +237,7 @@ export default function OrganizationsPage() {
   /* ---------------------------------------
      Loading / Error
   ---------------------------------------- */
-  if (loadingAll || isLoading) {
+  if (isLoading) {
     return (
       <div className="flex justify-center p-10">
         <Loader2 className="animate-spin" />
@@ -272,7 +258,8 @@ export default function OrganizationsPage() {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-2xl font-black">Sub Organizations</h1>
-            <p className="text-sm text-slate-500">Parent: {parentOrg?.name}</p>
+            {/* 🔐 ORG CONTEXT UPDATE */}
+            <p className="text-sm text-slate-500">Parent: {orgName}</p>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row">
             <button

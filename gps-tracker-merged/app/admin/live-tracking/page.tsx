@@ -43,7 +43,13 @@ interface ApiGpsItem {
   updatedAt?: string;
 }
 
+// 🔐 ORG CONTEXT UPDATE
+import { useOrgContext } from "@/hooks/useOrgContext";
+
 export default function LiveTrackingPage() {
+  // 🔐 ORG CONTEXT UPDATE
+  const { isSuperAdmin, orgId } = useOrgContext();
+
   const { data: liveDataRes, isLoading } = useGetLiveVehiclesQuery(undefined, {
     refetchOnMountOrArgChange: true,
     refetchOnFocus: false,
@@ -106,25 +112,25 @@ export default function LiveTrackingPage() {
         const existing = prev[normalizedVehicleId];
         const next: Vehicle = existing
           ? {
-              ...existing,
-              lat: lat ?? existing.lat,
-              lng: lng ?? existing.lng,
-              speed,
-              heading: update.heading ?? existing.heading,
-              status,
-              lastUpdated,
-            }
+            ...existing,
+            lat: lat ?? existing.lat,
+            lng: lng ?? existing.lng,
+            speed,
+            heading: update.heading ?? existing.heading,
+            status,
+            lastUpdated,
+          }
           : {
-              id: normalizedVehicleId,
-              vehicleNumber: update.vehicleNumber || update.imei || "Unknown",
-              lat: lat ?? 0,
-              lng: lng ?? 0,
-              speed,
-              heading: update.heading ?? 0,
-              status,
-              lastUpdated,
-              organizationId: orgId,
-            };
+            id: normalizedVehicleId,
+            vehicleNumber: update.vehicleNumber || update.imei || "Unknown",
+            lat: lat ?? 0,
+            lng: lng ?? 0,
+            speed,
+            heading: update.heading ?? 0,
+            status,
+            lastUpdated,
+            organizationId: orgId,
+          };
 
         return {
           ...prev,
@@ -139,15 +145,22 @@ export default function LiveTrackingPage() {
 
   // Handle socket rooms subscription
   useEffect(() => {
-    if (liveDataRes?.data && socket) {
+    if (socket) {
+      // 🔐 ORG CONTEXT UPDATE
+      // If superadmin, join all rooms from data
+      // If sub-org admin/manager, join only their org room
       const orgIds = new Set<string>();
-      liveDataRes.data.forEach((item: ApiGpsItem) => {
-        const orgId =
-          typeof item.organizationId === "string"
-            ? item.organizationId
-            : item.organizationId?._id;
-        if (orgId) orgIds.add(orgId);
-      });
+      if (isSuperAdmin && liveDataRes?.data) {
+        liveDataRes.data.forEach((item: ApiGpsItem) => {
+          const orgId =
+            typeof item.organizationId === "string"
+              ? item.organizationId
+              : item.organizationId?._id;
+          if (orgId) orgIds.add(orgId);
+        });
+      } else if (orgId) {
+        orgIds.add(orgId);
+      }
 
       orgIds.forEach((id) => {
         socket.emit("join_organization", id);
@@ -160,7 +173,7 @@ export default function LiveTrackingPage() {
         });
       };
     }
-  }, [liveDataRes?.data, socket]);
+  }, [liveDataRes?.data, socket, isSuperAdmin, orgId]);
 
   // Initialize/Sync vehicles from API data
   useEffect(() => {
@@ -242,11 +255,10 @@ export default function LiveTrackingPage() {
               {vehicles.length}
             </div>
             <div
-              className={`flex items-center gap-2 rounded-xl border px-4 py-2 text-[10px] font-black uppercase tracking-widest ${
-                isConnected
-                  ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                  : "border-rose-200 bg-rose-50 text-rose-700"
-              }`}
+              className={`flex items-center gap-2 rounded-xl border px-4 py-2 text-[10px] font-black uppercase tracking-widest ${isConnected
+                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                : "border-rose-200 bg-rose-50 text-rose-700"
+                }`}
             >
               <span
                 className={`h-2 w-2 rounded-full ${isConnected ? "bg-emerald-500 animate-pulse" : "bg-rose-500"}`}

@@ -68,9 +68,11 @@ exports.getByVehicle = async (req, res) => {
 
     const filter = { vehicleId };
 
-    if (req.user.role !== "superadmin") {
-      filter.organizationId = req.orgId;
+    // 🔐 ORG SCOPE FIX
+    if (req.orgScope !== "ALL") {
+      filter.organizationId = { $in: req.orgScope };
     }
+
 
     const result = await paginate(
       GpsHistory,
@@ -109,9 +111,11 @@ exports.getByDevice = async (req, res) => {
 
     const filter = { gpsDeviceId };
 
-    if (req.user.role !== "superadmin") {
-      filter.organizationId = req.orgId;
+    // 🔐 ORG SCOPE FIX
+    if (req.orgScope !== "ALL") {
+      filter.organizationId = { $in: req.orgScope };
     }
+
 
     const result = await paginate(
       GpsHistory,
@@ -138,7 +142,13 @@ exports.getByDevice = async (req, res) => {
    ========================================================================== */
 exports.deleteHistory = async (req, res) => {
   try {
-    await GpsHistory.deleteMany({});
+    // 🔐 ORG SCOPE FIX
+    const filter =
+      req.orgScope === "ALL"
+        ? {}
+        : { organizationId: { $in: req.orgScope } };
+
+    await GpsHistory.deleteMany(filter);
     return res.status(200).json({
       status: true,
       message: "GPS history cleared successfully",

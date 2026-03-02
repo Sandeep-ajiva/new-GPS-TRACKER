@@ -13,6 +13,9 @@ import {
 } from "@/redux/api/notificationsApi";
 import { useGetOrganizationsQuery } from "@/redux/api/organizationApi";
 
+// 🔐 ORG CONTEXT UPDATE
+import { useOrgContext } from "@/hooks/useOrgContext";
+
 type HeaderProps = {
     onOpenSidebar?: () => void;
 };
@@ -30,7 +33,9 @@ export default function Header({ onOpenSidebar }: HeaderProps) {
         pollingInterval: 60000, // Changed from 15000ms to 60000ms (60 seconds) to reduce excessive API calls
         refetchOnMountOrArgChange: true,
     });
-    const { data: orgData } = useGetOrganizationsQuery(undefined, { refetchOnMountOrArgChange: true });
+
+    // 🔐 ORG CONTEXT UPDATE
+    const { orgName } = useOrgContext();
 
     const [markAsRead] = useMarkAsReadMutation();
     const [deleteNotification] = useDeleteNotificationMutation();
@@ -38,10 +43,6 @@ export default function Header({ onOpenSidebar }: HeaderProps) {
 
     const notifications = notifData?.data || [];
     const adminUser = userData?.data || {};
-    const organizations = orgData?.data || [];
-
-    // Derived state
-    const rootOrg = organizations.find((o: any) => !o.parentOrganizationId) || {};
 
     const searchRef = useRef<HTMLDivElement>(null);
     const notifRef = useRef<HTMLDivElement>(null);
@@ -226,7 +227,12 @@ export default function Header({ onOpenSidebar }: HeaderProps) {
                     className="flex items-center gap-3 hover:bg-slate-100 rounded-lg px-2 py-1 transition-colors cursor-pointer"
                 >
                     <div className="text-right hidden sm:block">
-                        <p className="text-sm font-semibold text-slate-900">{adminUser.name || "Admin User"}</p>
+                        <div className="flex items-center justify-end gap-1.5 mb-0.5">
+                            <span className="text-[10px] font-black uppercase tracking-widest text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">
+                                {orgName}
+                            </span>
+                            <p className="text-sm font-semibold text-slate-900">{adminUser.name || "Admin User"}</p>
+                        </div>
                         <p className="text-xs text-slate-500">{adminUser.email || "admin@example.com"}</p>
                     </div>
                     {adminUser.avatar ? (
