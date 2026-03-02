@@ -75,7 +75,7 @@ export default function GpsDevicesPage() {
 
   const { data: orgData, isLoading: isOrgLoading } =
     useGetOrganizationsQuery(undefined, {
-      skip: !isSuperAdmin, // 🔐 Only superadmin needs full org list
+      skip: !(isSuperAdmin || isRootOrgAdmin), // 🔐 Only superadmin or root-org-admin needs full org list
       refetchOnMountOrArgChange: true,
     });
 
@@ -254,8 +254,9 @@ export default function GpsDevicesPage() {
         toast.success("Device updated successfully");
       } else {
         // 🔐 ORG CONTEXT UPDATE
+        // If user is NOT superadmin or root-org-admin, lock organization from context
         const finalData = { ...data };
-        if (!isSuperAdmin) {
+        if (!(isSuperAdmin || isRootOrgAdmin)) {
           finalData.organizationId = orgId || "";
         }
         await createGpsDevice(finalData).unwrap();
@@ -271,7 +272,7 @@ export default function GpsDevicesPage() {
 
   const deviceFormFields: FormField[] = useMemo(() => [
     // 🔐 ORG CONTEXT UPDATE
-    ...(isSuperAdmin ? [
+    ...(isSuperAdmin || isRootOrgAdmin ? [
       {
         name: "organizationId",
         label: "Organization",
@@ -636,7 +637,7 @@ export default function GpsDevicesPage() {
                 />
               </div>
               {/* 🔐 ORG CONTEXT UPDATE */}
-              {isSuperAdmin && (
+              {(isSuperAdmin || isRootOrgAdmin) && (
                 <div>
                   <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
                     Organization

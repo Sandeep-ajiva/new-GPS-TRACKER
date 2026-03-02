@@ -142,6 +142,9 @@ const validateSettingsData = (settings) => {
 ====================================================== */
 
 exports.createOrganizationWithAdmin = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
   try {
     parseJsonFields(req.body, ["address", "geo", "settings"]);
 
@@ -163,61 +166,91 @@ exports.createOrganizationWithAdmin = async (req, res) => {
       settings,
     } = req.body;
 
+    /* 🔒 GLOBAL UNIQUE OR SCOPED UNIQUE — choose strategy */
+
     const orgExists = await Organization.findOne({
       $or: [{ email: email.toLowerCase() }, { phone: phone.trim() }],
-    });
+    }).session(session);
+
     if (orgExists) {
-      return res.status(409).json({
-        status: false,
+      throw {
+        status: 409,
         message: "Organization with this email or phone already exists",
-      });
+      };
     }
 
     const userExists = await User.findOne({
       $or: [{ email: email.toLowerCase() }, { mobile: phone.trim() }],
-    });
+    }).session(session);
+
     if (userExists) {
-      return res.status(409).json({
-        status: false,
+      throw {
+        status: 409,
         message: "Admin user with this email or mobile already exists",
-      });
+      };
     }
 
-    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+    /* 🧠 SLUG SAFE */
+
+    const baseSlug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+
+    let slug = baseSlug;
+    let slugExists = await Organization.findOne({ path: `/${slug}` });
+
+    if (slugExists) {
+      slug = `${baseSlug}-${Date.now()}`;
+    }
+
     const path = `/${slug}`;
 
     const logo = req.file ? `/uploads/logos/${req.file.filename}` : null;
 
-    const organization = await Organization.create({
-      name: name.trim(),
-      organizationType,
-      email: email.toLowerCase().trim(),
-      phone: phone.trim(),
-      logo,
-      address: normalizeAddress(address),
-      geo: geo || { timezone: "Asia/Kolkata" },
-      settings: settings || {},
-      parentOrganizationId: null,
-      path,
-      status: "active",
-      createdBy: req.user._id,
-    });
+    /* 🏢 CREATE ORG */
+
+    const [organization] = await Organization.create(
+      [
+        {
+          name: name.trim(),
+          organizationType,
+          email: email.toLowerCase().trim(),
+          phone: phone.trim(),
+          logo,
+          address: normalizeAddress(address),
+          geo: geo || { timezone: "Asia/Kolkata" },
+          settings: settings || {},
+          parentOrganizationId: null,
+          path,
+          status: "active",
+          createdBy: req.user._id,
+        },
+      ],
+      { session }
+    );
+
+    /* 👤 CREATE ADMIN */
 
     const passwordHash = await bcrypt.hash(password, 10);
 
-    const adminUser = await User.create({
-      organizationId: organization._id,
-      firstName: firstName.trim(),
-      lastName: lastName.trim(),
-      email: email.toLowerCase().trim(),
-      mobile: phone.trim(),
-      passwordHash,
-      role: "admin",
-      status: "active",
-    });
+    const [adminUser] = await User.create(
+      [
+        {
+          organizationId: organization._id,
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
+          email: email.toLowerCase().trim(),
+          mobile: phone.trim(),
+          passwordHash,
+          role: "admin",
+          status: "active",
+        },
+      ],
+      { session }
+    );
 
     organization.adminUser = adminUser._id;
-    await organization.save();
+    await organization.save({ session });
+
+    await session.commitTransaction();
 
     return res.status(201).json({
       status: true,
@@ -225,14 +258,18 @@ exports.createOrganizationWithAdmin = async (req, res) => {
       data: { organization, admin: adminUser },
     });
   } catch (error) {
+    await session.abortTransaction();
+
     console.error("Create Organization With Admin Error:", error);
+
     return res.status(error.status || 500).json({
       status: false,
       message: error.message || "Internal server error",
     });
+  } finally {
+    session.endSession();
   }
 };
-
 /* ======================================================
    CREATE ORGANIZATION ONLY
 ====================================================== */
@@ -403,17 +440,40 @@ exports.update = async (req, res) => {
 
 exports.delete = async (req, res) => {
   try {
-    // 🔐 ORG SCOPE FIX
-    const orgFilter = req.orgScope === "ALL" ? {} : { _id: { $in: req.orgScope } };
-    const organization = await Organization.findOne({ _id: req.params.id, ...orgFilter });
+    const orgFilter =
+      req.orgScope === "ALL"
+        ? {}
+        : { _id: { $in: req.orgScope } };
+
+    const organization = await Organization.findOne({
+      _id: req.params.id,
+      ...orgFilter,
+    });
 
     if (!organization) {
-      return res
-        .status(404)
-        .json({ status: false, message: "Organization not found or access denied" });
+      return res.status(404).json({
+        status: false,
+        message: "Organization not found or access denied",
+      });
     }
 
-    await Organization.findByIdAndDelete(req.params.id);
+    if (!organization.parentOrganizationId) {
+  return res.status(400).json({
+    status: false,
+    message: "Root organization cannot be deleted",
+  });
+}
+    /* 🧨 CASCADE DELETE */
+
+    await Promise.all([
+      User.deleteMany({ organizationId: req.params.id }),
+      Vehicle.deleteMany({ organizationId: req.params.id }),
+      Device.deleteMany({ organizationId: req.params.id }),
+      Driver.deleteMany({ organizationId: req.params.id }),
+      VehicleMapping.deleteMany({ organizationId: req.params.id }),
+    ]);
+
+    await Organization.deleteOne({ _id: req.params.id });
 
     return res.status(200).json({
       status: true,
@@ -421,7 +481,10 @@ exports.delete = async (req, res) => {
     });
   } catch (error) {
     console.error("Delete Organization Error:", error);
-    return res.status(500).json({ status: false, message: error.message });
+    return res.status(500).json({
+      status: false,
+      message: error.message,
+    });
   }
 };
 

@@ -32,23 +32,23 @@ router.post(
 );
 
 // 3️⃣ Create sub-organization only
-router.post(
-  "/sub-organization",
-  requireAuth,
-  checkAuthorization(["superadmin", "admin"], "organizations", "create"),
-  checkOrganization,
-  handleLogoUpload,
-  Controller.createSubOrganization
-);
+// router.post(
+//   "/sub-organization",
+//   requireAuth,
+//   checkAuthorization(["superadmin", "admin"], "organizations", "create"),
+//   checkOrganization,
+//   handleLogoUpload,
+//   Controller.createSubOrganization
+// );
 
 // 4️⃣ Create sub-organization admin only
-router.post(
-  "/sub-admin",
-  requireAuth,
-  checkAuthorization(["superadmin", "admin"], "organizations", "create"),
-  checkOrganization,
-  Controller.createSubAdmin
-);
+// router.post(
+//   "/sub-admin",
+//   requireAuth,
+//   checkAuthorization(["superadmin", "admin"], "organizations", "create"),
+//   checkOrganization,
+//   Controller.createSubAdmin
+// );
 
 /* =========================
    READ

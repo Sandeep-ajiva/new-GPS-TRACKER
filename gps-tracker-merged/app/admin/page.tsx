@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import OrganizationMap from "@/components/admin/Map/OrganizationMap";
 import { VehicleSidebar } from "@/components/dashboard/vehicle-sidebar";
 import { MapWrapper } from "@/components/dashboard/map-wrapper";
+import { DashboardProvider } from "@/components/dashboard/DashboardContext";
 import { useVehiclePositions } from "@/lib/use-vehicle-positions";
 import { useGetOrganizationsQuery } from "@/redux/api/organizationApi";
 import { useGetVehiclesQuery } from "@/redux/api/vehicleApi";
@@ -269,24 +270,22 @@ export default function DashboardPage() {
 
       {/* ===== MAP + SIDEBAR ===== */}
       {selectedOrgId ? (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-1 rounded-2xl overflow-hidden border border-slate-200 bg-white">
-            <VehicleSidebar
-              vehicles={visibleVehicles}
-              selectedId={selectedVehicleId}
-              onSelect={(id) => setSelectedVehicleId(id === selectedVehicleId ? null : id)}
-              statusFilter={statusFilter === "all" ? "total" : statusFilter}
-            />
-          </div>
+        <DashboardProvider>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-1 rounded-2xl overflow-hidden border border-slate-200 bg-white">
+              <VehicleSidebar
+                vehicles={visibleVehicles}
+                selectedId={selectedVehicleId}
+                onSelect={(id) => setSelectedVehicleId(id === selectedVehicleId ? null : id)}
+                statusFilter={statusFilter === "all" ? "total" : statusFilter}
+              />
+            </div>
 
-          <div className="lg:col-span-2 bg-white p-1 rounded-2xl shadow-sm border border-gray-100 h-130">
-            <MapWrapper
-              selectedVehicleId={selectedVehicleId}
-              positions={positions}
-              vehicles={visibleVehicles}
-            />
+            <div className="lg:col-span-2 bg-white p-1 rounded-2xl shadow-sm border border-gray-100 h-130">
+              <MapWrapper />
+            </div>
           </div>
-        </div>
+        </DashboardProvider>
       ) : (
         <div className="bg-white p-1 rounded-2xl shadow-sm border border-gray-100 h-130">
           <OrganizationMap

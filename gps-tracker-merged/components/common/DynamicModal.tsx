@@ -58,6 +58,12 @@ export function DynamicModal({
 
     setApiError(null); // clear error when user resumes typing
     setFormData((prev) => ({ ...prev, [name]: val }));
+
+    // Optional per-field onChange hook
+    const fieldConfig = fields.find((f) => f.name === name);
+    if (fieldConfig?.onChange) {
+      fieldConfig.onChange(String(val));
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -210,6 +216,7 @@ export function DynamicModal({
                     required={field.required}
                     value={(formData[field.name] as string | number) || ""}
                     onChange={handleChange}
+                    disabled={field.disabled}
                     className={cn(
                       "w-full rounded-xl px-4 py-2.5 text-sm font-semibold outline-none transition-all appearance-none",
                       isDark
@@ -285,6 +292,7 @@ export function DynamicModal({
                     placeholder={field.placeholder}
                     value={(formData[field.name] as string | number) || ""}
                     onChange={handleChange}
+                    disabled={field.disabled}
                     className={cn(
                       "w-full rounded-xl px-4 py-2.5 text-sm font-semibold outline-none transition-all",
                       isDark

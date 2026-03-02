@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Table from "@/components/ui/Table";
 import ApiErrorBoundary from "@/components/admin/ErrorBoundary/ApiErrorBoundary";
-import { Link2, Trash2, Loader2, Filter, Car, Cpu, ArrowRight, X, Info } from "lucide-react";
+import { Link2, Trash2, Loader2, Filter, Car, Cpu, ArrowRight, X, Info, Briefcase } from "lucide-react";
 import { toast } from "sonner";
 import {
     useGetDeviceMappingsQuery,
@@ -18,16 +18,18 @@ import { useOrgContext } from "@/hooks/useOrgContext";
 
 export default function DeviceMappingPage() {
     // 🔐 ORG CONTEXT UPDATE
-    const { role, orgId, isSuperAdmin, isRootOrgAdmin } = useOrgContext();
+  const { role, orgId, isSuperAdmin, isRootOrgAdmin } = useOrgContext();
 
     // API Hooks
     const { data: mappingData, isLoading: isMappingLoading } = useGetDeviceMappingsQuery({ page: 0, limit: 1000 }, { refetchOnMountOrArgChange: true });
     const { data: vehData, isLoading: isVehLoading } = useGetVehiclesQuery({ page: 0, limit: 1000 }, { refetchOnMountOrArgChange: true });
     const { data: devData, isLoading: isDevLoading } = useGetGpsDevicesQuery({ page: 0, limit: 1000 }, { refetchOnMountOrArgChange: true });
 
-    // 🔐 Only superadmin needs full org list
+  const canFilterOrg = isSuperAdmin || isRootOrgAdmin;
+
+  // 🔐 Superadmin + root admin can see scoped org list
     const { data: orgData, isLoading: isOrgLoading } = useGetOrganizationsQuery(undefined, {
-        skip: !isSuperAdmin,
+    skip: !canFilterOrg,
         refetchOnMountOrArgChange: true
     });
 
@@ -49,6 +51,7 @@ export default function DeviceMappingPage() {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [showFilters, setShowFilters] = useState(false);
     const [formData, setFormData] = useState({ vehicleId: "", deviceId: "" });
+    const [modalOrgFilter, setModalOrgFilter] = useState(""); // 🔐 Organization filter for modal
     const [filters, setFilters] = useState({
         vehicleNumber: "",
         imei: "",
@@ -78,13 +81,41 @@ export default function DeviceMappingPage() {
         [devices, assignedDeviceIds],
     );
 
+    // 🔐 Filter vehicles by selected organization in modal (for superadmin/rootOrgAdmin)
+    const vehiclesByModalOrg = useMemo(() => {
+    if (!modalOrgFilter) return availableVehicles;
+        return availableVehicles.filter((v: any) => {
+            const vehicleOrgId = typeof v.organizationId === 'object'
+                ? v.organizationId._id
+                : v.organizationId;
+            return vehicleOrgId === modalOrgFilter;
+        });
+    }, [availableVehicles, modalOrgFilter]);
+
     const selectedVehicle = useMemo(
-        () => availableVehicles.find((v: any) => v._id === formData.vehicleId) || null,
-        [availableVehicles, formData.vehicleId],
+        () => vehiclesByModalOrg.find((v: any) => v._id === formData.vehicleId) || null,
+        [vehiclesByModalOrg, formData.vehicleId],
     );
+
+    // 🔐 Filter devices to only show those in the SAME organization as selected vehicle
+    const devicesBySelectedVehicleOrg = useMemo(() => {
+        if (!selectedVehicle) return availableDevices;
+        
+        const vehicleOrgId = typeof selectedVehicle.organizationId === 'object' 
+            ? selectedVehicle.organizationId._id 
+            : selectedVehicle.organizationId;
+        
+        return availableDevices.filter((d: any) => {
+            const deviceOrgId = typeof d.organizationId === 'object'
+                ? d.organizationId._id
+                : d.organizationId;
+            return deviceOrgId === vehicleOrgId;
+        });
+    }, [selectedVehicle, availableDevices]);
+
     const selectedDevice = useMemo(
-        () => availableDevices.find((d: any) => d._id === formData.deviceId) || null,
-        [availableDevices, formData.deviceId],
+        () => devicesBySelectedVehicleOrg.find((d: any) => d._id === formData.deviceId) || null,
+        [devicesBySelectedVehicleOrg, formData.deviceId],
     );
 
     const getMappedVehicle = (row: any) => {
@@ -217,11 +248,13 @@ export default function DeviceMappingPage() {
 
     const openCreateModal = () => {
         setFormData({ vehicleId: "", deviceId: "" });
+        setModalOrgFilter(""); // 🔐 Reset org filter when opening modal
         setIsModalOpen(true);
     };
 
     const closeModal = () => {
         setIsModalOpen(false);
+        setModalOrgFilter(""); // 🔐 Reset org filter when closing modal
     };
 
     const clearFilters = () => {
@@ -388,6 +421,33 @@ export default function DeviceMappingPage() {
                             </div>
 
                             <form onSubmit={handleSubmit} className="px-8 py-8">
+                                {/* 🔐 Optional organization filter for superadmin/root admin */}
+                                {canFilterOrg && organizations.length > 0 && (
+                                    <div className="mb-6">
+                                        <label className="mb-2 block text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">
+                                            <span className="inline-flex items-center gap-2">
+                                                <Briefcase size={12} className="text-indigo-500" /> Filter by Organization
+                                            </span>
+                                        </label>
+                                        <select
+                                            className="admin-select-readable w-full h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20"
+                                            value={modalOrgFilter}
+                                            onChange={(e) => {
+                                                const value = e.target.value;
+                                                setModalOrgFilter(value);
+                                                // Reset selections when organization filter changes
+                                                setFormData({ vehicleId: "", deviceId: "" });
+                                            }}
+                                        >
+                                            <option value="">All organizations (scoped)</option>
+                                            {organizations.map((org: any) => (
+                                                <option key={org._id} value={org._id}>
+                                                    {org.orgPath ? `${org.orgPath} / ${org.name}` : org.name}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
                                 <div className="grid grid-cols-1 md:grid-cols-11 gap-5 items-end">
                                     <div className="md:col-span-5">
                                         <label className="mb-2 block text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">
@@ -397,10 +457,10 @@ export default function DeviceMappingPage() {
                                             required
                                             className="admin-select-readable w-full h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20"
                                             value={formData.vehicleId}
-                                            onChange={(e) => setFormData({ ...formData, vehicleId: e.target.value })}
+                                            onChange={(e) => setFormData({ vehicleId: e.target.value, deviceId: "" })}
                                         >
                                             <option value="">Search vehicle plate...</option>
-                                            {availableVehicles.map((v: any) => (
+                                          {vehiclesByModalOrg.map((v: any) => (
                                                 <option key={v._id} value={v._id}>
                                                     {v.vehicleNumber} {v.model ? `(${v.model})` : ""}
                                                 </option>
@@ -423,9 +483,10 @@ export default function DeviceMappingPage() {
                                             className="admin-select-readable w-full h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20"
                                             value={formData.deviceId}
                                             onChange={(e) => setFormData({ ...formData, deviceId: e.target.value })}
+                                            disabled={!selectedVehicle}
                                         >
                                             <option value="">Search device IMEI...</option>
-                                            {availableDevices.map((d: any) => (
+                                            {devicesBySelectedVehicleOrg.map((d: any) => (
                                                 <option key={d._id} value={d._id}>
                                                     {d.imei}
                                                 </option>
@@ -443,10 +504,10 @@ export default function DeviceMappingPage() {
                                     </div>
                                 </div>
 
-                                {(availableVehicles.length === 0 || availableDevices.length === 0) && (
+                                {(availableVehicles.length === 0 || (selectedVehicle && devicesBySelectedVehicleOrg.length === 0)) && (
                                     <div className="mt-4 text-[11px] font-semibold text-rose-500">
                                         {availableVehicles.length === 0 ? "No available vehicles found. " : ""}
-                                        {availableDevices.length === 0 ? "No available devices found." : ""}
+                                        {selectedVehicle && devicesBySelectedVehicleOrg.length === 0 ? "No available devices found in this vehicle's organization." : ""}
                                     </div>
                                 )}
 

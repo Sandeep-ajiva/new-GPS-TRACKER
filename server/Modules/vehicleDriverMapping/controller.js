@@ -30,78 +30,94 @@ exports.assignDriverToVehicle = async (req, res) => {
     await validateAssignData(req.body);
 
     const { vehicleId, driverId } = req.body;
-    const orgScope = req.orgScope;
 
-    if (!orgScope) {
-      throw { status: 400, message: "Organization scope missing" };
-    }
-
-    if (!mongoose.isValidObjectId(vehicleId) || !mongoose.isValidObjectId(driverId)) {
+    if (
+      !mongoose.isValidObjectId(vehicleId) ||
+      !mongoose.isValidObjectId(driverId)
+    ) {
       throw { status: 400, message: "Invalid vehicleId or driverId" };
     }
 
+    /* 🔐 ORG SCOPE FILTER */
     const orgFilter =
-      orgScope === "ALL"
-        ? { $exists: true }
-        : { $in: orgScope };
+      req.orgScope === "ALL"
+        ? {}
+        : { organizationId: { $in: req.orgScope } };
 
-    // 🔍 Fetch vehicle
+    /* 🔍 FETCH VEHICLE */
     const vehicle = await Vehicle.findOne({
       _id: vehicleId,
-      organizationId: orgFilter
+      ...orgFilter,
     }).session(session);
 
-    if (!vehicle) {
-      throw { status: 404, message: "Vehicle not found or not in organization" };
-    }
-
-    // 🔍 Fetch driver
+    /* 🔍 FETCH DRIVER */
     const driver = await Driver.findOne({
       _id: driverId,
-      organizationId: orgFilter
+      ...orgFilter,
     }).session(session);
 
-    if (!driver) {
-      throw { status: 404, message: "Driver not found or not in organization" };
+    if (!vehicle || !driver) {
+      throw {
+        status: 404,
+        message: "Vehicle or driver not found or access denied",
+      };
     }
 
-    // 🚫 Driver already assigned to another vehicle
-    const activeDriverMapping = await VehicleDriverMapping.findOne({
+    /* 🛑 CORE BUSINESS RULE — SAME ORG ONLY */
+    if (
+      vehicle.organizationId.toString() !==
+      driver.organizationId.toString()
+    ) {
+      throw {
+        status: 400,
+        message: "Vehicle and driver must belong to the same organization",
+      };
+    }
+
+    const organizationId = vehicle.organizationId;
+
+    /* 🚫 DRIVER ALREADY ASSIGNED */
+    const driverAlreadyMapped = await VehicleDriverMapping.findOne({
       driverId,
-      unassignedAt: null
+      unassignedAt: null,
     }).session(session);
 
-    if (activeDriverMapping) {
-      throw { status: 409, message: "Driver already assigned to another vehicle" };
+    if (driverAlreadyMapped) {
+      throw {
+        status: 409,
+        message: "Driver already assigned to another vehicle",
+      };
     }
 
-    // 🔄 Unassign existing driver from vehicle
+    /* 🔄 UNASSIGN EXISTING DRIVER FROM VEHICLE (IF ANY) */
     await VehicleDriverMapping.updateOne(
       {
         vehicleId,
-        unassignedAt: null
+        unassignedAt: null,
       },
       {
         unassignedAt: new Date(),
-        status: "unassigned"
+        status: "unassigned",
       },
       { session }
     );
 
-    // 🧩 Create new mapping
-    const mapping = await VehicleDriverMapping.create(
-      [{
-        organizationId: vehicle.organizationId,
-        vehicleId,
-        driverId,
-        assignedAt: new Date(),
-        unassignedAt: null,
-        status: "assigned"
-      }],
+    /* 🧩 CREATE NEW MAPPING */
+    const [mapping] = await VehicleDriverMapping.create(
+      [
+        {
+          organizationId,
+          vehicleId,
+          driverId,
+          assignedAt: new Date(),
+          unassignedAt: null,
+          status: "assigned",
+        },
+      ],
       { session }
     );
 
-    // 🔄 Sync cache fields
+    /* 🔄 SYNC CACHE FIELDS */
     vehicle.driverId = driverId;
     driver.assignedVehicleId = vehicleId;
 
@@ -110,33 +126,30 @@ exports.assignDriverToVehicle = async (req, res) => {
 
     await session.commitTransaction();
 
-    await mapping[0].populate(["vehicleId", "driverId"]);
+    await mapping.populate([
+      { path: "vehicleId" },
+      { path: "driverId" },
+      { path: "organizationId" },
+    ]);
 
     return res.status(201).json({
       status: true,
       message: "Driver assigned to vehicle successfully",
-      data: {
-        mappingId: mapping[0]._id,
-        vehicleNumber: mapping[0].vehicleId.vehicleNumber,
-        driverName: `${mapping[0].driverId.firstName} ${mapping[0].driverId.lastName}`,
-        assignedAt: mapping[0].assignedAt
-      }
+      data: mapping,
     });
-
   } catch (error) {
     await session.abortTransaction();
 
     console.error("Assign Driver Error:", error);
 
-    return res.status(error.status || 500).json({
+    return res.status(error.status || 400).json({
       status: false,
-      message: error.message || "Internal server error"
+      message: error.message || "Internal server error",
     });
   } finally {
     session.endSession();
   }
 };
-
 
 // Unassign driver from vehicle
 exports.unassignDriverFromVehicle = async (req, res) => {
