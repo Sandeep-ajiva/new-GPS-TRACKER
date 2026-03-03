@@ -211,51 +211,128 @@ const Service = {
       /* ------------------------------------------------------------------ */
 
       const historyKey = `gps_history:${imei}`;
-      const last = await redisClient.get(historyKey);
+      const lastSavedRaw = await redisClient.get(historyKey);
+      const packetMs = timestamp.getTime();
+      const heading = data.heading ?? null;
 
-      if (!last || Date.now() - parseInt(last) >= 4000) {
-        await GpsHistory.create({
-          organizationId,
-          vehicleId,
-          gpsDeviceId,
-          imei,
-          latitude,
-          longitude,
-          speed,
-          gpsTimestamp: timestamp,
+      // Determine if this packet should be saved
+      let shouldSave = false;
 
-          // Additional fields
-          heading: data.heading ?? null,
-          altitude: data.altitude ?? null,
-          numberOfSatellites: data.numberOfSatellites ?? null,
-          packetType: data.packetType ?? null,
-          ignitionStatus: ignition,
-          emergencyStatus: data.emergencyStatus ?? false,
-          tamperAlert: data.tamperAlert ?? null,
-          mainPowerStatus: data.mainPowerStatus ?? null,
-          mainInputVoltage: data.mainInputVoltage ?? null,
-          internalBatteryVoltage: data.internalBatteryVoltage ?? null,
-          odometer: data.currentMileage ?? null,
-          gsmSignalStrength: data.gsmSignalStrength ?? null,
-          operatorName: data.operatorName ?? null,
-          frameNumber: data.frameNumber ?? null,
-        });
-        await redisClient.set(historyKey, Date.now());
+      if (!lastSavedRaw) {
+        // No previous save — always save the first packet
+        shouldSave = true;
+      } else {
+        const lastSaved = JSON.parse(lastSavedRaw);
+        const timeDelta = packetMs - (lastSaved.t || 0);
+
+        if (timeDelta >= 4000) {
+          // Base 4-second throttle window elapsed
+          shouldSave = true;
+        } else if (timeDelta > 0) {
+          // Within 4s — check intelligent override conditions
+
+          // Override 1: Speed change > 10 km/h
+          if (
+            typeof lastSaved.speed === "number" &&
+            Math.abs(speed - lastSaved.speed) > 10
+          ) {
+            shouldSave = true;
+          }
+
+          // Override 2: Heading change > 15° (sharp turn detection)
+          if (
+            !shouldSave &&
+            heading !== null &&
+            typeof lastSaved.heading === "number"
+          ) {
+            let headingDelta = Math.abs(heading - lastSaved.heading);
+            if (headingDelta > 180) headingDelta = 360 - headingDelta;
+            if (headingDelta > 15) shouldSave = true;
+          }
+
+          // Override 3: Ignition state changed
+          if (!shouldSave && lastSaved.ignition !== ignition) {
+            shouldSave = true;
+          }
+
+          // Override 4: Distance from last saved point > 20 meters (0.02 km)
+          if (
+            !shouldSave &&
+            typeof lastSaved.lat === "number" &&
+            typeof lastSaved.lng === "number"
+          ) {
+            const distKm = calculateDistance(
+              lastSaved.lat,
+              lastSaved.lng,
+              latitude,
+              longitude,
+            );
+            // Save if > 20m, but ignore GPS jumps > 5km
+            if (distKm > 0.02 && distKm <= 5) {
+              shouldSave = true;
+            }
+          }
+        }
+        // timeDelta <= 0 means duplicate or out-of-order — skip
+      }
+
+      if (shouldSave) {
+        try {
+          await GpsHistory.create({
+            organizationId,
+            vehicleId,
+            gpsDeviceId,
+            imei,
+            latitude,
+            longitude,
+            speed,
+            gpsTimestamp: timestamp,
+
+            // Additional fields
+            heading,
+            altitude: data.altitude ?? null,
+            numberOfSatellites: data.numberOfSatellites ?? null,
+            packetType: data.packetType ?? null,
+            ignitionStatus: ignition,
+            emergencyStatus: data.emergencyStatus ?? false,
+            tamperAlert: data.tamperAlert ?? null,
+            mainPowerStatus: data.mainPowerStatus ?? null,
+            mainInputVoltage: data.mainInputVoltage ?? null,
+            internalBatteryVoltage: data.internalBatteryVoltage ?? null,
+            odometer: data.currentMileage ?? null,
+            gsmSignalStrength: data.gsmSignalStrength ?? null,
+            operatorName: data.operatorName ?? null,
+            frameNumber: data.frameNumber ?? null,
+          });
+
+          // Store last-saved packet metadata in Redis for override comparisons
+          await redisClient.setex(
+            historyKey,
+            3600,
+            JSON.stringify({
+              t: packetMs,
+              speed,
+              heading,
+              ignition,
+              lat: latitude,
+              lng: longitude,
+            }),
+          );
+        } catch (histErr) {
+          // Silently skip duplicate-key errors (E11000) from unique index
+          if (histErr.code !== 11000) throw histErr;
+        }
       }
 
       /* ------------------------------------------------------------------ */
-      /* 7️⃣ VEHICLE DAILY STATS (WITH DISTANCE CALCULATION)                   */
+      /* 7️⃣ VEHICLE DAILY STATS (ATOMIC UPSERT WITH DISTANCE CALCULATION)     */
       /* ------------------------------------------------------------------ */
 
-      const day = new Date();
-      day.setHours(0, 0, 0, 0);
+      // 7a — Normalize date to UTC midnight
+      const statsDate = new Date(timestamp);
+      statsDate.setUTCHours(0, 0, 0, 0);
 
-      let stats = await VehicleDailyStats.findOne({
-        vehicleId,
-        date: day,
-      });
-
-      // Calculate distance from previous point
+      // 7b — Calculate distance from previous live position (haversine)
       let distanceIncrement = 0;
       if (prev && prev.latitude && prev.longitude) {
         distanceIncrement = calculateDistance(
@@ -264,62 +341,89 @@ const Service = {
           latitude,
           longitude,
         );
-
-        // Ignore unrealistic jumps (>5km in 4 seconds = GPS error)
+        // Ignore unrealistic jumps (>5 km between two successive packets)
         if (distanceIncrement > 5) {
           distanceIncrement = 0;
         }
       }
 
-      if (!stats) {
-        stats = await VehicleDailyStats.create({
+      // 7c — Elapsed seconds since last update (capped at 5 min to avoid stale gaps)
+      let elapsedSeconds = 0;
+      if (prev && prev.updatedAt) {
+        elapsedSeconds = Math.max(
+          0,
+          Math.round((timestamp - new Date(prev.updatedAt)) / 1000),
+        );
+        if (elapsedSeconds > 300) elapsedSeconds = 0;
+      }
+
+      // 7d — Build atomic update operators
+      const statsInc = {
+        totalDistance: distanceIncrement,
+        speedSampleCount: 1,
+      };
+
+      // Time increments (real elapsed seconds based on ignition + speed)
+      if (ignition && speed > 0) {
+        statsInc.runningTime = elapsedSeconds;
+      } else if (ignition && speed === 0) {
+        statsInc.idleTime = elapsedSeconds;
+      }
+
+      // Ignition transition: false → true  →  increment ignitionOnCount
+      const prevIgnition = prev ? !!prev.ignitionStatus : false;
+      if (!prevIgnition && ignition) {
+        statsInc.ignitionOnCount = 1;
+      }
+
+      const odometer = data.currentMileage ?? null;
+
+      const statsUpdate = {
+        $inc: statsInc,
+        $max: { maxSpeed: speed },
+        $setOnInsert: {
           organizationId,
-          vehicleId,
           gpsDeviceId,
           imei,
-          date: day,
-          totalDistance: distanceIncrement,
-          maxSpeed: speed,
-          avgSpeed: speed,
-          speedSampleCount: 1,
-          runningTime: movementStatus === "running" ? 1 : 0,
-          idleTime: movementStatus === "idle" ? 1 : 0,
-          stoppedTime: movementStatus === "stopped" ? 1 : 0,
-          firstIgnitionOn: ignition ? timestamp : null,
-        });
-      } else {
-        const historicalSampleCount =
-          typeof stats.speedSampleCount === "number" &&
-            Number.isFinite(stats.speedSampleCount)
-            ? stats.speedSampleCount
-            : Number(stats.runningTime || 0) +
-            Number(stats.idleTime || 0) +
-            Number(stats.stoppedTime || 0);
+          startOdometer: odometer,
+        },
+        $set: {
+          endOdometer: odometer,
+          lastCalculatedAt: timestamp,
+        },
+      };
 
-        const prevSampleCount = Math.max(0, historicalSampleCount);
-        const nextSampleCount = prevSampleCount + 1;
-        const previousAvg = Number.isFinite(Number(stats.avgSpeed))
-          ? Number(stats.avgSpeed)
-          : 0;
-        const nextAvgSpeed = Number(
+      // Ignition transition: true → false  →  set lastIgnitionOff
+      if (prevIgnition && !ignition) {
+        statsUpdate.$set.lastIgnitionOff = timestamp;
+      }
+
+      // 7e — Atomic findOneAndUpdate with upsert (respects compound unique index)
+      const updatedStats = await VehicleDailyStats.findOneAndUpdate(
+        { vehicleId, date: statsDate },
+        statsUpdate,
+        { upsert: true, new: true },
+      );
+
+      // 7f — Guard firstIgnitionOn: only set once (when still null), never overwrite
+      if (!prevIgnition && ignition && !updatedStats.firstIgnitionOn) {
+        await VehicleDailyStats.updateOne(
+          { _id: updatedStats._id, firstIgnitionOn: null },
+          { $set: { firstIgnitionOn: timestamp } },
+        );
+      }
+
+      // 7g — Compute avgSpeed from accumulated totals (distance-based, km/h)
+      if (updatedStats.runningTime > 0 && updatedStats.totalDistance > 0) {
+        const avgSpeed = Number(
           (
-            (previousAvg * prevSampleCount + speed) /
-            Math.max(1, nextSampleCount)
+            updatedStats.totalDistance /
+            (updatedStats.runningTime / 3600)
           ).toFixed(2),
         );
-
-        const inc = { totalDistance: distanceIncrement, speedSampleCount: 1 };
-        if (movementStatus === "running") inc.runningTime = 1;
-        if (movementStatus === "idle") inc.idleTime = 1;
-        if (movementStatus === "stopped") inc.stoppedTime = 1;
-
         await VehicleDailyStats.updateOne(
-          { _id: stats._id },
-          {
-            $inc: inc,
-            $max: { maxSpeed: speed },
-            $set: { avgSpeed: nextAvgSpeed, lastCalculatedAt: timestamp },
-          },
+          { _id: updatedStats._id },
+          { $set: { avgSpeed } },
         );
       }
 
@@ -379,7 +483,7 @@ const Service = {
           // Increment alert count in VehicleDailyStats
           const countField = `alertCounts.${alertType}Count`;
           await VehicleDailyStats.updateOne(
-            { vehicleId, date: day },
+            { vehicleId, date: statsDate },
             { $inc: { [countField]: 1 } },
           );
         };
@@ -447,7 +551,7 @@ const Service = {
 
             // Increment emergency count in daily stats
             await VehicleDailyStats.updateOne(
-              { vehicleId, date: day },
+              { vehicleId, date: statsDate },
               { $inc: { "alertCounts.emergencyCount": 1 } },
             );
 

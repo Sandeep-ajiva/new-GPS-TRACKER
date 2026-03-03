@@ -395,13 +395,13 @@ exports.delete = async (req, res) => {
             });
         }
 
-        // Only superadmin can delete drivers
-        if (req.user.role !== "superadmin") {
-            return res.status(403).json({
-                status: false,
-                message: "Forbidden: Only superadmin can delete drivers"
-            });
-        }
+        // // Only superadmin can delete drivers
+        // if (req.user.role !== "superadmin") {
+        //     return res.status(403).json({
+        //         status: false,
+        //         message: "Forbidden: Only superadmin can delete drivers"
+        //     });
+        // }
 
         await driver.deleteOne();
 
