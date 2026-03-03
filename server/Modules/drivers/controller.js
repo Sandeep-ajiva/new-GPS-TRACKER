@@ -121,21 +121,18 @@ exports.create = async (req, res) => {
 
         const { assignedVehicleId, firstName, lastName, phone, email, licenseNumber, licenseExpiry, photo, address, organizationId: orgPayload } = req.body;
 
-        let organizationId = req.orgId; // Default for non-superadmins
-
+        // 🔐 ORG SCOPE FIX
+        let organizationId;
         if (req.user.role === "superadmin") {
             organizationId = req.body.organizationId || req.orgId;
-        } else if (req.body.organizationId) {
-            // If admin/user provides an org ID, verify it's within their scope
-            const allowedOrgIds = (req.orgScope || []).map(id => id.toString());
-            if (allowedOrgIds.includes(req.body.organizationId.toString())) {
-                organizationId = req.body.organizationId;
-            } else {
-                return res.status(403).json({
-                    status: false,
-                    message: "Forbidden: Cannot create driver for this organization"
-                });
-            }
+        } else if (
+            req.body.organizationId &&
+            req.orgScope !== "ALL" &&
+            req.orgScope.some(id => id.toString() === req.body.organizationId.toString())
+        ) {
+            organizationId = req.body.organizationId;
+        } else {
+            organizationId = req.orgId;
         }
 
         if (!organizationId) {
@@ -206,6 +203,7 @@ exports.getAll = async (req, res) => {
 
         const filter = {};
 
+        // 🔐 ORG SCOPE FIX
         if (req.user.role !== "superadmin" && req.orgScope !== "ALL") {
             filter.organizationId = { $in: req.orgScope };
         }
@@ -247,28 +245,17 @@ exports.getById = async (req, res) => {
             });
         }
 
-        const driver = await Driver.findById(id)
+        // 🔐 ORG SCOPE FIX
+        const orgFilter = req.orgScope === "ALL" ? {} : { organizationId: { $in: req.orgScope } };
+        const driver = await Driver.findOne({ _id: id, ...orgFilter })
             .populate('organizationId')
             .populate('assignedVehicleId');
 
         if (!driver) {
             return res.status(404).json({
                 status: false,
-                message: "Driver not found"
+                message: "Driver not found or access denied"
             });
-        }
-
-        // Verify organization ownership
-        if (req.user.role !== "superadmin") {
-            const allowedOrgIds = (req.orgScope || []).map(id => id.toString());
-            const driverOrgId = driver.organizationId._id ? driver.organizationId._id.toString() : driver.organizationId.toString();
-            
-            if (!allowedOrgIds.includes(driverOrgId)) {
-                return res.status(403).json({
-                    status: false,
-                    message: "Forbidden: Cannot access drivers from other organizations"
-                });
-            }
         }
 
         return res.status(200).json({
@@ -297,26 +284,15 @@ exports.update = async (req, res) => {
 
         await validateUpdateDriverData(req.body);
 
-        const driver = await Driver.findById(id);
+        // 🔐 ORG SCOPE FIX
+        const orgFilter = req.orgScope === "ALL" ? {} : { organizationId: { $in: req.orgScope } };
+        const driver = await Driver.findOne({ _id: id, ...orgFilter });
 
         if (!driver) {
             return res.status(404).json({
                 status: false,
-                message: "Driver not found"
+                message: "Driver not found or access denied"
             });
-        }
-
-        // Verify organization ownership
-        if (req.user.role !== "superadmin") {
-            const allowedOrgIds = (req.orgScope || []).map(id => id.toString());
-            const driverOrgId = driver.organizationId._id ? driver.organizationId._id.toString() : driver.organizationId.toString();
-            
-            if (!allowedOrgIds.includes(driverOrgId)) {
-                return res.status(403).json({
-                    status: false,
-                    message: "Forbidden: Cannot update drivers from other organizations"
-                });
-            }
         }
 
         // Check for duplicate unique fields if updating them
@@ -406,22 +382,26 @@ exports.delete = async (req, res) => {
             });
         }
 
-        const driver = await Driver.findById(id);
+        // 🔐 ORG SCOPE FIX
+        const driver = await Driver.findOne({
+            _id: id,
+            organizationId: { $in: req.orgScope }
+        });
 
         if (!driver) {
-            return res.status(404).json({
+            return res.status(403).json({
                 status: false,
-                message: "Driver not found"
+                message: "Forbidden: Access denied or driver not found"
             });
         }
 
-        // Only superadmin can delete drivers
-        if (req.user.role !== "superadmin") {
-            return res.status(403).json({
-                status: false,
-                message: "Forbidden: Only superadmin can delete drivers"
-            });
-        }
+        // // Only superadmin can delete drivers
+        // if (req.user.role !== "superadmin") {
+        //     return res.status(403).json({
+        //         status: false,
+        //         message: "Forbidden: Only superadmin can delete drivers"
+        //     });
+        // }
 
         await driver.deleteOne();
 
@@ -448,23 +428,19 @@ exports.createDriverUser = async (req, res) => {
             licenseNumber, licenseExpiry, photo, address, assignedVehicleId, organizationId: organizationPayload
         } = req.body;
 
-        if (
+        // 🔐 ORG SCOPE FIX
+        let organizationId;
+        if (req.user.role === "superadmin") {
+            organizationId = organizationPayload || req.orgId;
+        } else if (
             organizationPayload &&
-            req.user.role !== "superadmin" &&
             req.orgScope !== "ALL" &&
-            (!Array.isArray(req.orgScope) ||
-                !req.orgScope.some((id) => id.toString() === organizationPayload.toString()))
+            req.orgScope.some(id => id.toString() === organizationPayload.toString())
         ) {
-            return res.status(403).json({
-                status: false,
-                message: "Forbidden: Cannot create driver in this organization"
-            });
+            organizationId = organizationPayload;
+        } else {
+            organizationId = req.orgId;
         }
-
-        const organizationId = resolveDriverOrganizationId(
-            { organizationId: organizationPayload },
-            req
-        );
 
         if (!organizationId) {
             return res.status(400).json({

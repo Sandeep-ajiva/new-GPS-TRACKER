@@ -38,8 +38,19 @@ exports.create = async (req, res) => {
 
     await new Validator(req.body, rules).validate();
 
-    const organizationId =
-      req.user.role === "superadmin" ? req.body.organizationId : req.orgId;
+    // 🔐 ORG SCOPE FIX
+    let organizationId;
+    if (req.user.role === "superadmin") {
+      organizationId = req.body.organizationId || req.orgId;
+    } else if (
+      req.body.organizationId &&
+      req.orgScope !== "ALL" &&
+      req.orgScope.some(id => id.toString() === req.body.organizationId.toString())
+    ) {
+      organizationId = req.body.organizationId;
+    } else {
+      organizationId = req.orgId;
+    }
 
     if (!organizationId) {
       return res.status(400).json({
@@ -109,23 +120,15 @@ exports.update = async (req, res) => {
     // SAME RULES, NO MODIFICATION
     await new Validator(req.body, VEHICLE_RULES).validate();
 
-    const vehicle = await VehicleModel.findById(req.params.id);
+    // 🔐 ORG SCOPE FIX
+    const orgFilter = req.orgScope === "ALL" ? {} : { organizationId: { $in: req.orgScope } };
+    const vehicle = await VehicleModel.findOne({ _id: req.params.id, ...orgFilter });
 
     if (!vehicle) {
       return res.status(404).json({
         status: false,
-        message: "Vehicle not found",
+        message: "Vehicle not found or access denied",
       });
-    }
-
-    if (req.user.role !== "superadmin") {
-      const allowedOrgIds = (req.orgScope || []).map((id) => id.toString());
-      if (!allowedOrgIds.includes(vehicle.organizationId.toString())) {
-        return res.status(403).json({
-          status: false,
-          message: "Forbidden",
-        });
-      }
     }
 
     if (req.body.vehicleNumber) {
@@ -205,7 +208,7 @@ exports.getAll = async (req, res) => {
       // ✅ populate
       [
         { path: "organizationId", select: "name" },
-        {path: "driverId"},
+        { path: "driverId", select: "firstName lastName" },
       ],
 
       // ✅ searchable fields
@@ -235,12 +238,17 @@ exports.getAll = async (req, res) => {
 
 exports.getById = async (req, res) => {
   try {
-    const vehicle = await VehicleModel.findById(req.params.id).populate(['organizationId', 'driverId']);
+    // 🔐 ORG SCOPE FIX
+    const orgFilter = req.orgScope === "ALL" ? {} : { organizationId: { $in: req.orgScope } };
+    const vehicle = await VehicleModel.findOne({ _id: req.params.id, ...orgFilter }).populate([
+      'organizationId',
+      'driverId'
+    ]);
 
     if (!vehicle) {
       return res.status(404).json({
         status: false,
-        message: "Vehicle not found",
+        message: "Vehicle not found or access denied",
       });
     }
 
@@ -262,23 +270,15 @@ exports.getById = async (req, res) => {
 
 exports.remove = async (req, res) => {
   try {
-    const vehicle = await VehicleModel.findById(req.params.id);
+    // 🔐 ORG SCOPE FIX
+    const orgFilter = req.orgScope === "ALL" ? {} : { organizationId: { $in: req.orgScope } };
+    const vehicle = await VehicleModel.findOne({ _id: req.params.id, ...orgFilter });
 
     if (!vehicle) {
       return res.status(404).json({
         status: false,
-        message: "Vehicle not found",
+        message: "Vehicle not found or access denied",
       });
-    }
-
-    if (req.user.role !== "superadmin") {
-      const allowedOrgIds = (req.orgScope || []).map((id) => id.toString());
-      if (!allowedOrgIds.includes(vehicle.organizationId.toString())) {
-        return res.status(403).json({
-          status: false,
-          message: "Forbidden",
-        });
-      }
     }
 
     await VehicleModel.findByIdAndDelete(req.params.id);

@@ -17,10 +17,12 @@ import {
 import { useGetOrganizationsQuery } from "@/redux/api/organizationApi";
 
 import { usePopups } from "../Helpers/PopupContext";
+// 🔐 ORG CONTEXT UPDATE
+import { useOrgContext } from "@/hooks/useOrgContext";
 import { capitalizeFirstLetter } from "../Helpers/CapitalizeFirstLetter";
 import { DynamicModal } from "@/components/common";
 import { FormField } from "@/lib/formTypes";
-import { getSecureItem } from "@/app/admin/Helpers/encryptionHelper";
+
 import ImportExportButton from "@/components/admin/import-export/ImportExportButton";
 import {
   User as UserIcon,
@@ -45,14 +47,19 @@ export interface User {
 
 export default function UsersPage() {
   const { openPopup, closePopup, isPopupOpen } = usePopups();
+
+  // 🔐 ORG CONTEXT UPDATE
+  const { orgId, isSuperAdmin, isRootOrgAdmin, isSubOrgAdmin } = useOrgContext();
   const searchParams = useSearchParams();
   const searchQueryParam = searchParams.get("search");
 
-  const [showFilters, setShowFilters] = useState(!!searchQueryParam);
-  const userRole = getSecureItem("userRole");
-  const canCreateUser = userRole === "admin" || userRole === "manager";
-  const canEditUser = userRole === "admin" || userRole === "manager";
-  const canDeleteUser = userRole === "admin";
+  const [showFilters, setShowFilters] = useState(false);
+
+  // 🔐 ORG CONTEXT UPDATE
+  const canCreateUser = isSuperAdmin || isRootOrgAdmin || isSubOrgAdmin;
+  const canEditUser = isSuperAdmin || isRootOrgAdmin || isSubOrgAdmin;
+  const canDeleteUser = isSuperAdmin || isRootOrgAdmin;
+
   const [filters, setFilters] = useState({
     name: searchQueryParam || "",
     email: "",
@@ -155,7 +162,12 @@ export default function UsersPage() {
         await updateUser({ id: editingUser._id, ...payload }).unwrap();
         toast.success("User updated successfully");
       } else {
-        await createUser(data).unwrap();
+        // 🔐 ORG CONTEXT UPDATE
+        const finalData = { ...data };
+        if (!isSuperAdmin) {
+          finalData.organizationId = orgId || "";
+        }
+        await createUser(finalData).unwrap();
         toast.success("User created successfully");
       }
     } catch (err: unknown) {
@@ -236,17 +248,20 @@ export default function UsersPage() {
       ],
       icon: <ToggleRight size={14} className="text-slate-500" />,
     },
-    {
-      name: "organizationId",
-      label: "Organization",
-      type: "select",
-      options: organizations.map((org) => ({
-        label: org.name,
-        value: org._id,
-      })),
-      icon: <Building2 size={14} className="text-slate-500" />,
-    },
-  ], [editingUser, organizations]);
+    // 🔐 ORG CONTEXT UPDATE
+    ...(isSuperAdmin ? [
+      {
+        name: "organizationId",
+        label: "Organization",
+        type: "select" as const,
+        options: organizations.map((org) => ({
+          label: org.name,
+          value: org._id,
+        })),
+        icon: <Building2 size={14} className="text-slate-500" />,
+      }
+    ] : []),
+  ], [editingUser, organizations, isSuperAdmin]);
 
 
 
@@ -491,25 +506,28 @@ export default function UsersPage() {
                   <option value="inactive">Inactive</option>
                 </select>
               </div>
-              <div>
-                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
-                  Organization
-                </label>
-                <select
-                  className="w-full rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
-                  value={filters.organizationId}
-                  onChange={(e) =>
-                    setFilters({ ...filters, organizationId: e.target.value })
-                  }
-                >
-                  <option value="">All Organizations</option>
-                  {organizations.map((org) => (
-                    <option key={org._id} value={org._id}>
-                      {org.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {/* 🔐 ORG CONTEXT UPDATE */}
+              {isSuperAdmin && (
+                <div>
+                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
+                    Organization
+                  </label>
+                  <select
+                    className="w-full rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
+                    value={filters.organizationId}
+                    onChange={(e) =>
+                      setFilters({ ...filters, organizationId: e.target.value })
+                    }
+                  >
+                    <option value="">All Organizations</option>
+                    {organizations.map((org) => (
+                      <option key={org._id} value={org._id}>
+                        {org.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div className="flex items-end">
                 <button
                   onClick={clearFilters}

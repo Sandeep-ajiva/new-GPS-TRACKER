@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import OrganizationMap from "@/components/admin/Map/OrganizationMap";
 import { VehicleSidebar } from "@/components/dashboard/vehicle-sidebar";
 import { MapWrapper } from "@/components/dashboard/map-wrapper";
+import { DashboardProvider } from "@/components/dashboard/DashboardContext";
 import { useVehiclePositions } from "@/lib/use-vehicle-positions";
 import { useGetOrganizationsQuery } from "@/redux/api/organizationApi";
 import { useGetVehiclesQuery } from "@/redux/api/vehicleApi";
@@ -202,22 +203,15 @@ export default function DashboardPage() {
   }, [displayVehicles, displayLiveData, orgPositionMap]);
 
   /* =========================
-     FILTERING
-  ========================= */
-  const filteredVehicles = useMemo(() => {
-    if (!selectedOrgId) return [];
-    return uiVehicles.filter((v) => {
-      const raw = displayVehicles.find((r: any) => r._id === v.id);
-      return (
-        (raw?.organizationId?._id || raw?.organizationId) === selectedOrgId
-      );
-    });
-  }, [uiVehicles, displayVehicles, selectedOrgId]);
-
-  const visibleVehicles =
-    statusFilter === "all"
-      ? filteredVehicles
-      : filteredVehicles.filter((v) => v.status === statusFilter);
+     FILTERING (REMOVED - TRUST BACKEND)
+     ========================= */
+  const visibleVehicles = useMemo(() => {
+    // 🔐 ORG CONTEXT UPDATE
+    // No longer filtering by selectedOrgId in frontend.
+    // Backend already scopes displayVehicles based on user hierarchy.
+    if (statusFilter === "all") return uiVehicles;
+    return uiVehicles.filter((v) => v.status === statusFilter);
+  }, [uiVehicles, statusFilter]);
 
   const positions = useVehiclePositions(visibleVehicles);
 
@@ -276,24 +270,22 @@ export default function DashboardPage() {
 
       {/* ===== MAP + SIDEBAR ===== */}
       {selectedOrgId ? (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-1 rounded-2xl overflow-hidden border border-slate-200 bg-white">
-            <VehicleSidebar
-              vehicles={visibleVehicles}
-              selectedId={selectedVehicleId}
-              onSelect={(id) => setSelectedVehicleId(id === selectedVehicleId ? null : id)}
-              statusFilter={statusFilter === "all" ? "total" : statusFilter}
-            />
-          </div>
+        <DashboardProvider>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-1 rounded-2xl overflow-hidden border border-slate-200 bg-white">
+              <VehicleSidebar
+                vehicles={visibleVehicles}
+                selectedId={selectedVehicleId}
+                onSelect={(id) => setSelectedVehicleId(id === selectedVehicleId ? null : id)}
+                statusFilter={statusFilter === "all" ? "total" : statusFilter}
+              />
+            </div>
 
-          <div className="lg:col-span-2 bg-white p-1 rounded-2xl shadow-sm border border-gray-100 h-130">
-            <MapWrapper
-              selectedVehicleId={selectedVehicleId}
-              positions={positions}
-              vehicles={visibleVehicles}
-            />
+            <div className="lg:col-span-2 bg-white p-1 rounded-2xl shadow-sm border border-gray-100 h-130">
+              <MapWrapper />
+            </div>
           </div>
-        </div>
+        </DashboardProvider>
       ) : (
         <div className="bg-white p-1 rounded-2xl shadow-sm border border-gray-100 h-130">
           <OrganizationMap

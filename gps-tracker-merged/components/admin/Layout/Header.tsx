@@ -12,6 +12,9 @@ import {
     useClearAllNotificationsMutation
 } from "@/redux/api/notificationsApi";
 import { useGetOrganizationsQuery } from "@/redux/api/organizationApi";
+
+// 🔐 ORG CONTEXT UPDATE
+import { useOrgContext } from "@/hooks/useOrgContext";
 import { useGetVehiclesQuery } from "@/redux/api/vehicleApi";
 import { useGetGpsDevicesQuery } from "@/redux/api/gpsDeviceApi";
 import { useGetUsersQuery } from "@/redux/api/usersApi";
@@ -33,7 +36,9 @@ export default function Header({ onOpenSidebar }: HeaderProps) {
         pollingInterval: 60000,
         refetchOnMountOrArgChange: true,
     });
-    const { data: orgData } = useGetOrganizationsQuery(undefined, { refetchOnMountOrArgChange: true });
+
+    // 🔐 ORG CONTEXT UPDATE
+    const { orgName } = useOrgContext();
     const { data: vehData } = useGetVehiclesQuery(undefined);
     const { data: devicesData } = useGetGpsDevicesQuery(undefined);
     const { data: usersData } = useGetUsersQuery(undefined);
@@ -313,7 +318,12 @@ export default function Header({ onOpenSidebar }: HeaderProps) {
                     className="flex items-center gap-3 hover:bg-slate-100 rounded-lg px-2 py-1 transition-colors cursor-pointer"
                 >
                     <div className="text-right hidden sm:block">
-                        <p className="text-sm font-semibold text-slate-900">{adminUser.name || "Admin User"}</p>
+                        <div className="flex items-center justify-end gap-1.5 mb-0.5">
+                            <span className="text-[10px] font-black uppercase tracking-widest text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">
+                                {orgName}
+                            </span>
+                            <p className="text-sm font-semibold text-slate-900">{adminUser.name || "Admin User"}</p>
+                        </div>
                         <p className="text-xs text-slate-500">{adminUser.email || "admin@example.com"}</p>
                     </div>
                     {adminUser.avatar ? (

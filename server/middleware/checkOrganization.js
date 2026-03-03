@@ -5,13 +5,10 @@ module.exports = async function checkOrganization(req, res, next) {
     const user = req.user;
 
     if (!user || !user.role) {
-      return res.status(401).json({
-        status: false,
-        message: "Unauthorized",
-      });
+      return res.status(401).json({ status: false, message: "Unauthorized" });
     }
 
-    // 🔥 superadmin = all org access
+    // ✅ superadmin → full access
     if (user.role === "superadmin") {
       req.orgScope = "ALL";
       return next();
@@ -26,15 +23,26 @@ module.exports = async function checkOrganization(req, res, next) {
 
     req.orgId = user.organizationId;
 
-    // 🔥 fetch parent + child orgs
+    // 🔥 get current org path
+    const currentOrg = await Organization.findById(user.organizationId)
+      .select("path")
+      .lean();
+
+    if (!currentOrg) {
+      return res.status(404).json({
+        status: false,
+        message: "User organization not found",
+      });
+    }
+
+    // 🔥 find ALL descendants using path
+    const regex = new RegExp(`^${currentOrg.path}(/|$)`);
+
     const orgs = await Organization.find({
-      $or: [
-        { _id: user.organizationId },
-        { parentOrganizationId: user.organizationId },
-      ],
+      path: { $regex: regex },
     }).select("_id");
 
-    req.orgScope = orgs.map((o) => o._id);
+    req.orgScope = orgs.map((o) => o._id.toString());
 
     next();
   } catch (error) {

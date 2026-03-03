@@ -3,24 +3,39 @@ import { useRouter, usePathname } from "next/navigation";
 import { getSecureItem } from "@/app/admin/Helpers/encryptionHelper";
 import { Loader2 } from "lucide-react";
 
+// 🔐 ORG CONTEXT UPDATE
+import { useOrgContext } from "@/hooks/useOrgContext";
+
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
     const router = useRouter();
     const pathname = usePathname();
     const [authorized, setAuthorized] = useState(false);
 
-    useEffect(() => {
-        // Check for token and role in localStorage
-        const token = getSecureItem("token");
-        const role = getSecureItem("userRole");
+    // 🔐 ORG CONTEXT UPDATE
+    const { isSuperAdmin, user } = useOrgContext();
 
-        if (!token || (role !== "admin" && role !== "superadmin" && role !== "manager")) {
-            // If no token or admin role, redirect to login
+    useEffect(() => {
+        const token = getSecureItem("token");
+
+        if (!token || !user) {
             router.push("/");
+            return;
+        }
+
+        const role = user.role;
+        const isSuperadminPath = pathname.startsWith("/superadmin");
+
+        if (isSuperadminPath && !isSuperAdmin) {
+            // Non-superadmins cannot access /superadmin
+            router.push("/admin");
+        } else if (!isSuperadminPath && isSuperAdmin) {
+            // Superadmins redirected to /superadmin (optional, but follows existing logic)
+            // router.push("/superadmin"); 
+            setAuthorized(true);
         } else {
-            // If token exists and is admin, allow access
             setAuthorized(true);
         }
-    }, [router, pathname]);
+    }, [router, pathname, user, isSuperAdmin]);
 
     if (!authorized) {
         return (

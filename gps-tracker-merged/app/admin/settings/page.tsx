@@ -12,7 +12,22 @@ import { toast } from "sonner";
 import Validator from "../Helpers/validators";
 import { capitalizeFirstLetter } from "../Helpers/CapitalizeFirstLetter";
 
+// 🔐 ORG CONTEXT UPDATE
+import { useOrgContext } from "@/hooks/useOrgContext";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
+
 export default function SettingsPage() {
+    const { isSuperAdmin } = useOrgContext();
+    const router = useRouter();
+
+    useEffect(() => {
+        if (!isSuperAdmin) {
+            router.push("/admin");
+        }
+    }, [isSuperAdmin, router]);
+
+    if (!isSuperAdmin) return null;
     const [appName, setAppName] = useState("GPS Tracker");
     const [supportEmail, setSupportEmail] = useState("admin@gps-tracker.com");
     const [maintenanceMessage, setMaintenanceMessage] = useState(

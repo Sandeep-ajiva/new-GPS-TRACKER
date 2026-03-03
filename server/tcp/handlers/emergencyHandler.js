@@ -1,119 +1,127 @@
-const Alert = require("../../Modules/alerts/model");
-const EmergencyEvent = require("../../Modules/emergencyEvents/model");
-const VehicleDailyStats = require("../../Modules/vehicleDailyStats/model");
-const GpsDevice = require("../../Modules/gpsDevice/model");
-const {
-  splitPacket,
-  findImeiInParts,
-  parseCoordinate,
-  ensureSocketContext,
-  getFallbackLive,
-  parseEventState,
-} = require("./_common");
+/**
+ * EMERGENCY HANDLER
+ * Handles $EPB packets (Emergency Panic Button ON/OFF)
+ */
 
-function startOfToday() {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d;
+const EmergencyEvent = require("../../Modules/emergencyEvents/model");
+const GpsDevice = require("../../Modules/gpsDevice/model");
+
+function parseNmeaCoordinate(value) {
+  const num = Number(value);
+  const degrees = Math.floor(num / 100);
+  const minutes = num - degrees * 100;
+  return degrees + minutes / 60;
 }
 
 module.exports = async function emergencyHandler(socket, packet) {
   try {
-    const parts = splitPacket(packet);
-    const imei = findImeiInParts(parts) || socket.imei;
-    const ctx = await ensureSocketContext(socket, imei);
-
-    if (!ctx) {
-      socket.write("DENY\r\n");
-      return;
-    }
-    if (!ctx.vehicleId) {
-      console.warn("⚠️ EPB ignored: device not mapped to any vehicle", ctx.imei);
-      socket.write("DENY\r\n");
+    /* ------------------------------------------------------------ */
+    /* 1️⃣ BASIC SAFETY CHECK                                        */
+    /* ------------------------------------------------------------ */
+    if (!socket.imei || !socket.gpsDeviceId) {
+      console.warn("⚠️ EPB packet before login, ignored");
       return;
     }
 
-    const emergencyOn = parseEventState(parts[2], true);
-    const fallbackLive = await getFallbackLive(ctx.gpsDeviceId);
+    /* ------------------------------------------------------------ */
+    /* 2️⃣ PARSE PACKET                                              */
+    /* ------------------------------------------------------------ */
+    const clean = packet.replace("*", "").trim();
+    const parts = clean.split(",");
 
-    const latitude = parseCoordinate(parts[3], parts[4], fallbackLive?.latitude);
-    const longitude = parseCoordinate(parts[5], parts[6], fallbackLive?.longitude);
-    const speed = Number.isFinite(Number(parts[7]))
-      ? Number(parts[7])
-      : Number(fallbackLive?.currentSpeed || 0);
-    const heading = Number.isFinite(Number(parts[8]))
-      ? Number(parts[8])
-      : Number(fallbackLive?.heading || 0);
-    const now = new Date();
+    /**
+     * Expected:
+     * $EPB,IMEI,STATE(ON/OFF),latValue,latDir,lngValue,lngDir,speed,heading
+     */
+    const imei = parts[1];
+    const state = (parts[2] || "ON").toUpperCase();
+    const latValue = parts[3];
+    const latDir = parts[4];
+    const lngValue = parts[5];
+    const lngDir = parts[6];
+    const speed = Number(parts[7]) || 0;
+    const heading = Number(parts[8]) || 0;
 
-    // 1) Emergency event timeline row
-    await EmergencyEvent.create({
-      organizationId: ctx.organizationId,
-      vehicleId: ctx.vehicleId,
-      gpsDeviceId: ctx.gpsDeviceId,
-      imei: ctx.imei,
-      eventType: emergencyOn ? "emergency_on" : "emergency_off",
-      latitude: latitude ?? fallbackLive?.latitude ?? 0,
-      longitude: longitude ?? fallbackLive?.longitude ?? 0,
-      locationCoordinates:
-        latitude !== null && latitude !== undefined && longitude !== null && longitude !== undefined
-          ? [longitude, latitude]
-          : undefined,
-      gpsTimestamp: now,
+    const latitude = parseNmeaCoordinate(latValue);
+    const longitude = parseNmeaCoordinate(lngValue);
+    const eventType = state === "OFF" ? "emergency_off" : "emergency_on";
+
+    /* ------------------------------------------------------------ */
+    /* 3️⃣ STORE EMERGENCY EVENT                                     */
+    /* ------------------------------------------------------------ */
+    const emergencyDoc = {
+      organizationId: socket.organizationId,
+      vehicleId: socket.vehicleId,
+      gpsDeviceId: socket.gpsDeviceId,
+      imei,
+      eventType,
+      latitude,
+      latitudeDirection: latDir,
+      longitude,
+      longitudeDirection: lngDir,
+      locationCoordinates: [longitude, latitude],
       speed,
       heading,
-      ignitionStatus: speed > 0,
-      status: emergencyOn ? "active" : "resolved",
+      gpsTimestamp: new Date(),
       rawPacketData: packet,
-      receivedAt: now,
-    });
+      status: eventType === "emergency_on" ? "active" : "resolved",
+      receivedAt: new Date(),
+    };
 
-    // 2) Alert row for dashboard/alerts list
-    await Alert.create({
-      organizationId: ctx.organizationId,
-      gpsDeviceId: ctx.gpsDeviceId,
-      vehicleId: ctx.vehicleId,
-      imei: ctx.imei,
-      alertId: emergencyOn ? 10 : 11,
-      alertName: emergencyOn ? "Emergency On" : "Emergency Off",
-      packetType: "EA",
-      severity: emergencyOn ? "critical" : "info",
-      latitude: latitude ?? null,
-      longitude: longitude ?? null,
-      locationCoordinates:
-        latitude !== null && latitude !== undefined && longitude !== null && longitude !== undefined
-          ? [longitude, latitude]
-          : undefined,
-      gpsTimestamp: now,
-      speed,
-      heading,
-      emergencyStatus: emergencyOn,
-      rawPacketData: packet,
-      receivedAt: now,
-    });
+    // Remove undefined fields
+    Object.keys(emergencyDoc).forEach(
+      (k) => emergencyDoc[k] === undefined && delete emergencyDoc[k],
+    );
 
-    // 3) Daily stats emergency counter
-    if (emergencyOn && ctx.vehicleId) {
-      await VehicleDailyStats.updateOne(
-        { vehicleId: ctx.vehicleId, date: startOfToday() },
-        { $inc: { "alertCounts.emergencyCount": 1 } },
+    await EmergencyEvent.create(emergencyDoc);
+
+    /* ------------------------------------------------------------ */
+    /* 4️⃣ RESOLVE PREVIOUS EMERGENCY (if OFF)                       */
+    /* ------------------------------------------------------------ */
+    if (eventType === "emergency_off") {
+      await EmergencyEvent.updateMany(
+        {
+          imei,
+          eventType: "emergency_on",
+          status: "active",
+          _id: { $ne: emergencyDoc._id },
+        },
+        {
+          $set: {
+            status: "resolved",
+            resolvedAt: new Date(),
+          },
+        },
       );
     }
 
+    /* ------------------------------------------------------------ */
+    /* 5️⃣ UPDATE DEVICE META                                        */
+    /* ------------------------------------------------------------ */
     await GpsDevice.updateOne(
-      { _id: ctx.gpsDeviceId },
+      { _id: socket.gpsDeviceId },
       {
         $set: {
           isOnline: true,
           connectionStatus: "online",
-          lastSeen: now,
+          lastSeen: new Date(),
         },
       },
     );
 
+    /* ------------------------------------------------------------ */
+    /* 6️⃣ ACK                                                       */
+    /* ------------------------------------------------------------ */
     socket.write("ACK\n");
+
+    console.log("🆘 EMERGENCY EVENT", {
+      imei,
+      eventType,
+      speed,
+      lat: latitude,
+      lng: longitude,
+    });
   } catch (err) {
     console.error("❌ Emergency handler error:", err.message);
-    socket.write("ERROR\n");
   }
 };

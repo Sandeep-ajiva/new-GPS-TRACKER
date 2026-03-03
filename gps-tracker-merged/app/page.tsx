@@ -38,22 +38,18 @@ export default function LoginPage() {
       const data = await res.json()
 
       if (res.ok && data?.token) {
-        const role = data?.user?.role || "admin"
-        saveSecureItem("token", data.token)
-        saveSecureItem("userRole", role)
-        localStorage.setItem("userId", data?.user?._id || "")
-        localStorage.setItem("userEmail", email)
-        localStorage.setItem("userName", data?.user?.firstName || "")
-        if (data?.user?.organizationId) {
-          localStorage.setItem("organizationId", data.user.organizationId)
-        }
+        // 🔐 ORG CONTEXT UPDATE
+        const role = data?.user?.role || "admin";
+        saveSecureItem("token", data.token);
+        saveSecureItem("userRole", role);
+        saveSecureItem("user", data.user);
 
         if (role === "superadmin") {
-          router.push("/superadmin")
+          router.push("/superadmin");
         } else {
-          router.push("/dashboard")
+          router.push("/dashboard");
         }
-        return
+        return;
       }
 
       // Use real backend response

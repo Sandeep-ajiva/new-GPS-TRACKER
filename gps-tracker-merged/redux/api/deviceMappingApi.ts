@@ -24,6 +24,14 @@ export const deviceMappingApi = baseApi.injectEndpoints({
             }),
             invalidatesTags: ["DeviceMapping", "Vehicle", "GPSDevice"],
         }),
+        unassignDeviceByDetails: builder.mutation({
+            query: (body) => ({
+                url: "/devicemapping/unassign",
+                method: "PATCH",
+                body,
+            }),
+            invalidatesTags: ["DeviceMapping", "Vehicle", "GPSDevice"],
+        }),
         deleteMapping: builder.mutation({
             query: (id) => ({
                 url: `/devicemapping/${id}`,
@@ -38,5 +46,6 @@ export const {
     useGetDeviceMappingsQuery,
     useAssignDeviceMutation,
     useUnassignDeviceMutation,
+    useUnassignDeviceByDetailsMutation,
     useDeleteMappingMutation,
 } = deviceMappingApi;

@@ -15,12 +15,23 @@ import {
 import { useGetOrganizationsQuery } from "@/redux/api/organizationApi";
 import { useGetGpsDevicesQuery } from "@/redux/api/gpsDeviceApi";
 import { useGetDriversQuery } from "@/redux/api/driversApi";
+import {
+  useAssignDeviceMutation,
+  useUnassignDeviceByDetailsMutation,
+} from "@/redux/api/deviceMappingApi";
+import {
+  useAssignDriverMutation,
+  useUnassignDriverMutation,
+} from "@/redux/api/vehicleDriverMappingApi";
 
 import { usePopups } from "../Helpers/PopupContext";
 import { capitalizeFirstLetter } from "../Helpers/CapitalizeFirstLetter";
 import { DynamicModal } from "@/components/common";
 import { FormField } from "@/lib/formTypes";
 import { getSecureItem } from "@/app/admin/Helpers/encryptionHelper";
+// 🔐 ORG CONTEXT UPDATE
+import { useOrgContext } from "@/hooks/useOrgContext";
+
 import ImportExportButton from "@/components/admin/import-export/ImportExportButton";
 import {
   Building2,
@@ -31,7 +42,6 @@ import {
   Palette,
   ToggleLeft,
   ShieldAlert,
-  Image as ImageIcon,
 } from "lucide-react";
 
 export interface Vehicle {
@@ -55,13 +65,21 @@ export default function VehiclesPage() {
   const { openPopup, closePopup, isPopupOpen } = usePopups();
   const searchParams = useSearchParams();
   const filterParam = searchParams.get("filter");
+
+  // 🔐 ORG CONTEXT UPDATE
+  const { orgId, isSuperAdmin, isRootOrgAdmin, isSubOrgAdmin } = useOrgContext();
+
+  const canSelectOrg = isSuperAdmin || isRootOrgAdmin;
   const searchQueryParam = searchParams.get("search");
 
   // API Hooks
   const { data: vehData, isLoading: isVehLoading, refetch: refetchVehicles } =
     useGetVehiclesQuery(undefined, { refetchOnMountOrArgChange: true });
   const { data: orgData, isLoading: isOrgLoading } =
-    useGetOrganizationsQuery(undefined, { refetchOnMountOrArgChange: true });
+    useGetOrganizationsQuery(undefined, {
+      skip: !(isSuperAdmin || isRootOrgAdmin), // 🔐 Only superadmin or root-org-admin needs full org list
+      refetchOnMountOrArgChange: true,
+    });
   const { data: devData, isLoading: isDevLoading } =
     useGetGpsDevicesQuery(undefined, { refetchOnMountOrArgChange: true });
   const { data: driverData, isLoading: isDriverLoading } =
@@ -70,6 +88,11 @@ export default function VehiclesPage() {
   const [createVehicle, { isLoading: isCreating }] = useCreateVehicleMutation();
   const [updateVehicle, { isLoading: isUpdating }] = useUpdateVehicleMutation();
   const [deleteVehicle, { isLoading: isDeleting }] = useDeleteVehicleMutation();
+
+  const [assignDevice] = useAssignDeviceMutation();
+  const [unassignDeviceByDetails] = useUnassignDeviceByDetailsMutation();
+  const [assignDriver] = useAssignDriverMutation();
+  const [unassignDriver] = useUnassignDriverMutation();
 
   const vehicles = useMemo(() => (vehData?.data as Vehicle[]) || [], [vehData]);
   const organizations = useMemo(
@@ -100,6 +123,10 @@ export default function VehiclesPage() {
   const [showFilters, setShowFilters] = useState(!!searchQueryParam);
   const [selectedVehicleForAssignment, setSelectedVehicleForAssignment] =
     useState<Vehicle | null>(null);
+  // Organization selection inside DynamicModal (for superadmin/root admin)
+  const [selectedOrgIdForForm, setSelectedOrgIdForForm] = useState<string>("");
+  // Track device selected in form — used to gate the driver dropdown
+  const [formDeviceId, setFormDeviceId] = useState<string>("");
   const [filters, setFilters] = useState({
     number: searchQueryParam || "",
     type: "",
@@ -109,12 +136,29 @@ export default function VehiclesPage() {
     driverId: "",
     deviceAssigned: "",
   });
-  const userRole = getSecureItem("userRole");
-  const canCreateVehicle = userRole === "admin" || userRole === "manager";
-  const canEditVehicle = userRole === "admin" || userRole === "manager";
-  const canDeleteVehicle = userRole === "admin";
+
+  // 🔐 ORG CONTEXT UPDATE
+  const canCreateVehicle = isSuperAdmin || isRootOrgAdmin || isSubOrgAdmin;
+  const canEditVehicle = isSuperAdmin || isRootOrgAdmin || isSubOrgAdmin;
+  const canDeleteVehicle = isSuperAdmin || isRootOrgAdmin;
 
   const [editingVehicle, setEditingVehicle] = useState<Vehicle | null>(null);
+
+  const getRefId = (value: any): string | null => {
+    if (!value) return null;
+    if (typeof value === "string") return value;
+    if (typeof value === "object") return value._id || null;
+    return null;
+  };
+
+  // 🔐 Effective organization for driver/device assignment in DynamicModal
+  const effectiveOrgIdForForm = useMemo(() => {
+    if (canSelectOrg) {
+      return selectedOrgIdForForm || "";
+    }
+    // Sub-admin / branch admin: always locked to their context org
+    return orgId || "";
+  }, [canSelectOrg, selectedOrgIdForForm, orgId]);
 
   const filteredVehicles = useMemo(() => {
     let filtered = vehicles;
@@ -168,10 +212,59 @@ export default function VehiclesPage() {
     const assignedDeviceIds = new Set(
       vehicles
         .filter((v) => v._id !== currentVehicleId) // Exclude current vehicle's assignment
-        .map((v) => v.deviceId)
-        .filter(Boolean),
+        .map((v) => getRefId((v as any).deviceId))
+        .filter(Boolean) as string[],
     );
     return devices.filter((d) => !assignedDeviceIds.has(d._id));
+  };
+
+  // 🔐 Calculate available drivers scoped by organization and assignment
+  const availableDriversForForm = useMemo(() => {
+    if (!effectiveOrgIdForForm) return [];
+
+    // Drivers already assigned to some vehicle (excluding current editing vehicle)
+    const assignedDriverIds = new Set(
+      vehicles
+        .filter((v) => !editingVehicle || v._id !== editingVehicle._id)
+        .map((v) => getRefId((v as any).driverId))
+        .filter(Boolean) as string[],
+    );
+
+    return drivers.filter((driver) => {
+      const driverOrgId =
+        typeof driver.organizationId === "object"
+          ? driver.organizationId._id
+          : driver.organizationId;
+
+      if (!driverOrgId || driverOrgId !== effectiveOrgIdForForm) {
+        return false;
+      }
+
+      // Allow unassigned drivers OR the one already linked to the editing vehicle
+      if (!assignedDriverIds.has(driver._id)) return true;
+      const editingDriverId = editingVehicle ? getRefId((editingVehicle as any).driverId) : null;
+      if (editingVehicle && editingDriverId === driver._id) return true;
+
+      return false;
+    });
+  }, [drivers, vehicles, editingVehicle, effectiveOrgIdForForm]);
+
+  // 🔐 Calculate available devices scoped by organization and assignment
+  const getAvailableDevicesForForm = (currentVehicleId?: string) => {
+    if (!effectiveOrgIdForForm) return [];
+
+    const baseDevices = getAvailableDevices(currentVehicleId);
+
+    return baseDevices.filter((device) => {
+      const deviceOrgId =
+        typeof (device as any).organizationId === "object"
+          ? (device as any).organizationId._id
+          : (device as any).organizationId;
+      if (!deviceOrgId || deviceOrgId !== effectiveOrgIdForForm) {
+        return false;
+      }
+      return true;
+    });
   };
 
 
@@ -179,17 +272,13 @@ export default function VehiclesPage() {
     data: Record<string, string | number | boolean | File>,
   ) => {
     try {
-      // 🔹 Append fields carefully
+      // 🔹 Build body — strip empty optional ID fields to null
       const body: Record<string, any> = {};
 
       Object.entries(data).forEach(([key, value]) => {
-        // Skip null/undefined
         if (value === undefined || value === null) return;
-
-        // Skip organizationId on update
-        if (editingVehicle && key === "organizationId") return;
-
-        // Handle empty strings for optional IDs
+        // organizationId is handled by backend orgScope; never send from UI
+        if (key === "organizationId") return;
         if (value === "" && ["deviceId", "driverId"].includes(key)) {
           body[key] = null;
         } else if (value !== "") {
@@ -203,16 +292,108 @@ export default function VehiclesPage() {
       }
 
       if (editingVehicle) {
-        // ✅ UPDATE
+        // ─────────────────────────────────────────
+        // ✅ EDIT VEHICLE — 4-step orchestration
+        // ─────────────────────────────────────────
+
+        // Step 1 — Resolve old vs new values
+        const oldDeviceId = getRefId(editingVehicle.deviceId) || null;
+        const oldDriverId = getRefId(editingVehicle.driverId) || null;
+        const newDeviceId: string | null = body.deviceId !== undefined ? (body.deviceId || null) : oldDeviceId;
+        const newDriverId: string | null = body.driverId !== undefined ? (body.driverId || null) : oldDriverId;
+
+        const isDeviceChanged = oldDeviceId !== newDeviceId;
+        const isDriverChanged = oldDriverId !== newDriverId;
+
+        // Step 2 — Update core vehicle fields (no deviceId/driverId — mapping owns those)
+        const { deviceId: _d, driverId: _dr, ...vehicleUpdateData } = body;
         await updateVehicle({
           id: editingVehicle._id,
-          ...body,
+          ...vehicleUpdateData,
         }).unwrap();
+
+        // Step 3 — Device mapping
+        let deviceRemovedOrChanged = false;
+        if (isDeviceChanged) {
+          if (oldDeviceId && !newDeviceId) {
+            // 3a — Device removed: cascade in backend auto-unassigns driver too
+            await unassignDeviceByDetails({
+              vehicleId: editingVehicle._id,
+              gpsDeviceId: oldDeviceId,
+            }).unwrap();
+            deviceRemovedOrChanged = true; // driver cascade handled by backend
+          } else if (oldDeviceId && newDeviceId) {
+            // 3b — Device changed
+            await unassignDeviceByDetails({
+              vehicleId: editingVehicle._id,
+              gpsDeviceId: oldDeviceId,
+            }).unwrap();
+            await assignDevice({
+              vehicleId: editingVehicle._id,
+              gpsDeviceId: newDeviceId,
+            }).unwrap();
+            deviceRemovedOrChanged = true; // old driver also auto-unassigned by cascade
+          } else if (!oldDeviceId && newDeviceId) {
+            // 3c — Device newly added
+            await assignDevice({
+              vehicleId: editingVehicle._id,
+              gpsDeviceId: newDeviceId,
+            }).unwrap();
+          }
+        }
+
+        // Step 4 — Driver mapping (skip entirely if device was just removed — cascade handled it)
+        const effectiveDeviceId = newDeviceId;
+        if (effectiveDeviceId && isDriverChanged) {
+          if (oldDriverId && !newDriverId) {
+            // 4a — Driver removed
+            await unassignDriver({ vehicleId: editingVehicle._id }).unwrap();
+          } else if (oldDriverId && newDriverId) {
+            // 4b — Driver changed: unassign old first (backend handles its own cascade cleanly)
+            if (!deviceRemovedOrChanged) {
+              // Only unassign if not already cleared by device cascade
+              await unassignDriver({ vehicleId: editingVehicle._id }).unwrap();
+            }
+            await assignDriver({
+              vehicleId: editingVehicle._id,
+              driverId: newDriverId,
+            }).unwrap();
+          } else if (!oldDriverId && newDriverId) {
+            // 4c — Driver newly added
+            await assignDriver({
+              vehicleId: editingVehicle._id,
+              driverId: newDriverId,
+            }).unwrap();
+          }
+        }
 
         toast.success("Vehicle updated successfully");
       } else {
-        // ✅ CREATE
-        await createVehicle(body).unwrap();
+        // ─────────────────────────────────────────
+        // ✅ CREATE VEHICLE — 3-step orchestration
+        // ─────────────────────────────────────────
+
+        // Step 1 — Create vehicle (no deviceId/driverId in payload)
+        const { deviceId: initialDeviceId, driverId: initialDriverId, ...createData } = body;
+        const result = await createVehicle(createData).unwrap();
+        const newVehicleId = result.data._id;
+
+        // Step 2 — Assign device via Device Mapping API
+        if (initialDeviceId) {
+          await assignDevice({
+            vehicleId: newVehicleId,
+            gpsDeviceId: initialDeviceId as string,
+          }).unwrap();
+        }
+
+        // Step 3 — Assign driver via Driver Mapping API (only if device was also assigned)
+        if (initialDeviceId && initialDriverId) {
+          await assignDriver({
+            vehicleId: newVehicleId,
+            driverId: initialDriverId as string,
+          }).unwrap();
+        }
+
         toast.success("Vehicle created successfully");
       }
     } catch (err: unknown) {
@@ -224,33 +405,39 @@ export default function VehiclesPage() {
 
 
   const vehicleFormFields: FormField[] = useMemo(() => [
-    {
-      name: "organizationId",
-      label: "Organization",
-      type: "select",
-      required: true,
-      groups: [
-        {
-          label: "Organizations",
-          options: organizations
-            .filter((org) => !org.parentOrganizationId)
-            .map((org) => ({
-              label: org.name,
-              value: org._id,
-            })),
+    // 🔐 ORG CONTEXT UPDATE
+    ...(canSelectOrg ? [
+      {
+        name: "organizationId",
+        label: "Organization",
+        type: "select" as const,
+        required: true,
+        groups: [
+          {
+            label: "Organizations",
+            options: organizations
+              .filter((org) => !org.parentOrganizationId)
+              .map((org) => ({
+                label: org.name,
+                value: org._id,
+              })),
+          },
+          {
+            label: "Sub-Organizations",
+            options: organizations
+              .filter((org) => org.parentOrganizationId)
+              .map((org) => ({
+                label: org.name,
+                value: org._id,
+              })),
+          },
+        ],
+        icon: <Building2 size={14} className="text-slate-500" />,
+        onChange: (value: string) => {
+          setSelectedOrgIdForForm(value);
         },
-        {
-          label: "Sub-Organizations",
-          options: organizations
-            .filter((org) => org.parentOrganizationId)
-            .map((org) => ({
-              label: org.name,
-              value: org._id,
-            })),
-        },
-      ],
-      icon: <Building2 size={14} className="text-slate-500" />,
-    },
+      }
+    ] : []),
     {
       name: "vehicleType",
       label: "Vehicle Type",
@@ -318,40 +505,46 @@ export default function VehiclesPage() {
       icon: <ToggleLeft size={14} className="text-slate-500" />,
     },
     {
-      name: "driverId",
-      label: "Driver",
-      type: "select",
-      options: [
-        { label: "Unassigned", value: "" },
-        ...drivers.map((driver) => ({
-          label: `${driver.firstName} ${driver.lastName}`,
-          value: driver._id,
-        })),
-      ],
-      icon: <Info size={14} className="text-slate-500" />,
-    },
-    {
       name: "deviceId",
       label: "Assign GPS Device",
       type: "select",
       options: [
         { label: "Unassigned", value: "" },
-        ...getAvailableDevices(editingVehicle?._id).map((d) => ({
+        ...getAvailableDevicesForForm(editingVehicle?._id).map((d) => ({
           label: `${d.imei} (${d.deviceModel})`,
           value: d._id,
         })),
       ],
       icon: <ShieldAlert size={14} className="text-slate-500" />,
+      disabled: !effectiveOrgIdForForm,
+      onChange: (value: string) => {
+        setFormDeviceId(value);
+      },
     },
-  ], [organizations, drivers, devices, vehicles, editingVehicle]);
+    {
+      name: "driverId",
+      label: "Driver",
+      type: "select",
+      options: [
+        { label: "Unassigned", value: "" },
+        ...availableDriversForForm.map((driver) => ({
+          label: `${driver.firstName} ${driver.lastName}`,
+          value: driver._id,
+        })),
+      ],
+      icon: <Info size={14} className="text-slate-500" />,
+      // 🔐 Business Rule: driver can only be assigned when vehicle has a GPS device
+      disabled: !effectiveOrgIdForForm || !formDeviceId,
+    },
+  ], [organizations, availableDriversForForm, vehicles, editingVehicle, effectiveOrgIdForForm, formDeviceId]);
 
 
   const handleAssignDevice = async (deviceId: string) => {
     if (!selectedVehicleForAssignment) return;
     try {
-      await updateVehicle({
-        id: selectedVehicleForAssignment._id,
-        deviceId: deviceId,
+      await assignDevice({
+        vehicleId: selectedVehicleForAssignment._id,
+        gpsDeviceId: deviceId,
       }).unwrap();
       toast.success("Device assigned successfully");
       closePopup("assignDeviceModal");
@@ -363,11 +556,24 @@ export default function VehiclesPage() {
 
   const openCreateModal = () => {
     setEditingVehicle(null);
+    // Reset org and device selection when opening create modal
+    setSelectedOrgIdForForm("");
+    setFormDeviceId("");
     openPopup("vehicleModal");
   };
 
   const openEditModal = (vehicle: Vehicle) => {
     setEditingVehicle(vehicle);
+    // Pre-populate formDeviceId so driver dropdown is enabled if device is already assigned
+    setFormDeviceId(getRefId((vehicle as any).deviceId) || "");
+    // Pre-select organization for edit when allowed
+    if (canSelectOrg) {
+      const vehicleOrgId =
+        typeof vehicle.organizationId === "object"
+          ? vehicle.organizationId._id
+          : vehicle.organizationId;
+      setSelectedOrgIdForForm(vehicleOrgId);
+    }
     openPopup("vehicleModal");
   };
 
@@ -428,6 +634,13 @@ export default function VehiclesPage() {
     {
       header: "Driver",
       accessor: (row: Vehicle) => {
+        // Support both populated and ID-only driver references
+        if (row.driverId && typeof row.driverId === "object") {
+          const first = (row.driverId as any).firstName || "";
+          const last = (row.driverId as any).lastName || "";
+          const full = `${first} ${last}`.trim();
+          return full || "-";
+        }
         const driver = drivers.find((d) => d._id === row.driverId);
         return driver ? `${driver.firstName} ${driver.lastName}` : "-";
       },
@@ -609,38 +822,41 @@ export default function VehiclesPage() {
                   <option value="other">Other</option>
                 </select>
               </div>
-              <div>
-                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
-                  Organization
-                </label>
-                <select
-                  className="admin-filter-select w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 outline-none"
-                  value={filters.organizationId}
-                  onChange={(e) =>
-                    setFilters({ ...filters, organizationId: e.target.value })
-                  }
-                >
-                  <option value="">All Organizations</option>
-                  <optgroup label="Organizations">
-                    {organizations
-                      .filter((org) => !org.parentOrganizationId)
-                      .map((org) => (
-                        <option key={org._id} value={org._id}>
-                          {org.name}
-                        </option>
-                      ))}
-                  </optgroup>
-                  <optgroup label="Sub-Organizations">
-                    {organizations
-                      .filter((org) => org.parentOrganizationId)
-                      .map((org) => (
-                        <option key={org._id} value={org._id}>
-                          {org.name}
-                        </option>
-                      ))}
-                  </optgroup>
-                </select>
-              </div>
+              {/* 🔐 ORG CONTEXT UPDATE */}
+              {isSuperAdmin && (
+                <div>
+                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
+                    Organization
+                  </label>
+                  <select
+                    className="admin-filter-select w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 outline-none"
+                    value={filters.organizationId}
+                    onChange={(e) =>
+                      setFilters({ ...filters, organizationId: e.target.value })
+                    }
+                  >
+                    <option value="">All Organizations</option>
+                    <optgroup label="Organizations">
+                      {organizations
+                        .filter((org) => !org.parentOrganizationId)
+                        .map((org) => (
+                          <option key={org._id} value={org._id}>
+                            {org.name}
+                          </option>
+                        ))}
+                    </optgroup>
+                    <optgroup label="Sub-Organizations">
+                      {organizations
+                        .filter((org) => org.parentOrganizationId)
+                        .map((org) => (
+                          <option key={org._id} value={org._id}>
+                            {org.name}
+                          </option>
+                        ))}
+                    </optgroup>
+                  </select>
+                </div>
+              )}
               <div>
                 <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
                   Driver
@@ -758,7 +974,7 @@ export default function VehiclesPage() {
         {isPopupOpen("assignDeviceModal") && (
           <div className="fixed inset-0 bg-slate-950/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
             <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl border border-slate-200">
-              <h2 className="text-xl font-bold mb-4">Assign GPS Device</h2>
+              <h2 className="text-xl text-slate-900 font-bold mb-4">Assign GPS Device</h2>
               <p className="text-sm text-slate-500 mb-4">
                 Assign a GPS device to{" "}
                 <strong>{selectedVehicleForAssignment?.vehicleNumber}</strong>
@@ -778,9 +994,13 @@ export default function VehiclesPage() {
                     <button
                       key={device._id}
                       onClick={() => handleAssignDevice(device._id)}
-                      className="w-full p-3 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors text-left"
+                      className="w-full p-4 rounded-xl
+  bg-transparent border border-transparent
+  hover:bg-slate-300
+  transition-colors duration-200
+  text-left cursor-pointer"
                     >
-                      <div className="font-semibold text-sm">{device.imei}</div>
+                      <div className="font-semibold text-sm text-black">{device.imei}</div>
                       <div className="text-xs text-slate-500">
                         {device.deviceModel} • {device.connectionStatus}
                       </div>

@@ -35,21 +35,60 @@ exports.assign = async (req, res) => {
       });
     }
 
-    /**
-     * 🔍 Validate existence and get organization from vehicle
-     */
-    const vehicle = await VehicleModel.findById(vehicleId).session(session);
-    const device = await DeviceModel.findById(gpsDeviceId).session(session);
+    // 🔐 ORG SCOPE FILTER
+    const orgFilter =
+      req.orgScope === "ALL"
+        ? {}
+        : { organizationId: { $in: req.orgScope } };
+
+    const vehicle = await VehicleModel.findOne({
+      _id: vehicleId,
+      ...orgFilter,
+    }).session(session);
+
+    const device = await DeviceModel.findOne({
+      _id: gpsDeviceId,
+      ...orgFilter,
+    }).session(session);
 
     if (!vehicle || !device) {
-      throw { status: 404, message: "Vehicle or GPS device not found" };
+      throw {
+        status: 404,
+        message: "Vehicle or GPS device not found or access denied",
+      };
+    }
+
+    /* 🛑 CORE BUSINESS RULE — SAME ORG ONLY */
+    if (
+      vehicle.organizationId.toString() !==
+      device.organizationId.toString()
+    ) {
+      throw {
+        status: 400,
+        message:
+          "Vehicle and GPS device must belong to the same organization",
+      };
     }
 
     const organizationId = vehicle.organizationId;
 
-    /**
-     * 🔒 Check if device already mapped
-     */
+    /* 🔒 EXTRA HARDENING — direct reference check */
+    if (vehicle.deviceId) {
+      throw {
+        status: 409,
+        message: "Vehicle already has a linked GPS device",
+      };
+    }
+
+    if (device.vehicleId) {
+      throw {
+        status: 409,
+        message: "GPS device already linked to a vehicle",
+      };
+    }
+
+    /* 🔒 CHECK MAPPING COLLECTION */
+
     const deviceAlreadyMapped = await VehicleMapping.findOne({
       gpsDeviceId,
       unassignedAt: null,
@@ -62,9 +101,6 @@ exports.assign = async (req, res) => {
       };
     }
 
-    /**
-     * 🔒 Check if vehicle already has a device
-     */
     const vehicleAlreadyMapped = await VehicleMapping.findOne({
       vehicleId,
       unassignedAt: null,
@@ -77,9 +113,8 @@ exports.assign = async (req, res) => {
       };
     }
 
-    /**
-     * 🧩 Create mapping
-     */
+    /* 🧩 CREATE MAPPING */
+
     const [vehicleMapping] = await VehicleMapping.create(
       [
         {
@@ -90,12 +125,11 @@ exports.assign = async (req, res) => {
           unassignedAt: null,
         },
       ],
-      { session },
+      { session }
     );
 
-    /**
-     * 🔄 Sync references
-     */
+    /* 🔄 SYNC REFERENCES */
+
     vehicle.deviceId = gpsDeviceId;
     device.vehicleId = vehicleId;
 
@@ -117,7 +151,9 @@ exports.assign = async (req, res) => {
     });
   } catch (error) {
     await session.abortTransaction();
+
     console.error("Assign Device Mapping Error:", error);
+
     return res.status(error.status || 400).json({
       status: false,
       message: error.message || "Internal server error",
@@ -167,10 +203,12 @@ exports.unassignById = async (req, res) => {
       return res.status(400).json({ status: false, message: "Invalid mapping ID" });
     }
 
-    const mapping = await VehicleMapping.findById(id).session(session);
+    // 🔐 ORG SCOPE FIX
+    const orgFilter = req.orgScope === "ALL" ? {} : { organizationId: { $in: req.orgScope } };
+    const mapping = await VehicleMapping.findOne({ _id: id, ...orgFilter }).session(session);
 
     if (!mapping || mapping.unassignedAt) {
-      throw { status: 404, message: "Active mapping not found" };
+      throw { status: 404, message: "Active mapping not found or access denied" };
     }
 
     const { vehicleId, gpsDeviceId } = mapping;
@@ -247,18 +285,21 @@ exports.unassign = async (req, res) => {
       });
     }
 
+    // 🔐 ORG SCOPE FIX
+    const orgFilter = req.orgScope === "ALL" ? {} : { organizationId: { $in: req.orgScope } };
     const mapping = await VehicleMapping.findOneAndUpdate(
       {
         vehicleId,
         gpsDeviceId,
         unassignedAt: null,
+        ...orgFilter
       },
       { unassignedAt: new Date() },
       { new: true, session },
     );
 
     if (!mapping) {
-      throw { status: 404, message: "Active mapping not found" };
+      throw { status: 404, message: "Active mapping not found or access denied" };
     }
 
     await VehicleModel.findByIdAndUpdate(
@@ -321,6 +362,7 @@ exports.getByVehicle = async (req, res) => {
     const { page, limit, search } = req.query;
 
     const filter = { vehicleId };
+    // 🔐 ORG SCOPE FIX
     if (req.user.role !== "superadmin" && req.orgScope !== "ALL") {
       filter.organizationId = { $in: req.orgScope };
     }
@@ -347,6 +389,7 @@ exports.getByDevice = async (req, res) => {
     const { page, limit, search } = req.query;
 
     const filter = { gpsDeviceId };
+    // 🔐 ORG SCOPE FIX
     if (req.user.role !== "superadmin" && req.orgScope !== "ALL") {
       filter.organizationId = { $in: req.orgScope };
     }

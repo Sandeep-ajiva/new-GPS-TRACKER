@@ -51,6 +51,12 @@ const vehicleDailyStatsSchema = {
     min: 0,
   },
 
+  speedSampleCount: {
+    type: Number,
+    default: 0,
+    min: 0,
+  },
+
   // Time metrics (seconds)
   runningTime: {
     type: Number,
@@ -135,8 +141,7 @@ const vehicleDailyStatsSchema = {
 module.exports = new ajModel("VehicleDailyStats", vehicleDailyStatsSchema)
 
   // ✅ yahin compound index lagta hai
-  .index({ vehicleId: 1, date: 1 })
-  .index({ organizationId: 1, date: 1 })
+  .index({ vehicleId: 1, date: 1 }, { unique: true })
 
   // 🚨 LAST LINE ALWAYS
   .getModel();

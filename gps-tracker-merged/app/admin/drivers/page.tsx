@@ -19,17 +19,22 @@ import { usePopups } from "@/app/admin/Helpers/PopupContext";
 import { capitalizeFirstLetter } from "@/app/admin/Helpers/CapitalizeFirstLetter";
 import { DynamicModal } from "@/components/common";
 import { FormField } from "@/lib/formTypes";
-import { getSecureItem } from "@/app/admin/Helpers/encryptionHelper";
+// 🔐 ORG CONTEXT UPDATE
+import { useOrgContext } from "@/hooks/useOrgContext";
 import ImportExportButton from "@/components/admin/import-export/ImportExportButton";
 
 export default function DriversPage() {
     const { openPopup, closePopup, isPopupOpen } = usePopups();
 
+    // 🔐 ORG CONTEXT UPDATE
+    const { orgId, isSuperAdmin, isRootOrgAdmin, isSubOrgAdmin } = useOrgContext();
+
     const [showFilters, setShowFilters] = useState(false);
-    const userRole = getSecureItem("userRole");
-    const canCreateDriver = userRole === "admin" || userRole === "superadmin";
-    const canEditDriver = userRole === "admin" || userRole === "superadmin";
-    const canDeleteDriver = userRole === "superadmin";
+
+    // 🔐 ORG CONTEXT UPDATE
+    const canCreateDriver = isSuperAdmin || isRootOrgAdmin || isSubOrgAdmin;
+    const canEditDriver = isSuperAdmin || isRootOrgAdmin || isSubOrgAdmin;
+    const canDeleteDriver = isSuperAdmin || isRootOrgAdmin;
 
     const [filters, setFilters] = useState({
         name: "",
@@ -43,9 +48,18 @@ export default function DriversPage() {
     const [editingDriver, setEditingDriver] = useState<any>(null);
 
     // API Hooks
-    const { data: driversData, isLoading: isDriversLoading, refetch: refetchDrivers } = useGetDriversQuery(undefined, { refetchOnMountOrArgChange: true });
-    const { data: orgData, isLoading: isOrgLoading } = useGetOrganizationsQuery(undefined, { refetchOnMountOrArgChange: true });
-    const { data: subOrgData, isLoading: isSubOrgLoading } = useGetSubOrganizationsQuery(undefined, { refetchOnMountOrArgChange: true });
+    const { data: driversData, isLoading: isDriversLoading } = useGetDriversQuery(undefined, { refetchOnMountOrArgChange: true });
+
+    // 🔐 Only superadmin needs full org lists
+    const { data: orgData, isLoading: isOrgLoading } = useGetOrganizationsQuery(undefined, {
+        skip: !isSuperAdmin,
+        refetchOnMountOrArgChange: true
+    });
+    const { data: subOrgData, isLoading: isSubOrgLoading } = useGetSubOrganizationsQuery(undefined, {
+        skip: !isSuperAdmin,
+        refetchOnMountOrArgChange: true
+    });
+
     const { data: vehData, isLoading: isVehLoading } = useGetVehiclesQuery(undefined, { refetchOnMountOrArgChange: true });
 
     const [createDriver, { isLoading: isCreating }] = useCreateDriverWithUserMutation();
@@ -129,6 +143,10 @@ export default function DriversPage() {
                 await updateDriver({ id: editingDriver._id, ...payload }).unwrap();
                 toast.success("Driver updated successfully");
             } else {
+                // 🔐 ORG CONTEXT UPDATE
+                if (!isSuperAdmin) {
+                    payload.organizationId = orgId || "";
+                }
                 await createDriver(payload).unwrap();
                 toast.success("Driver and user created successfully");
             }
@@ -200,17 +218,20 @@ export default function DriversPage() {
                 },
             ]
             : []),
-        {
-            name: "organizationId",
-            label: "Organization",
-            type: "select",
-            required: true,
-            options: organizations.map((org) => ({
-                label: org.name,
-                value: org._id,
-            })),
-            icon: <User size={14} className="text-slate-500" />,
-        },
+        // 🔐 ORG CONTEXT UPDATE
+        ...(isSuperAdmin ? [
+            {
+                name: "organizationId",
+                label: "Organization",
+                type: "select" as const,
+                required: true,
+                options: organizations.map((org: any) => ({
+                    label: org.name,
+                    value: org._id,
+                })),
+                icon: <User size={14} className="text-slate-500" />,
+            }
+        ] : []),
         {
             name: "status",
             label: "Status",
@@ -223,7 +244,7 @@ export default function DriversPage() {
             ],
             icon: <CheckCircle size={14} className="text-slate-500" />,
         },
-    ], [editingDriver, organizations]);
+    ], [editingDriver, organizations, isSuperAdmin]);
 
     const openCreateModal = () => {
         setEditingDriver(null);
@@ -312,10 +333,10 @@ export default function DriversPage() {
             accessor: (row: any) => (
                 <span
                     className={`px-2 py-1 rounded-lg text-xs font-bold uppercase ${row.status === "active"
-                            ? "bg-green-100 text-green-700"
-                            : row.status === "blocked"
-                                ? "bg-red-100 text-red-700"
-                                : "bg-slate-100 text-slate-700"
+                        ? "bg-green-100 text-green-700"
+                        : row.status === "blocked"
+                            ? "bg-red-100 text-red-700"
+                            : "bg-slate-100 text-slate-700"
                         }`}
                 >
                     {capitalizeFirstLetter(row.status || "active")}
@@ -485,23 +506,26 @@ export default function DriversPage() {
                                 </select>
                             </div>
 
-                            <div>
-                                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
-                                    Organization
-                                </label>
-                                <select
-                                    className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-blue-500/20 outline-none"
-                                    value={filters.organizationId}
-                                    onChange={(e) =>
-                                        setFilters({ ...filters, organizationId: e.target.value })
-                                    }
-                                >
-                                    <option value="">All Organizations</option>
-                                    {organizations.map((org: any) => (
-                                        <option key={org._id} value={org._id}>{org.name}</option>
-                                    ))}
-                                </select>
-                            </div>
+                            {/* 🔐 ORG CONTEXT UPDATE */}
+                            {isSuperAdmin && (
+                                <div>
+                                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
+                                        Organization
+                                    </label>
+                                    <select
+                                        className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold focus:ring-2 focus:ring-blue-500/20 outline-none"
+                                        value={filters.organizationId}
+                                        onChange={(e) =>
+                                            setFilters({ ...filters, organizationId: e.target.value })
+                                        }
+                                    >
+                                        <option value="">All Organizations</option>
+                                        {organizations.map((org: any) => (
+                                            <option key={org._id} value={org._id}>{org.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
 
                             <div className="flex items-end">
                                 <button

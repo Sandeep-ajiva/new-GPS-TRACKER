@@ -25,7 +25,8 @@ import { usePopups } from "../Helpers/PopupContext";
 import { capitalizeFirstLetter } from "../Helpers/CapitalizeFirstLetter";
 import { DynamicModal } from "@/components/common";
 import { FormField } from "@/lib/formTypes";
-import { getSecureItem } from "@/app/admin/Helpers/encryptionHelper";
+// 🔐 ORG CONTEXT UPDATE
+import { useOrgContext } from "@/hooks/useOrgContext";
 import ImportExportButton from "@/components/admin/import-export/ImportExportButton";
 
 import {
@@ -62,6 +63,9 @@ export interface GPSDevice {
 
 export default function GpsDevicesPage() {
   const { openPopup, closePopup, isPopupOpen } = usePopups();
+
+  // 🔐 ORG CONTEXT UPDATE
+  const { orgId, isSuperAdmin, isRootOrgAdmin, isSubOrgAdmin } = useOrgContext();
   const searchParams = useSearchParams();
   const searchQueryParam = searchParams.get("search");
 
@@ -74,7 +78,10 @@ export default function GpsDevicesPage() {
     useGetVehiclesQuery(undefined, { refetchOnMountOrArgChange: true });
 
   const { data: orgData, isLoading: isOrgLoading } =
-    useGetOrganizationsQuery(undefined, { refetchOnMountOrArgChange: true });
+    useGetOrganizationsQuery(undefined, {
+      skip: !(isSuperAdmin || isRootOrgAdmin), // 🔐 Only superadmin or root-org-admin needs full org list
+      refetchOnMountOrArgChange: true,
+    });
 
   const [createGpsDevice, { isLoading: isCreating }] =
     useCreateGpsDeviceMutation();
@@ -126,10 +133,11 @@ export default function GpsDevicesPage() {
     warrantyExpiry: "",
     organizationId: "",
   });
-  const userRole = getSecureItem("userRole");
-  const canCreateDevice = userRole === "admin";
-  const canEditDevice = userRole === "admin";
-  const canDeleteDevice = userRole === "admin";
+
+  // 🔐 ORG CONTEXT UPDATE
+  const canCreateDevice = isSuperAdmin || isRootOrgAdmin || isSubOrgAdmin;
+  const canEditDevice = isSuperAdmin || isRootOrgAdmin || isSubOrgAdmin;
+  const canDeleteDevice = isSuperAdmin || isRootOrgAdmin;
 
   const [editingDevice, setEditingDevice] = useState<GPSDevice | null>(null);
   const [selectedDeviceForAssignment, setSelectedDeviceForAssignment] =
@@ -249,7 +257,13 @@ export default function GpsDevicesPage() {
 
         toast.success("Device updated successfully");
       } else {
-        await createGpsDevice(data).unwrap();
+        // 🔐 ORG CONTEXT UPDATE
+        // If user is NOT superadmin or root-org-admin, lock organization from context
+        const finalData = { ...data };
+        if (!(isSuperAdmin || isRootOrgAdmin)) {
+          finalData.organizationId = orgId || "";
+        }
+        await createGpsDevice(finalData).unwrap();
         toast.success("Device created successfully");
       }
     } catch (err: any) {
@@ -261,33 +275,36 @@ export default function GpsDevicesPage() {
   /* ================= FORM FIELDS (FIXED) ================= */
 
   const deviceFormFields: FormField[] = useMemo(() => [
-    {
-      name: "organizationId",
-      label: "Organization",
-      type: "select",
-      required: true,
-      groups: [
-        {
-          label: "Organizations",
-          options: organizations
-            .filter((org) => !org.parentOrganizationId)
-            .map((org) => ({
-              label: org.name,
-              value: org._id,
-            })),
-        },
-        {
-          label: "Sub-Organizations",
-          options: organizations
-            .filter((org) => org.parentOrganizationId)
-            .map((org) => ({
-              label: org.name,
-              value: org._id,
-            })),
-        },
-      ],
-      icon: <Building2 size={14} />,
-    },
+    // 🔐 ORG CONTEXT UPDATE
+    ...(isSuperAdmin || isRootOrgAdmin ? [
+      {
+        name: "organizationId",
+        label: "Organization",
+        type: "select" as const,
+        required: true,
+        groups: [
+          {
+            label: "Organizations",
+            options: organizations
+              .filter((org) => !org.parentOrganizationId)
+              .map((org) => ({
+                label: org.name,
+                value: org._id,
+              })),
+          },
+          {
+            label: "Sub-Organizations",
+            options: organizations
+              .filter((org) => org.parentOrganizationId)
+              .map((org) => ({
+                label: org.name,
+                value: org._id,
+              })),
+          },
+        ],
+        icon: <Building2 size={14} />,
+      }
+    ] : []),
     { name: "imei", label: "IMEI", type: "text", required: true },
     { name: "simNumber", label: "SIM Number", type: "text" },
     {
@@ -653,38 +670,41 @@ export default function GpsDevicesPage() {
                   }
                 />
               </div>
-              <div>
-                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
-                  Organization
-                </label>
-                <select
-                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 outline-none"
-                  value={filters.organizationId}
-                  onChange={(e) =>
-                    setFilters({ ...filters, organizationId: e.target.value })
-                  }
-                >
-                  <option value="">All Organizations</option>
-                  <optgroup label="Organizations">
-                    {organizations
-                      .filter((org) => !org.parentOrganizationId)
-                      .map((org) => (
-                        <option key={org._id} value={org._id}>
-                          {org.name}
-                        </option>
-                      ))}
-                  </optgroup>
-                  <optgroup label="Sub-Organizations">
-                    {organizations
-                      .filter((org) => org.parentOrganizationId)
-                      .map((org) => (
-                        <option key={org._id} value={org._id}>
-                          {org.name}
-                        </option>
-                      ))}
-                  </optgroup>
-                </select>
-              </div>
+              {/* 🔐 ORG CONTEXT UPDATE */}
+              {(isSuperAdmin || isRootOrgAdmin) && (
+                <div>
+                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
+                    Organization
+                  </label>
+                  <select
+                    className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 outline-none"
+                    value={filters.organizationId}
+                    onChange={(e) =>
+                      setFilters({ ...filters, organizationId: e.target.value })
+                    }
+                  >
+                    <option value="">All Organizations</option>
+                    <optgroup label="Organizations">
+                      {organizations
+                        .filter((org) => !org.parentOrganizationId)
+                        .map((org) => (
+                          <option key={org._id} value={org._id}>
+                            {org.name}
+                          </option>
+                        ))}
+                    </optgroup>
+                    <optgroup label="Sub-Organizations">
+                      {organizations
+                        .filter((org) => org.parentOrganizationId)
+                        .map((org) => (
+                          <option key={org._id} value={org._id}>
+                            {org.name}
+                          </option>
+                        ))}
+                    </optgroup>
+                  </select>
+                </div>
+              )}
               <div className="flex items-end">
                 <button
                   onClick={clearFilters}

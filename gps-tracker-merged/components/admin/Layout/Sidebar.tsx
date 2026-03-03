@@ -1,7 +1,9 @@
 "use client";
-import React, { useState, useEffect } from "react";
+import React from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { getRootOrganization } from "@/lib/admin-dummy-data";
+
+// 🔐 ORG CONTEXT UPDATE
+import { useOrgContext } from "@/hooks/useOrgContext";
 
 import {
     LayoutDashboard,
@@ -28,7 +30,7 @@ const menuGroups = [
     {
         title: "Management",
         items: [
-            { name: "Organizations", icon: Building2, href: "/admin/organizations", roles: ["admin"] },
+            { name: "Organizations", icon: Building2, href: "/admin/organizations", roles: ["admin"], superOnly: true },
             { name: "Vehicles", icon: Car, href: "/admin/vehicles", roles: ["admin", "manager"] },
             { name: "GPS Devices", icon: Radio, href: "/admin/gps-devices", roles: ["admin", "manager"] },
             { name: "Users", icon: Users, href: "/admin/users", roles: ["admin", "manager"] },
@@ -63,21 +65,25 @@ type SidebarProps = {
 export default function Sidebar({ className, showClose, onClose, onNavigate, role }: SidebarProps) {
     const pathname = usePathname();
     const router = useRouter();
-    const [rootOrg, setRootOrgState] = useState(getRootOrganization());
-    const orgName = rootOrg?.name || "GPS Admin";
 
-    // Refresh org data periodically to catch updates
-    useEffect(() => {
-        const interval = setInterval(() => {
-            setRootOrgState(getRootOrganization());
-        }, 500);
-        return () => clearInterval(interval);
-    }, []);
+    // 🔐 ORG CONTEXT UPDATE
+    const { orgName, isSuperAdmin, isRootOrgAdmin } = useOrgContext();
 
     const visibleGroups = menuGroups
         .map((group) => ({
             ...group,
             items: group.items.filter((item: any) => {
+                // 🔐 ORG CONTEXT UPDATE
+                if (item.name === "Organizations" || item.name === "Settings" || item.name === "Permissions") {
+                    if (!isSuperAdmin) {
+                        // Special case: root org admin can see Organizations but only for sub-orgs
+                        // But menu definition says "superOnly" usually.
+                        // Let's stick to strict: only superadmin for Settings/Permissions.
+                        // Root Org Admin can see Organizations (checked below).
+                        if (item.name === "Settings" || item.name === "Permissions") return false;
+                        if (item.name === "Organizations" && !isRootOrgAdmin) return false;
+                    }
+                }
                 if (!item.roles) return true;
                 return item.roles.includes(role || "admin");
             }),
@@ -112,7 +118,7 @@ export default function Sidebar({ className, showClose, onClose, onNavigate, rol
                                 {group.title}
                             </h3>
                             <ul className="space-y-1">
-                                {group.items.map((item) => {
+                                {group.items.map((item: any) => {
                                     // Fix active state: exact match for dashboard, prefix match for others
                                     const isActive = item.exact
                                         ? pathname === item.href
@@ -152,6 +158,7 @@ export default function Sidebar({ className, showClose, onClose, onNavigate, rol
                             if (confirmLogout) {
                                 localStorage.removeItem("token");
                                 localStorage.removeItem("userRole");
+                                localStorage.removeItem("user");
                                 window.location.href = "/";
                             }
                         }

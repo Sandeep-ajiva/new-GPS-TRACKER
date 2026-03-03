@@ -57,34 +57,30 @@ exports.login = async (req, res) => {
 
     const { email, password } = req.body;
 
-    const user = await User.findOne({ email: email.toLowerCase() });
+    const user = await User.findOne({ email: email.toLowerCase() })
+      .populate("organizationId", "name path"); // 👈 IMPORTANT
+
     if (!user) {
-      return res
-        .status(401)
-        .json({ status: false, message: "Invalid email or password" });
+      return res.status(401).json({ status: false, message: "Invalid email or password" });
     }
 
     const isMatch = await bcrypt.compare(password, user.passwordHash);
     if (!isMatch) {
-      return res
-        .status(401)
-        .json({ status: false, message: "Invalid email or password" });
+      return res.status(401).json({ status: false, message: "Invalid email or password" });
     }
 
     if (user.status !== "active") {
-      return res
-        .status(403)
-        .json({ status: false, message: "User account is inactive" });
+      return res.status(403).json({ status: false, message: "User account is inactive" });
     }
 
     const token = jwt.sign(
       {
         userId: user._id,
         role: user.role,
-        organizationId: user.organizationId || null,
+        organizationId: user.organizationId?._id || null,
       },
       JWT_SECRET,
-      { expiresIn: "1d" },
+      { expiresIn: "1d" }
     );
 
     return res.status(200).json({
@@ -94,7 +90,10 @@ exports.login = async (req, res) => {
       user: {
         _id: user._id,
         role: user.role,
-        organizationId: user.organizationId,
+
+        organizationId: user.organizationId?._id,
+        organizationName: user.organizationId?.name,
+        organizationPath: user.organizationId?.path,
       },
     });
   } catch (error) {
@@ -133,12 +132,10 @@ exports.getAll = async (req, res) => {
         query.organizationId = req.query.organizationId;
       }
     } else {
-      if (!req.user.organizationId) {
-        return res
-          .status(403)
-          .json({ status: false, message: "Access denied" });
+      // 🔐 ORG SCOPE FIX
+      if (req.orgScope !== "ALL") {
+        query.organizationId = { $in: req.orgScope };
       }
-      query.organizationId = req.user.organizationId;
     }
 
     const users = await User.find(query)
@@ -220,8 +217,19 @@ exports.createUser = async (req, res) => {
       });
     }
 
-    const finalOrgId =
-      req.user.role === "superadmin" ? organizationId : req.user.organizationId;
+    // 🔐 ORG SCOPE FIX
+    let finalOrgId;
+    if (req.user.role === "superadmin") {
+      finalOrgId = organizationId || req.user.organizationId;
+    } else if (
+      organizationId &&
+      req.orgScope !== "ALL" &&
+      req.orgScope.some(id => id.toString() === organizationId.toString())
+    ) {
+      finalOrgId = organizationId;
+    } else {
+      finalOrgId = req.user.organizationId;
+    }
 
     if (!finalOrgId) {
       return res.status(400).json({
@@ -290,11 +298,15 @@ exports.updateUser = async (req, res) => {
 
     await validateUpdateUserData(req.body);
 
-    const user = await User.findById(id);
+    // 🔐 ORG SCOPE FIX
+    const orgFilter = req.orgScope === "ALL" ? {} : { organizationId: { $in: req.orgScope } };
+    const user = await User.findOne({ _id: id, ...orgFilter });
+
     if (!user) {
-      return res
-        .status(404)
-        .json({ status: false, message: "User not found" });
+      return res.status(404).json({
+        status: false,
+        message: "User not found or access denied",
+      });
     }
 
     if (req.body.email || req.body.mobile) {
@@ -345,11 +357,15 @@ exports.deleteUser = async (req, res) => {
         .json({ status: false, message: "Invalid user ID" });
     }
 
-    const user = await User.findById(id);
+    // 🔐 ORG SCOPE FIX
+    const orgFilter = req.orgScope === "ALL" ? {} : { organizationId: { $in: req.orgScope } };
+    const user = await User.findOne({ _id: id, ...orgFilter });
+
     if (!user) {
-      return res
-        .status(404)
-        .json({ status: false, message: "User not found" });
+      return res.status(404).json({
+        status: false,
+        message: "User not found or access denied",
+      });
     }
 
     if (req.user.role !== "superadmin") {
@@ -364,20 +380,6 @@ exports.deleteUser = async (req, res) => {
         return res.status(403).json({
           status: false,
           message: "Forbidden: Cannot delete superadmin user",
-        });
-      }
-
-      const userOrgId = user.organizationId ? user.organizationId.toString() : null;
-      const canDeleteInScope =
-        req.orgScope === "ALL" ||
-        (Array.isArray(req.orgScope) &&
-          userOrgId &&
-          req.orgScope.some((orgId) => orgId.toString() === userOrgId));
-
-      if (!canDeleteInScope) {
-        return res.status(403).json({
-          status: false,
-          message: "Forbidden: Cannot delete user from another organization",
         });
       }
     }

@@ -30,6 +30,9 @@ export interface FormField {
   groups?: FormOptionGroup[]; // For grouped select type
   rows?: number; // For textarea type
   icon?: React.ReactNode;
+  // Optional UI behavior hooks
+  disabled?: boolean;
+  onChange?: (value: string) => void;
 }
 
 export interface DynamicModalProps {

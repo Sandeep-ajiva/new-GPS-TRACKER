@@ -16,7 +16,21 @@ exports.create = async (req, res) => {
     try {
         await validateVehicleDailyStatsData(req.body);
 
-        const { organizationId, vehicleId, gpsDeviceId, date, totalDistance, maxSpeed, avgSpeed, runningTime, idleTime, stoppedTime, firstIgnitionOn, lastIgnitionOff } = req.body;
+        // 🔐 ORG SCOPE FIX
+        let organizationId;
+        if (req.user.role === "superadmin") {
+            organizationId = req.body.organizationId || req.orgId;
+        } else if (
+            req.body.organizationId &&
+            req.orgScope !== "ALL" &&
+            req.orgScope.some(id => id.toString() === req.body.organizationId.toString())
+        ) {
+            organizationId = req.body.organizationId;
+        } else {
+            organizationId = req.orgId;
+        }
+
+        const { vehicleId, gpsDeviceId, date, totalDistance, maxSpeed, avgSpeed, runningTime, idleTime, stoppedTime, firstIgnitionOn, lastIgnitionOff } = req.body;
 
         const vehicleDailyStats = await VehicleDailyStats.create({
             organizationId,
@@ -49,10 +63,16 @@ exports.create = async (req, res) => {
 exports.getAll = async (req, res) => {
     try {
         const { page, limit, search } = req.query;
-        
+
+        const filter = {};
+        // 🔐 ORG SCOPE FIX
+        if (req.user.role !== "superadmin" && req.orgScope !== "ALL") {
+            filter.organizationId = { $in: req.orgScope };
+        }
+
         const result = await paginate(
             VehicleDailyStats,
-            {},
+            filter,
             page,
             limit,
             ['organizationId', 'vehicleId', 'gpsDeviceId'],
@@ -69,8 +89,12 @@ exports.getAll = async (req, res) => {
 exports.getByVehicle = async (req, res) => {
     try {
         const { page, limit, search } = req.query;
-        
+
         const filter = { vehicleId: req.params.vehicleId };
+        // 🔐 ORG SCOPE FIX
+        if (req.user.role !== "superadmin" && req.orgScope !== "ALL") {
+            filter.organizationId = { $in: req.orgScope };
+        }
 
         const result = await paginate(
             VehicleDailyStats,
@@ -95,19 +119,25 @@ exports.getByVehicleAndDate = async (req, res) => {
         startOfDay.setHours(0, 0, 0, 0);
         const endOfDay = new Date(date);
         endOfDay.setHours(23, 59, 59, 999);
-        
-        const stats = await VehicleDailyStats.find({
+
+        // 🔐 ORG SCOPE FIX
+        const filter = {
             vehicleId,
             date: { $gte: startOfDay, $lte: endOfDay }
-        })
+        };
+        if (req.user.role !== "superadmin" && req.orgScope !== "ALL") {
+            filter.organizationId = { $in: req.orgScope };
+        }
+
+        const stats = await VehicleDailyStats.find(filter)
             .populate('organizationId')
             .populate('vehicleId')
             .populate('gpsDeviceId');
-        
+
         if (!stats || stats.length === 0) {
             // Return empty stats instead of 404 to avoid noisy logs and handle new vehicles gracefully
-            return res.status(200).json({ 
-                status: true, 
+            return res.status(200).json({
+                status: true,
                 data: {
                     totalDistance: 0,
                     maxSpeed: 0,
@@ -124,7 +154,7 @@ exports.getByVehicleAndDate = async (req, res) => {
                         tamperAlertCount: 0,
                         emergencyCount: 0
                     }
-                } 
+                }
             });
         }
         return res.status(200).json({ status: true, data: stats[0] });
