@@ -23,6 +23,8 @@ type HeaderProps = {
     onOpenSidebar?: () => void;
 };
 
+const EMPTY_ARRAY: any[] = [];
+
 export default function Header({ onOpenSidebar }: HeaderProps) {
     const router = useRouter();
     const [searchQuery, setSearchQuery] = useState("");
@@ -42,17 +44,18 @@ export default function Header({ onOpenSidebar }: HeaderProps) {
     const { data: vehData } = useGetVehiclesQuery(undefined);
     const { data: devicesData } = useGetGpsDevicesQuery(undefined);
     const { data: usersData } = useGetUsersQuery(undefined);
+    const { data: orgData } = useGetOrganizationsQuery(undefined);
 
     const [markAsRead] = useMarkAsReadMutation();
     const [deleteNotification] = useDeleteNotificationMutation();
     const [clearAllNotifications] = useClearAllNotificationsMutation();
 
-    const notifications = notifData?.data || [];
+    const notifications = notifData?.data || EMPTY_ARRAY;
     const adminUser = userData?.data || {};
-    const organizations = orgData?.data || [];
-    const vehicles = vehData?.data || vehData?.vehicles || [];
-    const devices = devicesData?.data || [];
-    const allUsers = usersData?.data || usersData?.users || [];
+    const organizations = orgData?.data || EMPTY_ARRAY;
+    const vehicles = vehData?.data || vehData?.vehicles || EMPTY_ARRAY;
+    const devices = devicesData?.data || EMPTY_ARRAY;
+    const allUsers = usersData?.data || usersData?.users || EMPTY_ARRAY;
 
     // Derived state
     const rootOrg = organizations.find((o: any) => !o.parentOrganizationId) || {};
@@ -108,12 +111,12 @@ export default function Header({ onOpenSidebar }: HeaderProps) {
             });
 
             setSearchResults(results.slice(0, 10)); // Top 10 results
-            setShowSearchResults(true);
+            if (!showSearchResults) setShowSearchResults(true);
         } else {
-            setSearchResults([]);
-            setShowSearchResults(false);
+            if (searchResults.length > 0) setSearchResults([]);
+            if (showSearchResults) setShowSearchResults(false);
         }
-    }, [searchQuery, organizations, vehicles, devices, allUsers]);
+    }, [searchQuery, organizations, vehicles, devices, allUsers, searchResults.length, showSearchResults]);
 
 
     const handleSearchResultClick = (result: { type: string; id: string }) => {
