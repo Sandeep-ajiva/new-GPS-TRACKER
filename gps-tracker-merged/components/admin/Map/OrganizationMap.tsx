@@ -2,10 +2,11 @@
 
 import { useMemo } from "react";
 import { DivIcon, LatLngExpression, latLngBounds } from "leaflet";
-import { MapContainer, Marker, Popup, TileLayer, useMap } from "react-leaflet";
+import { MapContainer, Marker, Popup, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import "leaflet-defaulticon-compatibility/dist/leaflet-defaulticon-compatibility.css";
 import "leaflet-defaulticon-compatibility";
+import MapTileLayer from "./MapTileLayer";
 
 type MapPoint = {
   id: string;
@@ -120,11 +121,8 @@ export default function OrganizationMap({
 
   return (
     <div className="relative h-full w-full overflow-hidden rounded-xl bg-slate-50">
-      <MapContainer center={center} zoom={6} className="h-full w-full">
-        <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        />
+      <MapContainer center={center} zoom={6} className="h-full w-full" attributionControl={false}>
+        <MapTileLayer satellite={false} />
         <FitBounds points={pointsForBounds} />
 
         {activeOrg && (

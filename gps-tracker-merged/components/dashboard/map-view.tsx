@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo } from "react";
-import { DivIcon, latLngBounds } from "leaflet";
-import { MapContainer, Marker, TileLayer, useMap, Popup } from "react-leaflet";
+import { useEffect, useMemo, useRef } from "react";
+import { DivIcon } from "leaflet";
+import { MapContainer, Marker, TileLayer, useMap, useMapEvents, Popup } from "react-leaflet";
 import { TelemetryGrid } from "./telemetry-grid";
 import { useDashboardContext } from "./DashboardContext";
 import { useGetLiveVehicleByDeviceIdQuery } from "@/redux/api/gpsLiveApi";
@@ -10,30 +10,68 @@ import "leaflet/dist/leaflet.css";
 import "leaflet-defaulticon-compatibility/dist/leaflet-defaulticon-compatibility.css";
 import "leaflet-defaulticon-compatibility";
 
-function FitBounds({
-  points,
+function SmoothFocus({
+  point,
+  selectedId,
+  focusKey,
 }: {
-  points: Array<{ lat: number; lng: number }>;
+  point: { lat: number; lng: number } | null;
+  selectedId?: string | null;
+  focusKey: number;
 }) {
   const map = useMap();
-  if (points.length) {
-    map.fitBounds(latLngBounds(points.map((p) => [p.lat, p.lng])), {
-      padding: [60, 60],
-    });
-  }
+  const lastIdRef = useRef<string | null>(null);
+  const lastKeyRef = useRef<number>(0);
+  const manualLockRef = useRef(false);
+  const lockTimer = useRef<NodeJS.Timeout | null>(null);
+
+  useMapEvents({
+    dragstart() {
+      manualLockRef.current = true;
+      if (lockTimer.current) clearTimeout(lockTimer.current);
+      lockTimer.current = setTimeout(() => {
+        manualLockRef.current = false;
+      }, 8000);
+    },
+    zoomstart() {
+      manualLockRef.current = true;
+      if (lockTimer.current) clearTimeout(lockTimer.current);
+      lockTimer.current = setTimeout(() => {
+        manualLockRef.current = false;
+      }, 8000);
+    },
+  });
+
+  useEffect(() => {
+    if (!point) return;
+    const isNewSelection = lastIdRef.current !== (selectedId || null);
+    const isForced = focusKey !== lastKeyRef.current;
+    const zoom = map.getZoom();
+    const targetZoom = isNewSelection || isForced ? Math.max(zoom, 16) : zoom;
+    if (!manualLockRef.current || isNewSelection || isForced) {
+      map.flyTo(point, targetZoom, {
+        duration: isNewSelection || isForced ? 0.6 : 0.35,
+        easeLinearity: 0.3,
+        noMoveStart: true,
+      });
+      lastIdRef.current = selectedId || null;
+      lastKeyRef.current = focusKey;
+    }
+  }, [map, point?.lat, point?.lng, selectedId, focusKey]);
+
   return null;
 }
 
 const markerIcon = (color: string, size = 14) =>
   new DivIcon({
     className: "dashboard-vehicle-marker",
-    html: `<div style="width:${size}px;height:${size}px;background:${color};border:2px solid #0f172a;border-radius:9999px;box-shadow: 0 0 10px ${color}80;"></div>`,
-    iconSize: [size, size],
-    iconAnchor: [size / 2, size / 2],
+    html: `<div style="width:${size * 2}px;height:${size}px;background:${color};border:2px solid #0f172a;border-radius:6px;display:flex;align-items:center;justify-content:center;color:white;font-size:11px;transform:rotate(0deg);">🚗</div>`,
+    iconSize: [size * 2, size],
+    iconAnchor: [size, size / 2],
   });
 
 export function MapView() {
-  const { selectedVehicle } = useDashboardContext();
+  const { selectedVehicle, focusKey } = useDashboardContext();
   const deviceId = selectedVehicle?.deviceId || selectedVehicle?.gpsDeviceId?._id || selectedVehicle?.gpsDeviceId;
 
   const { data: liveDataRes } = useGetLiveVehicleByDeviceIdQuery(deviceId, {
@@ -44,8 +82,13 @@ export function MapView() {
   const liveNode = liveDataRes?.data;
 
   const currentPos = useMemo(() => {
-    if (!liveNode || !Number.isFinite(liveNode.latitude) || !Number.isFinite(liveNode.longitude)) return null;
-    return { lat: liveNode.latitude, lng: liveNode.longitude, status: liveNode.status || selectedVehicle?.status || "running" };
+    if (!liveNode) return null;
+    const latRaw = (liveNode as any).lat ?? liveNode.latitude;
+    const lngRaw = (liveNode as any).lng ?? liveNode.longitude ?? (liveNode as any).lon;
+    const lat = typeof latRaw === "string" ? parseFloat(latRaw) : latRaw;
+    const lng = typeof lngRaw === "string" ? parseFloat(lngRaw) : lngRaw;
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    return { lat, lng, status: (liveNode as any).status || selectedVehicle?.status || "running" };
   }, [liveNode, selectedVehicle]);
 
   const pointsForBounds = useMemo(() => {
@@ -73,21 +116,25 @@ export function MapView() {
     );
   }
 
-  const center = currentPos || selectedVehicle?.route?.[0] || { lat: 20.5937, lng: 78.9629 };
+  const fallbackRoutePoint = selectedVehicle?.route?.[selectedVehicle?.route.length - 1] || selectedVehicle?.route?.[0] || null;
+  const displayPoint = currentPos || fallbackRoutePoint;
+  const center = displayPoint || { lat: 20.5937, lng: 78.9629 };
 
   return (
     <div className="relative h-full w-full bg-slate-950">
-      <MapContainer center={center} zoom={12} className="h-full w-full" style={{ zIndex: 1 }}>
+      <MapContainer center={center} zoom={13} className="h-full w-full" style={{ zIndex: 1 }}>
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
-        <FitBounds points={pointsForBounds} />
+        <SmoothFocus point={displayPoint} selectedId={selectedVehicle?.id || selectedVehicle?._id || null} focusKey={focusKey} />
 
-        {currentPos && (
+        {displayPoint && (
           <Marker
-            position={currentPos}
-            icon={markerIcon(statusColor(currentPos.status), 18)}
+            position={displayPoint}
+            icon={
+              markerIcon(statusColor((displayPoint as any).status || "running"), 18)
+            }
           >
             <Popup className="dark-leaflet-popup">
               <div className="min-w-[300px] bg-slate-900 p-2">

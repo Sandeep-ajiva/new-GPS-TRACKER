@@ -84,56 +84,65 @@ export function VehicleDetails({
     );
 
     return (
-        <div className="rounded-2xl bg-[#111827] p-4 space-y-5">
-            <div className="bg-[#1C2533] rounded-2xl p-5 shadow-lg shadow-black/20">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="min-w-0">
-                        <h3 className="truncate text-xl font-bold text-white">Vehicle No: {vehicle.vehicleNumber}</h3>
-                        <div className="text-xs text-gray-400">
-                            Type: {(vehicle as any).vehicleType || `${vehicle.make || ""} ${vehicle.model || ""}`.trim() || "Vehicle"}
+        <div className="rounded-2xl bg-[#0d1524] p-4 space-y-6 border border-white/5">
+            <div className="rounded-2xl border border-white/10 bg-gradient-to-r from-slate-900 to-slate-800/90 p-5 shadow-2xl shadow-black/30">
+                <div className="flex flex-wrap items-start gap-4 justify-between">
+                    <div className="flex-1 min-w-[200px] space-y-1">
+                        <div className="text-[11px] uppercase tracking-[0.18em] text-emerald-300/80">Live Vehicle</div>
+                        <h3 className="truncate text-2xl font-black text-white">{vehicle.vehicleNumber}</h3>
+                        <div className="text-xs text-gray-300/80">{(vehicle as any).vehicleType || `${vehicle.make || ""} ${vehicle.model || ""}`.trim() || "Vehicle"}</div>
+                        <div className="text-[11px] text-gray-400">Updated: {vehicle.date || "N/A"}</div>
+                        <div className="flex flex-wrap gap-2 text-[11px] text-gray-300">
+                            {vehicle.driver && <span className="rounded-full bg-white/5 px-3 py-1 border border-white/10">Driver: {vehicle.driver}</span>}
+                            {vehicle.imei && <span className="rounded-full bg-white/5 px-3 py-1 border border-white/10">IMEI: {vehicle.imei}</span>}
+                            {vehicle.registrationNumber && <span className="rounded-full bg-white/5 px-3 py-1 border border-white/10">Reg: {vehicle.registrationNumber}</span>}
                         </div>
-                        <div className="text-xs text-gray-400">Last updated: {vehicle.date || "N/A"}</div>
                     </div>
-                    <span
-                        className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold uppercase ${vehicle.status === "running"
-                            ? "bg-green-500/20 text-green-400"
-                            : vehicle.status === "idle"
-                                ? "bg-yellow-500/20 text-yellow-300"
-                                : vehicle.status === "inactive"
-                                    ? "bg-red-500/20 text-red-400"
-                                    : "bg-gray-500/20 text-gray-300"
-                            }`}
-                    >
-                        {vehicle.status}
-                    </span>
+                    <div className="flex items-start gap-3">
+                        <span
+                            className={`inline-flex items-center rounded-full px-4 py-2 text-xs font-semibold uppercase shadow-inner shadow-black/30 ${vehicle.status === "running"
+                                ? "bg-green-500/15 text-green-300 border border-green-500/30"
+                                : vehicle.status === "idle"
+                                    ? "bg-yellow-500/15 text-yellow-200 border border-yellow-400/40"
+                                    : vehicle.status === "inactive"
+                                        ? "bg-red-500/15 text-red-300 border border-red-500/30"
+                                        : "bg-gray-500/15 text-gray-200 border border-gray-500/30"
+                                }`}
+                        >
+                            {vehicle.status}
+                        </span>
+                    </div>
                 </div>
 
-                <div className="mt-4 grid grid-cols-2 gap-4 md:grid-cols-4">
-                    <div className="rounded-xl bg-[#111827] p-3 text-center">
+                <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4">
+                    <div className="rounded-xl bg-[#0d1422] p-3 text-center border border-white/5">
                         <div className="text-[10px] uppercase tracking-wide text-gray-400">Total Fleet</div>
-                        <div className="mt-1 text-xl font-bold text-white">{fleet.total}</div>
+                        <div className="mt-1 text-2xl font-bold text-white">{fleet.total}</div>
                     </div>
-                    <div className="rounded-xl bg-[#111827] p-3 text-center">
+                    <div className="rounded-xl bg-[#0d1422] p-3 text-center border border-white/5">
                         <div className="text-[10px] uppercase tracking-wide text-gray-400">Running</div>
-                        <div className="mt-1 text-xl font-bold text-green-400">{fleet.running}</div>
+                        <div className="mt-1 text-2xl font-bold text-green-400">{fleet.running}</div>
                     </div>
-                    <div className="rounded-xl bg-[#111827] p-3 text-center">
+                    <div className="rounded-xl bg-[#0d1422] p-3 text-center border border-white/5">
                         <div className="text-[10px] uppercase tracking-wide text-gray-400">Idle</div>
-                        <div className="mt-1 text-xl font-bold text-yellow-300">{fleet.idle}</div>
+                        <div className="mt-1 text-2xl font-bold text-yellow-300">{fleet.idle}</div>
                     </div>
-                    <div className="rounded-xl bg-[#111827] p-3 text-center">
+                    <div className="rounded-xl bg-[#0d1422] p-3 text-center border border-white/5">
                         <div className="text-[10px] uppercase tracking-wide text-gray-400">Alerts</div>
-                        <div className="mt-1 text-xl font-bold text-red-400">{orderedAlerts.length}</div>
+                        <div className="mt-1 text-2xl font-bold text-red-400">{orderedAlerts.length}</div>
                     </div>
                 </div>
             </div>
 
             <div className="grid gap-5 md:grid-cols-5">
                 <div className="space-y-5 md:col-span-3">
-                    <div className="bg-[#1C2533] rounded-2xl p-4 shadow-lg shadow-black/20">
-                        <div className="mb-3 text-sm font-semibold text-white">Daily Performance</div>
+                    <div className="bg-[#1C2533] rounded-2xl p-4 shadow-lg shadow-black/20 border border-white/5">
+                        <div className="mb-3 flex items-center justify-between text-sm font-semibold text-white">
+                            <span>Daily Performance</span>
+                            <span className="text-[10px] uppercase tracking-[0.18em] text-gray-400">Today</span>
+                        </div>
                         <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-                            <div className="rounded-xl bg-[#111827] p-3">
+                            <div className="rounded-xl bg-[#111827] p-3 border border-white/5">
                                 <div className="flex items-center justify-between">
                                     <span className="text-[10px] uppercase tracking-wide text-gray-400">Avg Speed</span>
                                     <Gauge size={13} className="text-gray-500" />
@@ -142,7 +151,7 @@ export function VehicleDetails({
                                     {dailyStats?.avgSpeed || 0} <span className="text-xs text-gray-400">km/h</span>
                                 </div>
                             </div>
-                            <div className="rounded-xl bg-[#111827] p-3">
+                            <div className="rounded-xl bg-[#111827] p-3 border border-white/5">
                                 <div className="flex items-center justify-between">
                                     <span className="text-[10px] uppercase tracking-wide text-gray-400">Max Speed</span>
                                     <Activity size={13} className="text-gray-500" />
@@ -151,14 +160,14 @@ export function VehicleDetails({
                                     {dailyStats?.maxSpeed || 0} <span className="text-xs text-gray-400">km/h</span>
                                 </div>
                             </div>
-                            <div className="rounded-xl bg-[#111827] p-3">
+                            <div className="rounded-xl bg-[#111827] p-3 border border-white/5">
                                 <div className="flex items-center justify-between">
                                     <span className="text-[10px] uppercase tracking-wide text-gray-400">Run Time</span>
                                     <Timer size={13} className="text-gray-500" />
                                 </div>
                                 <div className="mt-1 text-lg font-bold text-white">{dailyStats?.runningTime || 0}</div>
                             </div>
-                            <div className="rounded-xl bg-[#111827] p-3">
+                            <div className="rounded-xl bg-[#111827] p-3 border border-white/5">
                                 <div className="flex items-center justify-between">
                                     <span className="text-[10px] uppercase tracking-wide text-gray-400">Idle Time</span>
                                     <Clock3 size={13} className="text-gray-500" />
@@ -168,7 +177,7 @@ export function VehicleDetails({
                         </div>
                     </div>
 
-                    <div className={`bg-[#1C2533] rounded-2xl p-4 shadow-lg shadow-black/20 ${recentAlert ? "border-l-4 border-red-500" : "border-l-4 border-green-500"}`}>
+                    <div className={`bg-[#1C2533] rounded-2xl p-4 shadow-lg shadow-black/20 border border-white/5 ${recentAlert ? "ring-1 ring-red-500/40" : "ring-1 ring-emerald-500/20"}`}>
                         <div className="flex items-center justify-between gap-3">
                             <div className="text-sm font-semibold text-white">Recent Alert</div>
                             <button
@@ -200,7 +209,7 @@ export function VehicleDetails({
                         )}
                     </div>
 
-                    <div className="bg-[#1C2533] rounded-2xl p-4 shadow-lg shadow-black/20">
+                    <div className="bg-[#1C2533] rounded-2xl p-4 shadow-lg shadow-black/20 border border-white/5">
                         <div className="mb-3 text-sm font-semibold text-white">Vehicle Specifications</div>
                         <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
                             <div className="flex justify-between gap-3">
@@ -230,12 +239,12 @@ export function VehicleDetails({
                 </div>
 
                 <div className="space-y-5 md:col-span-2">
-                    <div className="bg-[#1C2533] rounded-2xl p-4 shadow-lg shadow-black/20">
+                    <div className="bg-[#1C2533] rounded-2xl p-4 shadow-lg shadow-black/20 border border-white/5">
                         <div className="mb-2 text-sm font-semibold text-white">Live Telemetry</div>
                         <TelemetryGrid vehicle={vehicle} />
                     </div>
 
-                    <div className="bg-[#1C2533] rounded-2xl p-4 shadow-lg shadow-black/20">
+                    <div className="bg-[#1C2533] rounded-2xl p-4 shadow-lg shadow-black/20 border border-white/5">
                         <div className="mb-2 text-sm font-semibold text-white">Location Details</div>
                         <div className="space-y-2 text-sm">
                             <div className="flex justify-between gap-3">

@@ -1,9 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import ApiErrorBoundary from "@/components/admin/ErrorBoundary/ApiErrorBoundary";
-import { Search, Loader2 } from "lucide-react";
+import { Search, Loader2, Activity, AlertOctagon, Gauge, Timer, Clock3, Zap, MapPin } from "lucide-react";
 import { toast } from "sonner";
 import { useGetVehiclesQuery } from "@/redux/api/vehicleApi";
 import { useGetVehicleHistoryQuery } from "@/redux/api/gpsHistoryApi";
@@ -13,12 +13,29 @@ const HistoryMap = dynamic(() => import("@/components/admin/Map/HistoryMap"), {
     ssr: false,
     loading: () => <div className="h-full w-full animate-pulse rounded-2xl bg-slate-100" />
 });
+const RoutePath = dynamic(() => import("@/components/admin/Map/RoutePath"), {
+    ssr: false,
+    loading: () => <div className="h-64 w-full animate-pulse rounded-2xl bg-slate-900/40" />
+});
+const HistoryPlaybackMap = dynamic(() => import("@/components/admin/Map/HistoryPlaybackMap"), {
+    ssr: false,
+    loading: () => <div className="h-full w-full animate-pulse rounded-2xl bg-slate-900/40" />
+});
+import type { StopFilter } from "@/components/admin/Map/HistoryPlaybackMap";
 
 type RawHistoryPoint = {
     _id?: string;
     latitude?: number;
     longitude?: number;
     speed?: number;
+    currentMileage?: number;
+    mainInputVoltage?: number;
+    gsmSignalStrength?: number;
+    ignitionStatus?: boolean;
+    ignition?: boolean;
+    alertType?: string;
+    alertIdentifier?: string;
+    event?: string;
     gpsTimestamp?: string;
     receivedAt?: string;
     address?: string;
@@ -30,6 +47,11 @@ type RoutePoint = {
     timestamp: string;
     speed: number;
     location: string;
+    ignition: boolean;
+    alertType?: string;
+    mileage?: number;
+    voltage?: number;
+    gsm?: number;
 };
 
 type RouteSegment = {
@@ -45,11 +67,24 @@ type RouteSegment = {
 };
 
 const SEGMENT_GAP_MS = 30 * 60 * 1000;
+const toKmDistance = (meters: number) => meters / 1000;
+const toRad = (v: number) => (v * Math.PI) / 180;
+const haversine = (a: RoutePoint, b: RoutePoint) => {
+    const R = 6371000;
+    const dLat = toRad(b.lat - a.lat);
+    const dLng = toRad(b.lng - a.lng);
+    const lat1 = toRad(a.lat);
+    const lat2 = toRad(b.lat);
+    const h =
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+    return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+};
 
 const parseLocalDateTime = (value: string) => {
     if (!value) return "";
     const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? "" : date.toISOString();
+    return Number.isNaN(date.getTime()) ? "" : value; // keep local, avoid UTC shift
 };
 
 const formatDate = (ts: string) =>
@@ -91,6 +126,10 @@ export default function HistoryPage() {
     const [dateTo, setDateTo] = useState("");
     const [shouldFetch, setShouldFetch] = useState(false);
     const [selectedRouteIndex, setSelectedRouteIndex] = useState(0);
+    const [playheadIndex, setPlayheadIndex] = useState(0);
+    const [isPlaying, setIsPlaying] = useState(false);
+    const [playbackSpeed, setPlaybackSpeed] = useState(1);
+    const [stopFilter, setStopFilter] = useState<StopFilter>("all");
 
     // API Hooks
     // 🔐 If superadmin, we can filter vehicles by org. 
@@ -117,7 +156,7 @@ export default function HistoryPage() {
             from: parseLocalDateTime(dateFrom),
             to: parseLocalDateTime(dateTo),
             page: 0,
-            limit: 5000,
+            limit: 20000,
         },
         { skip: !shouldFetch || !vehicleId || !dateFrom || !dateTo }
     );
@@ -142,6 +181,12 @@ export default function HistoryPage() {
                     timestamp,
                     speed: Number(point.speed || 0),
                     location: point.address || "Unknown",
+                    ignition: Boolean(point.ignitionStatus ?? point.ignition ?? true),
+                    alertType: point.alertType || point.alertIdentifier || point.event,
+                    mileage: point.currentMileage,
+                    voltage: point.mainInputVoltage,
+                    gsm: point.gsmSignalStrength,
+                    heading: Number(point.heading || point.course || 0),
                 };
             })
             .filter(Boolean) as RoutePoint[];
@@ -223,22 +268,209 @@ export default function HistoryPage() {
 
     const isLoading = isHistoryLoading || isFetching;
 
+    const activePoints = useMemo(() => routeSegments.flatMap((s) => s.points), [routeSegments]);
+
+    const summary = useMemo(() => {
+        const points = activePoints;
+        if (points.length < 2) return null;
+        let distanceMeters = 0;
+        let drivingSec = 0;
+        let idleSec = 0;
+        let stopSec = 0;
+        let stops = 0;
+        let overspeed = 0;
+        let emergency = 0;
+        let ignOnCount = 0;
+        let maxSpeed = 0;
+        let prevIgn = points[0].ignition;
+
+        for (let i = 1; i < points.length; i++) {
+            const a = points[i - 1];
+            const b = points[i];
+            const deltaT = Math.max(0, (new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()) / 1000);
+            distanceMeters += haversine(a, b);
+            if (b.speed > 2) drivingSec += deltaT;
+            else if (b.speed === 0 && b.ignition) idleSec += deltaT;
+            else if (b.speed === 0) stopSec += deltaT;
+            const alert = (b.alertType || "").toLowerCase();
+            if (alert.includes("over")) overspeed += 1;
+            if (alert.includes("emer") || alert.includes("panic")) emergency += 1;
+            if (!prevIgn && b.ignition) ignOnCount += 1;
+            prevIgn = b.ignition;
+            maxSpeed = Math.max(maxSpeed, b.speed);
+        }
+        let streak = 0;
+        for (const p of points) {
+            if (p.speed === 0) streak += 1;
+            else {
+                if (streak >= 3) stops += 1;
+                streak = 0;
+            }
+        }
+        if (streak >= 3) stops += 1;
+
+        return {
+            totalDistance: toKmDistance(distanceMeters),
+            runningTime: drivingSec,
+            idleTime: idleSec,
+            stopTime: stopSec,
+            maxSpeed,
+            stops,
+            overspeed,
+            emergency,
+            ignOnCount,
+        };
+    }, [activePoints]);
+
+    const travelStats = useMemo(() => {
+        if (activePoints.length < 2) return null;
+        let distance = 0;
+        let drive = 0;
+        let idle = 0;
+        let stop = 0;
+        let speedSum = 0;
+        let speedCount = 0;
+        for (let i = 1; i < activePoints.length; i++) {
+            const a = activePoints[i - 1];
+            const b = activePoints[i];
+            const deltaT = Math.max(0, (new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()) / 1000);
+            distance += haversine(a, b);
+            speedSum += b.speed;
+            speedCount += 1;
+            if (b.speed > 2) drive += deltaT;
+            else if (b.speed === 0 && b.ignition) idle += deltaT;
+            else if (b.speed === 0) stop += deltaT;
+        }
+        const currentDistance = haversine(activePoints[0], activePoints[activePoints.length - 1]) / 1000;
+        return {
+            travelled: distance / 1000,
+            currentDistance,
+            avgSpeed: speedCount ? speedSum / speedCount : 0,
+            drive,
+            idle,
+            stop,
+        };
+    }, [activePoints]);
+
+    const routeEvents = useMemo(() => {
+        const ev: any[] = [];
+        // stops/idles already computed via map component, but also add turns and harsh braking + stop timeline
+        // Detect stops/idle using same logic as map
+        let streak: typeof activePoints = [];
+        for (let i = 1; i < activePoints.length; i++) {
+            const prev = activePoints[i - 1];
+            const cur = activePoints[i];
+            // turns
+            if (prev.heading != null && cur.heading != null) {
+                let delta = cur.heading - prev.heading;
+                if (delta > 180) delta -= 360;
+                if (delta < -180) delta += 360;
+                const abs = Math.abs(delta);
+                if (abs >= 15) {
+                    const subtype =
+                        abs > 60 ? (delta > 0 ? "sharp right" : "sharp left") : delta > 0 ? "slight right" : "slight left";
+                    ev.push({ type: "turn", label: subtype, timestamp: cur.timestamp, lat: cur.lat, lng: cur.lng, speed: cur.speed, ignition: cur.ignition, heading: cur.heading });
+                }
+            }
+            // harsh brake
+            if (prev.speed - cur.speed > 30) {
+                ev.push({ type: "harsh brake", label: "Harsh Brake", timestamp: cur.timestamp, lat: cur.lat, lng: cur.lng, speed: cur.speed, ignition: cur.ignition, heading: cur.heading });
+            }
+            // stop/idle streak
+            if (cur.speed === 0) {
+                streak.push(cur);
+            } else {
+                if (streak.length > 2) {
+                    const s = streak[0];
+                    const e = streak[streak.length - 1];
+                    ev.push({
+                        type: s.ignition ? "idle" : "stop",
+                        label: s.ignition ? "Idle" : "Stop",
+                        timestamp: e.timestamp,
+                        start: s.timestamp,
+                        end: e.timestamp,
+                        lat: streak[Math.floor(streak.length / 2)].lat,
+                        lng: streak[Math.floor(streak.length / 2)].lng,
+                        durationSec: (new Date(e.timestamp).getTime() - new Date(s.timestamp).getTime()) / 1000,
+                        ignition: s.ignition,
+                        heading: s.heading,
+                        speed: 0,
+                    });
+                }
+                streak = [];
+            }
+        }
+        if (streak.length > 2) {
+            const s = streak[0];
+            const e = streak[streak.length - 1];
+            ev.push({
+                type: s.ignition ? "idle" : "stop",
+                label: s.ignition ? "Idle" : "Stop",
+                timestamp: e.timestamp,
+                start: s.timestamp,
+                end: e.timestamp,
+                lat: streak[Math.floor(streak.length / 2)].lat,
+                lng: streak[Math.floor(streak.length / 2)].lng,
+                durationSec: (new Date(e.timestamp).getTime() - new Date(s.timestamp).getTime()) / 1000,
+                ignition: s.ignition,
+                heading: s.heading,
+                speed: 0,
+            });
+        }
+        return ev.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+    }, [activePoints]);
+
+    const eventCounts = useMemo(() => {
+        return {
+            turns: routeEvents.filter((e) => e.type === "turn").length,
+            stops: routeEvents.filter((e) => e.type === "stop").length,
+            idle: routeEvents.filter((e) => e.type === "idle").length,
+            harsh: routeEvents.filter((e) => e.type === "harsh brake").length,
+        };
+    }, [routeEvents]);
+
+    useEffect(() => {
+        setPlayheadIndex(0);
+        setIsPlaying(false);
+    }, [selectedRouteIndex, routeSegments.length]);
+
+    useEffect(() => {
+        if (playheadIndex >= activePoints.length) {
+            setPlayheadIndex(0);
+            setIsPlaying(false);
+        }
+    }, [activePoints.length, playheadIndex]);
+
+    useEffect(() => {
+        if (!isPlaying || activePoints.length === 0) return;
+        const timer = setInterval(() => {
+            setPlayheadIndex((idx) => {
+                const next = idx + 1;
+                if (next >= activePoints.length) {
+                    setIsPlaying(false);
+                    return idx;
+                }
+                return next;
+            });
+        }, 1000 / playbackSpeed);
+        return () => clearInterval(timer);
+    }, [isPlaying, playbackSpeed, activePoints.length]);
+
     return (
         <ApiErrorBoundary hasError={false}>
-            <div className="flex h-[calc(100vh-100px)] flex-col space-y-4">
-                <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                    <div className="mb-4">
-                        <p className="text-[11px] font-black uppercase tracking-[0.3em] text-slate-400">History</p>
-                        <h1 className="text-2xl font-black text-slate-900">Playback</h1>
-                        <p className="text-sm text-slate-500">Review trips by vehicle and time range.</p>
+            <div className="space-y-6">
+                {/* Filters */}
+                <div className="rounded-xl border border-slate-800 bg-slate-900 p-4 shadow-md">
+                    <div className="mb-3">
+                        <p className="text-[11px] font-black uppercase tracking-[0.28em] text-slate-400">History Playback</p>
+                        <h1 className="text-2xl font-black text-white">Route Analytics</h1>
                     </div>
-                    <form onSubmit={handleSearch} className="flex flex-wrap gap-4 items-end w-full">
-                        {/* 🔐 ORG CONTEXT UPDATE */}
+                    <form onSubmit={handleSearch} className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 items-end">
                         {isSuperAdmin && (
-                            <div className="flex-1 min-w-55">
-                                <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-slate-500">Filter by Org</label>
+                            <div>
+                                <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-slate-400">Organization</label>
                                 <select
-                                    className="w-full rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
+                                    className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white"
                                     value={selectedOrgId}
                                     onChange={e => { setSelectedOrgId(e.target.value); setVehicleId(""); setShouldFetch(false); }}
                                 >
@@ -249,80 +481,203 @@ export default function HistoryPage() {
                                 </select>
                             </div>
                         )}
-                        <div className="flex-1 min-w-55">
-                            <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-slate-500">Select Vehicle</label>
-                            <select required className="w-full rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
+                        <div>
+                            <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-slate-400">Vehicle</label>
+                            <select required className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white"
                                 value={vehicleId} onChange={e => { setVehicleId(e.target.value); setShouldFetch(false); setSelectedRouteIndex(0); }}>
                                 <option value="">Choose Vehicle...</option>
-                                {vehicles.map((v: { _id: string; vehicleNumber?: string; model?: string }) => (
-                                    <option key={v._id} value={v._id}>{v.vehicleNumber} {v.model ? `(${v.model})` : ""}</option>
+                                {vehicles.map((v: any) => (
+                                    <option key={v._id} value={v._id}>{v.vehicleNumber || v.registrationNumber || v._id}</option>
                                 ))}
                             </select>
                         </div>
                         <div>
-                            <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-slate-500">From Date/Time</label>
-                            <input type="datetime-local" required className="rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
+                            <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-slate-400">From</label>
+                            <input type="datetime-local" required className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white"
                                 value={dateFrom} onChange={e => { setDateFrom(e.target.value); setShouldFetch(false); setSelectedRouteIndex(0); }} />
                         </div>
-                        <div>
-                            <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-slate-500">To Date/Time</label>
-                            <input type="datetime-local" required className="rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
-                                value={dateTo} onChange={e => { setDateTo(e.target.value); setShouldFetch(false); setSelectedRouteIndex(0); }} />
+                        <div className="flex gap-2">
+                            <div className="flex-1">
+                                <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-slate-400">To</label>
+                                <input type="datetime-local" required className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white"
+                                    value={dateTo} onChange={e => { setDateTo(e.target.value); setShouldFetch(false); setSelectedRouteIndex(0); }} />
+                            </div>
+                            <button type="submit" disabled={isLoading} className="h-10 self-end rounded-lg bg-emerald-500 px-4 text-sm font-semibold text-emerald-950 shadow hover:bg-emerald-400 disabled:opacity-60">
+                                {isLoading ? <Loader2 className="animate-spin w-4 h-4 inline" /> : "View"}
+                            </button>
                         </div>
-                        <button type="submit" disabled={isLoading} className="rounded-xl bg-blue-600 px-6 py-2.5 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-blue-200 transition hover:bg-blue-700 disabled:opacity-50">
-                            {isLoading ? <Loader2 className="animate-spin w-4 h-4 mr-2 inline" /> : <Search size={16} className="mr-2 inline" />}
-                            {isLoading ? "Loading..." : "View History"}
-                        </button>
                     </form>
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 min-h-0">
-                    <div className="lg:col-span-1 h-full min-h-75">
-                        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm h-full flex flex-col">
-                            <h3 className="text-sm font-black text-slate-900 mb-4 shrink-0">Routes</h3>
-                            {routeSegments.length > 0 ? (
-                                <div className="space-y-2 overflow-y-auto flex-1 pr-2">
-                                    {routeSegments.map((segment, idx) => (
-                                        <div
-                                            key={segment.id}
-                                            onClick={() => setSelectedRouteIndex(idx)}
-                                            className={`p-3 rounded-lg border cursor-pointer transition ${selectedRouteIndex === idx
-                                                ? "bg-blue-50 border-blue-200"
-                                                : "bg-slate-50 border-slate-100 hover:bg-slate-100"
-                                                }`}
-                                        >
-                                            <div className="text-xs font-semibold text-slate-900">{segment.label}</div>
-                                            <div className="mt-1 text-[10px] text-slate-600">
-                                                {formatTime(segment.startTime)} → {formatTime(segment.endTime)} ({formatDuration(segment.startTime, segment.endTime)})
-                                            </div>
-                                            <div className="mt-1 text-[10px] text-slate-600">
-                                                Points: {segment.pointCount} | Avg: {segment.avgSpeed} km/h | Max: {segment.maxSpeed} km/h
-                                            </div>
-                                        </div>
-                                    ))}
+                {/* Main split */}
+                <div className="grid grid-cols-1 lg:grid-cols-10 gap-6">
+                    {/* Left panel */}
+                    <div className="lg:col-span-3 space-y-4">
+                        <div className="rounded-xl border border-slate-800 bg-slate-900 p-4 shadow-md">
+                            <h3 className="text-sm font-semibold text-white mb-3">Route Summary</h3>
+                            {summary ? (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <SummaryCard icon={Activity} label="Travelled Distance" value={`${summary.totalDistance.toFixed(2)} km`} />
+                                    <SummaryCard icon={Timer} label="Driving Duration" value={formatTimeLabel(summary.runningTime)} />
+                                    <SummaryCard icon={Clock3} label="Idle Duration" value={formatTimeLabel(summary.idleTime)} />
+                                    <SummaryCard icon={AlertOctagon} label="Stops" value={`${summary.stops}`} />
+                                    <SummaryCard icon={Gauge} label="Max Speed" value={`${summary.maxSpeed.toFixed(1)} km/h`} />
+                                    <SummaryCard icon={Zap} label="Ignition On" value={`${summary.ignOnCount}`} />
+                                    <SummaryCard icon={Search} label="Turns" value={`${eventCounts.turns}`} />
+                                    <SummaryCard icon={Search} label="Harsh Brakes" value={`${eventCounts.harsh}`} />
                                 </div>
                             ) : (
-                                <div className="text-sm text-slate-400 text-center py-8 flex-1 flex items-center justify-center">
-                                    {shouldFetch && !isLoading ? "No history data found for this period." : "Select parameters to view route."}
+                                <p className="text-sm text-slate-400">Run a query to see summary.</p>
+                            )}
+                        </div>
+
+                        <div className="rounded-xl border border-slate-800 bg-slate-900 p-4 shadow-md space-y-3">
+                            <h3 className="text-sm font-semibold text-white">Playback Controls</h3>
+                            <div className="flex flex-wrap items-center gap-2">
+                                <button onClick={() => setIsPlaying((p) => !p)} className="rounded-lg bg-emerald-500 px-3 py-1.5 text-sm font-semibold text-emerald-950 shadow hover:bg-emerald-400">
+                                    {isPlaying ? "Pause" : "Play"}
+                                </button>
+                                <button onClick={() => { setPlayheadIndex(0); setIsPlaying(false); }} className="rounded-lg border border-slate-700 px-3 py-1.5 text-sm text-white hover:bg-white/5">
+                                    Replay
+                                </button>
+                                <select value={playbackSpeed} onChange={(e) => setPlaybackSpeed(Number(e.target.value))} className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-sm text-white">
+                                    {[1, 2, 3].map((s) => <option key={s} value={s}>{s}x</option>)}
+                                </select>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                                <span className="text-xs text-slate-300">Stop Filter:</span>
+                                {(["all", "normal", "idle", "hide"] as const).map((f) => (
+                                    <button key={f} onClick={() => setStopFilter(f)} className={`rounded-lg px-2.5 py-1 text-xs font-semibold ${stopFilter === f ? "bg-blue-500 text-white" : "bg-slate-800 text-slate-200"}`}>
+                                        {f === "all" ? "All" : f === "normal" ? "Normal Stops" : f === "idle" ? "Idle Stops" : "Hide"}
+                                    </button>
+                                ))}
+                            </div>
+                            <div className="text-xs text-slate-300">
+                                {activePoints.length} points • Speed {playbackSpeed}x
+                            </div>
+                        </div>
+
+                        <div className="rounded-xl border border-slate-800 bg-slate-900 p-4 shadow-md space-y-2">
+                            <h3 className="text-sm font-semibold text-white">Event Timeline</h3>
+                            <div className="max-h-64 overflow-auto space-y-2 text-xs text-slate-200">
+                                {routeEvents.length === 0 ? (
+                                    <div className="text-slate-500">No events detected.</div>
+                                ) : (
+                                    routeEvents.map((ev, idx) => (
+                                        <div key={`ev-${idx}`} className="rounded-lg bg-slate-800/70 px-3 py-2 flex justify-between">
+                                            <span className="font-semibold">{ev.label}</span>
+                                            <span className="text-slate-400">{new Date(ev.timestamp).toLocaleTimeString()}</span>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Right panel */}
+                    <div className="lg:col-span-7 space-y-4">
+                        <div className="rounded-xl border border-slate-800 bg-slate-900 shadow-md overflow-hidden relative" style={{ height: 500 }}>
+                            {routeSegments.length > 0 ? (
+                                <HistoryPlaybackMap
+                                    key={`map-${activePoints.length}`}
+                                    points={activePoints as any}
+                                    playheadIndex={playheadIndex}
+                                    stopFilter={stopFilter}
+                                    events={routeEvents as any}
+                                    showControls
+                                    isPlaying={isPlaying}
+                                    speed={playbackSpeed}
+                                    onTogglePlay={() => setIsPlaying((p) => !p)}
+                                    onReplay={() => { setPlayheadIndex(0); setIsPlaying(false); }}
+                                    onSpeedChange={(s) => setPlaybackSpeed(s)}
+                                    onStopFilterChange={(f) => setStopFilter(f)}
+                                />
+                            ) : (
+                                <div className="flex h-[500px] w-full flex-col items-center justify-center text-slate-400">
+                                    <Search size={48} className="mb-4 opacity-20" />
+                                    <p className="font-semibold">Select vehicle and date range to view history</p>
                                 </div>
                             )}
                         </div>
                     </div>
-                    <div className="lg:col-span-2 relative flex-1 rounded-2xl border border-slate-200 bg-white p-1 shadow-sm overflow-hidden h-full min-h-100">
-                        {routeSegments.length > 0 ? (
-                            <HistoryMap
-                                routes={routeSegments.map((segment) => segment.points)}
-                                selectedRouteIndex={selectedRouteIndex}
-                            />
-                        ) : (
-                            <div className="flex h-full w-full flex-col items-center justify-center text-slate-400">
-                                <Search size={48} className="mb-4 opacity-20" />
-                                <p className="font-semibold">Select vehicle and date range to view history</p>
-                            </div>
-                        )}
+                </div>
+
+                {/* Timeline */}
+                <div className="rounded-xl border border-slate-800 bg-slate-900 shadow-md">
+                    <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800 text-sm font-semibold text-white">
+                        <span>Event Timeline</span>
+                        <span className="text-xs text-slate-400">{activePoints.length} records</span>
+                    </div>
+                    <div className="max-h-[360px] overflow-auto">
+                        <table className="min-w-full text-xs text-slate-200">
+                            <thead className="bg-slate-800 text-[11px] uppercase tracking-[0.18em] text-slate-400">
+                                <tr>
+                                    <th className="px-3 py-2 text-left">Time</th>
+                                    <th className="px-3 py-2 text-right">Speed</th>
+                                    <th className="px-3 py-2 text-center">Ign</th>
+                                    <th className="px-3 py-2 text-right">Lat</th>
+                                    <th className="px-3 py-2 text-right">Lng</th>
+                                    <th className="px-3 py-2 text-left">Alert</th>
+                                    <th className="px-3 py-2 text-right">Odometer</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {activePoints.map((p, idx, arr) => {
+                                    const alert = (p.alertType || "").toLowerCase();
+                                    const isOverspeed = alert.includes("over");
+                                    const isEmergency = alert.includes("emer") || alert.includes("panic");
+                                    const prevIgn = idx > 0 ? arr[idx - 1].ignition : p.ignition;
+                                    const ignTransition = prevIgn !== p.ignition && !p.ignition;
+                                    const rowClass = isEmergency
+                                        ? "bg-red-900/40"
+                                        : isOverspeed
+                                            ? "bg-rose-900/30"
+                                            : ignTransition
+                                                ? "bg-amber-900/30"
+                                                : idx % 2 === 0
+                                                    ? "bg-slate-900/40"
+                                                    : "bg-slate-900/20";
+                                    return (
+                                        <tr key={`${p.timestamp}-${idx}`} className={rowClass}>
+                                            <td className="px-3 py-2">{formatTime(p.timestamp)}</td>
+                                            <td className="px-3 py-2 text-right">{p.speed.toFixed(1)} km/h</td>
+                                            <td className="px-3 py-2 text-center">{p.ignition ? "ON" : "OFF"}</td>
+                                            <td className="px-3 py-2 text-right">{p.lat.toFixed(5)}</td>
+                                            <td className="px-3 py-2 text-right">{p.lng.toFixed(5)}</td>
+                                            <td className="px-3 py-2 text-left">
+                                                {isEmergency ? <span className="rounded bg-red-600/70 px-2 py-0.5 text-white">Emergency</span> : (p.alertType || "-")}
+                                            </td>
+                                            <td className="px-3 py-2 text-right">{p.mileage ? p.mileage.toFixed(1) : "-"}</td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </div>
         </ApiErrorBoundary>
     );
+}
+
+function SummaryCard({ label, value, icon: Icon }: { label: string; value: string; icon: any }) {
+    return (
+        <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-3 shadow-lg shadow-black/15 flex items-center gap-3">
+            <div className="h-10 w-10 rounded-xl bg-slate-800 flex items-center justify-center text-slate-200">
+                <Icon size={18} />
+            </div>
+            <div>
+                <div className="text-[11px] uppercase tracking-[0.18em] text-slate-400">{label}</div>
+                <div className="text-lg font-bold text-white">{value}</div>
+            </div>
+        </div>
+    );
+}
+
+function formatTimeLabel(seconds: number) {
+    const s = Math.max(0, Math.floor(seconds));
+    const hh = String(Math.floor(s / 3600)).padStart(2, "0");
+    const mm = String(Math.floor((s % 3600) / 60)).padStart(2, "0");
+    const ss = String(s % 60).padStart(2, "0");
+    return `${hh}:${mm}:${ss}`;
 }

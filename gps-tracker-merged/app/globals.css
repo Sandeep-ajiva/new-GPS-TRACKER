@@ -70,9 +70,9 @@ select::placeholder {
   background-color: #ffffff !important;
 }
 
-/* Smooth transitions globally */
+/* Smooth transitions globally (avoid transform to keep maps stable) */
 * {
-  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
 }
 
 /* Hide scrollbars but keep content scrollable */
@@ -84,6 +84,18 @@ select::placeholder {
 *::-webkit-scrollbar {
   width: 0;
   height: 0;
+}
+
+/* Leaflet drawing must not animate transforms, otherwise tiles/paths jitter while panning/zooming */
+.leaflet-container *,
+.leaflet-pane,
+.leaflet-map-pane,
+.leaflet-tile,
+.leaflet-overlay-pane svg,
+.leaflet-overlay-pane path,
+.leaflet-marker-pane img {
+  transition: none !important;
+  animation: none !important;
 }
 
 /* Custom scrollbar for specific elements */

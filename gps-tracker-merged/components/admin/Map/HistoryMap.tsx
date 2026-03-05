@@ -1,11 +1,12 @@
 "use client";
 
 import { DivIcon, latLngBounds } from "leaflet";
-import { MapContainer, Marker, Polyline, TileLayer, useMap } from "react-leaflet";
+import { MapContainer, Marker, Polyline, useMap } from "react-leaflet";
 import { Fragment, useMemo } from "react";
 import "leaflet/dist/leaflet.css";
 import "leaflet-defaulticon-compatibility/dist/leaflet-defaulticon-compatibility.css";
 import "leaflet-defaulticon-compatibility";
+import MapTileLayer from "./MapTileLayer";
 
 type RoutePoint = {
   lat: number;
@@ -59,11 +60,8 @@ export default function HistoryMap({ routes, selectedRouteIndex }: HistoryMapPro
 
   return (
     <div className="relative h-full w-full overflow-hidden rounded-xl bg-slate-50">
-      <MapContainer center={center} zoom={12} className="h-full w-full">
-        <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        />
+      <MapContainer center={center} zoom={12} className="h-full w-full" attributionControl={false}>
+        <MapTileLayer satellite={false} />
         <FitPathBounds points={pathPoints} />
         {routes.map((route, idx) => {
           if (!route?.length) return null;

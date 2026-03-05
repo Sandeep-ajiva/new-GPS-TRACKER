@@ -76,7 +76,7 @@ export default function DashboardPage() {
   const { data: orgData } = useGetOrganizationsQuery(undefined)
   const dispatch = useAppDispatch()
   const { selectedVehicleId: reduxSelectedVehicleId, activeTab } = useAppSelector((state) => state.vehicle)
-  const { selectedVehicle, setSelectedVehicle } = useDashboardContext()
+  const { selectedVehicle, setSelectedVehicle, bumpFocusKey } = useDashboardContext()
 
   const [liveByVehicleId, setLiveByVehicleId] = useState<Record<string, LiveGpsItem>>({})
   const [uiVehicles, setUiVehicles] = useState<Vehicle[]>([])
@@ -469,6 +469,23 @@ export default function DashboardPage() {
   )
   const dailyStats = dailyStatsRes?.data || null
 
+  // Auto-select first vehicle on load so map centers immediately
+  useEffect(() => {
+    if (uiVehicles.length === 0) return
+    if (reduxSelectedVehicleId || selectedVehicle) return
+    const first = uiVehicles[0]
+    dispatch(setReduxSelectedVehicle(first.id))
+    setSelectedVehicle(first)
+    bumpFocusKey()
+  }, [uiVehicles, reduxSelectedVehicleId, selectedVehicle, dispatch, setSelectedVehicle, bumpFocusKey])
+
+  // Keep context selection in sync when redux id changes (e.g., sidebar click)
+  useEffect(() => {
+    if (!reduxSelectedVehicleId) return
+    const found = uiVehicles.find((v) => v.id === reduxSelectedVehicleId) || null
+    setSelectedVehicle(found)
+  }, [reduxSelectedVehicleId, uiVehicles, setSelectedVehicle])
+
   if (!isAuthed) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-100 text-slate-500">
@@ -593,7 +610,7 @@ export default function DashboardPage() {
           activeFilter={statusFilter}
           onFilterChange={(filter) => {
             setStatusFilter(filter)
-            setReduxSelectedVehicle(null)
+            dispatch(setReduxSelectedVehicle(null))
             setSelectedVehicle(null)
           }}
         />
@@ -615,17 +632,18 @@ export default function DashboardPage() {
       </div>
 
       <div className="flex flex-1 flex-col overflow-hidden">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-2 p-2 flex-1 min-h-0 overflow-y-auto lg:overflow-hidden">
-          {/* Sidebar Area (Left 50%) */}
-          <div className={`${mobileView === "list" ? "flex" : "hidden"} lg:flex lg:col-span-6 xl:col-span-6 flex-col min-h-[450px] lg:h-full overflow-hidden border border-white/10 bg-slate-950/50 rounded-2xl shadow-2xl`}>
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 p-3 flex-1 min-h-[650px] overflow-y-auto lg:overflow-hidden">
+          {/* Sidebar Area (Left ~40%) */}
+          <div className={`${mobileView === "list" ? "flex" : "hidden"} lg:flex lg:col-span-5 xl:col-span-4 flex-col min-h-[460px] lg:h-full overflow-hidden border border-white/10 bg-slate-950/50 rounded-2xl shadow-2xl`}>
             <VehicleSidebar
               vehicles={uiVehicles}
               selectedId={reduxSelectedVehicleId || currentVehicleId}
               onSelect={(id) => {
-                dispatch(setReduxSelectedVehicle(id === reduxSelectedVehicleId ? null : id))
-                if (id === reduxSelectedVehicleId) {
-                  setSelectedVehicle(null)
-                }
+                const nextId = id
+                dispatch(setReduxSelectedVehicle(nextId))
+                const found = uiVehicles.find((v) => v.id === nextId) || null
+                setSelectedVehicle(found)
+                bumpFocusKey()
                 if (window.innerWidth < 1024) setMobileView("map")
               }}
               isFullWidth={true}
@@ -633,8 +651,8 @@ export default function DashboardPage() {
             />
           </div>
 
-          {/* Map Area (Right 50%) */}
-          <div className={`${mobileView === "map" ? "flex" : "hidden md:flex"} lg:flex lg:col-span-6 xl:col-span-6 flex-col min-h-[450px] lg:h-full overflow-hidden border border-white/10 bg-slate-950 rounded-2xl shadow-2xl`}>
+          {/* Map Area (Right ~60%) */}
+          <div className={`${mobileView === "map" ? "flex" : "hidden md:flex"} lg:flex lg:col-span-7 xl:col-span-8 flex-col min-h-[620px] lg:min-h-[700px] lg:h-full overflow-hidden border border-white/10 bg-slate-950 rounded-2xl shadow-2xl`}>
             <ActionToolbar compact className="bg-slate-950/80 backdrop-blur-md border-b border-white/10" />
             <div className="flex-1 min-h-0">
               <MapWrapper />

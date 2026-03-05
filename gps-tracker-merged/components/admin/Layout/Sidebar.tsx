@@ -16,7 +16,8 @@ import {
     Building2,
     Settings,
     LogOut,
-    X
+    X,
+    Clock3,
 } from "lucide-react";
 
 const menuGroups = [
@@ -43,6 +44,7 @@ const menuGroups = [
             { name: "Device Mapping", icon: LinkIcon, href: "/admin/device-mapping", roles: ["admin", "manager"] },
             { name: "Driver Mapping", icon: LinkIcon, href: "/admin/driver-mapping", roles: ["admin", "manager"] },
             { name: "History Playback", icon: History, href: "/admin/history", roles: ["admin", "manager"] },
+            { name: "Daily Status", icon: Clock3, href: "/admin/daily-status", roles: ["admin", "superadmin"] },
         ]
     },
     {
