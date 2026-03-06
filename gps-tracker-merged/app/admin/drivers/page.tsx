@@ -48,15 +48,15 @@ export default function DriversPage() {
     const [editingDriver, setEditingDriver] = useState<any>(null);
 
     // API Hooks
-    const { data: driversData, isLoading: isDriversLoading } = useGetDriversQuery(undefined, { refetchOnMountOrArgChange: true });
+    const { data: driversData, isLoading: isDriversLoading, refetch: refetchDrivers } = useGetDriversQuery(undefined, { refetchOnMountOrArgChange: true });
 
-    // 🔐 Only superadmin needs full org lists
+    // 🔐 Superadmin + root-org-admin need org lists for cross-org assignment
     const { data: orgData, isLoading: isOrgLoading } = useGetOrganizationsQuery(undefined, {
-        skip: !isSuperAdmin,
+        skip: !(isSuperAdmin || isRootOrgAdmin),
         refetchOnMountOrArgChange: true
     });
     const { data: subOrgData, isLoading: isSubOrgLoading } = useGetSubOrganizationsQuery(undefined, {
-        skip: !isSuperAdmin,
+        skip: !(isSuperAdmin || isRootOrgAdmin),
         refetchOnMountOrArgChange: true
     });
 
@@ -144,7 +144,7 @@ export default function DriversPage() {
                 toast.success("Driver updated successfully");
             } else {
                 // 🔐 ORG CONTEXT UPDATE
-                if (!isSuperAdmin) {
+                if (!(isSuperAdmin || isRootOrgAdmin)) {
                     payload.organizationId = orgId || "";
                 }
                 await createDriver(payload).unwrap();
@@ -219,16 +219,32 @@ export default function DriversPage() {
             ]
             : []),
         // 🔐 ORG CONTEXT UPDATE
-        ...(isSuperAdmin ? [
+        ...(isSuperAdmin || isRootOrgAdmin ? [
             {
                 name: "organizationId",
                 label: "Organization",
                 type: "select" as const,
                 required: true,
-                options: organizations.map((org: any) => ({
-                    label: org.name,
-                    value: org._id,
-                })),
+                groups: [
+                    {
+                        label: "Organizations",
+                        options: organizations
+                            .filter((org: any) => !org.parentOrganizationId)
+                            .map((org: any) => ({
+                                label: org.name,
+                                value: org._id,
+                            })),
+                    },
+                    {
+                        label: "Sub-Organizations",
+                        options: organizations
+                            .filter((org: any) => org.parentOrganizationId)
+                            .map((org: any) => ({
+                                label: org.name,
+                                value: org._id,
+                            })),
+                    },
+                ],
                 icon: <User size={14} className="text-slate-500" />,
             }
         ] : []),
@@ -244,7 +260,7 @@ export default function DriversPage() {
             ],
             icon: <CheckCircle size={14} className="text-slate-500" />,
         },
-    ], [editingDriver, organizations, isSuperAdmin]);
+    ], [editingDriver, organizations, isSuperAdmin, isRootOrgAdmin]);
 
     const openCreateModal = () => {
         setEditingDriver(null);
@@ -507,7 +523,7 @@ export default function DriversPage() {
                             </div>
 
                             {/* 🔐 ORG CONTEXT UPDATE */}
-                            {isSuperAdmin && (
+                            {(isSuperAdmin || isRootOrgAdmin) && (
                                 <div>
                                     <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
                                         Organization

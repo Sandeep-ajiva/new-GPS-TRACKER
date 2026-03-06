@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Loader2, AlertTriangle, Calendar, Car, Filter, TrendingUp, Clock3, Zap, Activity, Gauge, AlertOctagon, ShieldOff, History } from "lucide-react";
+import { toast } from "sonner";
 import { useGetVehiclesQuery } from "@/redux/api/vehicleApi";
 import {
   useGetVehicleDailyStatsQuery,
@@ -82,32 +83,24 @@ function SummaryCard({ label, value, icon: Icon, accent }: { label: string; valu
 }
 
 export default function DailyStatusPage() {
-  const [selectedVehicleId, setSelectedVehicleId] = useState<string>("all");
+  const [selectedVehicleId, setSelectedVehicleId] = useState<string>("");
   const [selectedDate, setSelectedDate] = useState<string>(todayInput());
-  const [appliedVehicleId, setAppliedVehicleId] = useState<string>("all");
+  const [appliedVehicleId, setAppliedVehicleId] = useState<string>("");
   const [appliedDate, setAppliedDate] = useState<string>(todayInput());
 
   const { data: vehiclesRes, isLoading: loadingVehicles } = useGetVehiclesQuery(undefined);
   const vehicles = useMemo(() => vehiclesRes?.vehicles || vehiclesRes?.data || [], [vehiclesRes]);
 
   // Queries
-  const statsAll = useGetVehicleDailyStatsQuery(undefined, { skip: appliedVehicleId !== "all" });
-  const statsByVehicle = useGetVehicleDailyStatsByVehicleQuery(appliedVehicleId, {
-    skip: appliedVehicleId === "all" || !appliedVehicleId || !appliedDate,
-  });
   const statsByVehicleDate = useGetVehicleDailyStatsByDateQuery(
     { vehicleId: appliedVehicleId, date: appliedDate },
-    { skip: appliedVehicleId === "all" || !appliedDate },
+    { skip: !appliedVehicleId || !appliedDate },
   );
 
-  const loading =
-    loadingVehicles || statsAll.isLoading || statsByVehicle.isLoading || statsByVehicleDate.isLoading;
-  const error = statsAll.error || statsByVehicle.error || statsByVehicleDate.error;
+  const loading = loadingVehicles || statsByVehicleDate.isLoading;
+  const error = statsByVehicleDate.error;
 
-  const rawData: any =
-    appliedVehicleId === "all"
-      ? statsAll.data
-      : statsByVehicleDate.data || statsByVehicle.data;
+  const rawData: any = statsByVehicleDate.data;
 
   const rows: DailyStat[] = useMemo(() => {
     const list = rawData?.data || rawData?.stats || rawData || [];
@@ -128,7 +121,7 @@ export default function DailyStatusPage() {
       page: 0,
       limit: 20000,
     },
-    { skip: appliedVehicleId === "all" || !appliedVehicleId || !appliedDate }
+    { skip: !appliedVehicleId || !appliedDate }
   );
 
   const routePoints = useMemo(() => {
@@ -213,34 +206,34 @@ export default function DailyStatusPage() {
     };
   }, [routePoints]);
 
-  const summary = useMemo(() => {
-    if (!rows.length) return null;
-    return rows.reduce(
-      (acc, item) => {
-        acc.totalDistance += Number(item.totalDistance || 0);
-        acc.runningTime += Number(item.runningTime || 0);
-        acc.idleTime += Number(item.idleTime || 0);
-        acc.maxSpeed = Math.max(acc.maxSpeed, Number(item.maxSpeed || 0));
-        acc.totalStops += Number(item.stoppedTime ? 1 : 0);
-        acc.ignitionOn += Number(item.ignitionOnCount || 0);
-        acc.overspeed += Number(item.overspeedCount || 0);
-        acc.emergency += Number(item.emergencyCount || 0);
-        return acc;
-      },
-      {
-        totalDistance: 0,
-        runningTime: 0,
-        idleTime: 0,
-        maxSpeed: 0,
-        totalStops: 0,
-        ignitionOn: 0,
-        overspeed: 0,
-        emergency: 0,
-      },
-    );
-  }, [rows]);
+  const summaryMetrics = useMemo(() => {
+    const base = rows[0];
+    const hasHistory = routePoints.length > 0;
+    const historyAvgSpeed = hasHistory ? routePoints.reduce((acc: number, p: any) => acc + (p.speed || 0), 0) / routePoints.length : 0;
+    const firstPoint = hasHistory ? routePoints[0] : null;
+    const lastPoint = hasHistory ? routePoints[routePoints.length - 1] : null;
+    const directDistance = firstPoint && lastPoint
+      ? haversine({ lat: firstPoint.lat, lng: firstPoint.lng }, { lat: lastPoint.lat, lng: lastPoint.lng }) / 1000
+      : 0;
+
+    return {
+      travelledDistance: Number(base?.totalDistance ?? routeStats?.travelled ?? (hasHistory ? routeStats?.travelled ?? 0 : 0)),
+      currentDistance: Number(base?.currentDistance ?? routeStats?.currentDistance ?? directDistance),
+      averageSpeed: Number(base?.avgSpeed ?? routeStats?.avgSpeed ?? historyAvgSpeed),
+      drivingDuration: Number(base?.runningTime ?? routeStats?.driving ?? 0),
+      idleDuration: Number(base?.idleTime ?? routeStats?.idling ?? 0),
+      stoppageDuration: Number(base?.stoppedTime ?? routeStats?.stoppage ?? 0),
+      turns: Number((base as any)?.turns ?? routeEvents.turns ?? 0),
+      stops: Number((base as any)?.stops ?? routeEvents.stops ?? 0),
+      harshBrakes: Number(base?.harshBrakingCount ?? routeEvents.harsh ?? 0),
+    };
+  }, [rows, routeStats, routeEvents, routePoints]);
 
   const handleApply = () => {
+    if (!selectedVehicleId) {
+      toast.error("Please select a vehicle first");
+      return;
+    }
     setAppliedVehicleId(selectedVehicleId);
     setAppliedDate(selectedDate);
   };
@@ -277,7 +270,7 @@ export default function DailyStatusPage() {
               onChange={(e) => setSelectedVehicleId(e.target.value)}
               className="rounded-xl border border-white/10 bg-slate-800 px-3 py-2 text-white outline-none focus:border-emerald-400"
             >
-              <option value="all">All Vehicles</option>
+              <option value="">Select vehicle...</option>
               {vehicles.map((v: any) => (
                 <option key={v._id} value={v._id}>
                   {v.vehicleNumber || v.registrationNumber || v._id}
@@ -299,7 +292,11 @@ export default function DailyStatusPage() {
         </div>
       </div>
 
-      {loading ? (
+      {!appliedVehicleId ? (
+        <div className="flex items-center justify-center rounded-2xl border border-white/10 bg-slate-900/60 py-10 text-slate-400">
+          Select a vehicle and apply filters to view daily status.
+        </div>
+      ) : loading ? (
         <div className="flex items-center justify-center py-16 text-slate-300">
           <Loader2 className="h-6 w-6 animate-spin mr-2" />
           Loading daily status...
@@ -311,24 +308,19 @@ export default function DailyStatusPage() {
         </div>
       ) : (
         <>
-          {summary ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-              <SummaryCard label="Total Distance (km)" value={toKm(summary.totalDistance)} icon={TrendingUp} accent="bg-emerald-500/15 text-emerald-300" />
-              <SummaryCard label="Running Time" value={formatSeconds(summary.runningTime)} icon={Clock3} accent="bg-sky-500/15 text-sky-200" />
-              <SummaryCard label="Idle Time" value={formatSeconds(summary.idleTime)} icon={Activity} accent="bg-amber-500/15 text-amber-200" />
-              <SummaryCard label="Max Speed" value={`${summary.maxSpeed.toFixed(1)} km/h`} icon={Gauge} accent="bg-purple-500/15 text-purple-200" />
-              <SummaryCard label="Total Stops" value={`${summary.totalStops}`} icon={ShieldOff} accent="bg-slate-500/15 text-slate-200" />
-              <SummaryCard label="Ignition On Count" value={`${summary.ignitionOn}`} icon={Zap} accent="bg-blue-500/15 text-blue-200" />
-              <SummaryCard label="Overspeed Count" value={`${summary.overspeed}`} icon={AlertOctagon} accent="bg-rose-500/15 text-rose-200" />
-              <SummaryCard label="Emergency Count" value={`${summary.emergency}`} icon={Car} accent="bg-red-500/15 text-red-200" />
-            </div>
-          ) : (
-            <div className="flex items-center justify-center rounded-2xl border border-white/10 bg-slate-900/60 py-10 text-slate-400">
-              No Daily Data Found
-            </div>
-          )}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            <SummaryCard label="Travelled Distance" value={`${summaryMetrics.travelledDistance.toFixed(2)} km`} icon={TrendingUp} accent="bg-emerald-500/15 text-emerald-300" />
+            <SummaryCard label="Current Distance" value={`${summaryMetrics.currentDistance.toFixed(2)} km`} icon={Gauge} accent="bg-sky-500/15 text-sky-200" />
+            <SummaryCard label="Average Speed" value={`${summaryMetrics.averageSpeed.toFixed(1)} km/h`} icon={Clock3} accent="bg-purple-500/15 text-purple-200" />
+            <SummaryCard label="Driving Duration" value={formatSeconds(summaryMetrics.drivingDuration)} icon={Activity} accent="bg-emerald-500/15 text-emerald-300" />
+            <SummaryCard label="Idle Duration" value={formatSeconds(summaryMetrics.idleDuration)} icon={ShieldOff} accent="bg-amber-500/15 text-amber-200" />
+            <SummaryCard label="Stoppage Duration" value={formatSeconds(summaryMetrics.stoppageDuration)} icon={AlertOctagon} accent="bg-rose-500/15 text-rose-200" />
+            <SummaryCard label="Turns" value={`${summaryMetrics.turns}`} icon={History} accent="bg-blue-500/15 text-blue-200" />
+            <SummaryCard label="Stops" value={`${summaryMetrics.stops}`} icon={History} accent="bg-slate-500/15 text-slate-200" />
+            <SummaryCard label="Harsh Brakes" value={`${summaryMetrics.harshBrakes}`} icon={History} accent="bg-red-500/15 text-red-200" />
+          </div>
 
-          {appliedVehicleId !== "all" && (
+          {appliedVehicleId && (
             <div className="rounded-2xl border border-white/10 bg-slate-900/80 shadow-lg shadow-black/25 p-3">
               <div className="flex items-center justify-between mb-3">
                 <div className="text-sm font-semibold text-white">Route Map ({formatDate(appliedDate)})</div>
@@ -351,7 +343,7 @@ export default function DailyStatusPage() {
             </div>
           )}
 
-          {routeStats && (
+          {appliedVehicleId && routeStats && (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               <SummaryCard label="Travelled Distance" value={`${routeStats.travelled.toFixed(2)} km`} icon={TrendingUp} accent="bg-emerald-500/15 text-emerald-300" />
               <SummaryCard label="Current Distance" value={`${routeStats.currentDistance.toFixed(2)} km`} icon={Gauge} accent="bg-sky-500/15 text-sky-200" />
@@ -365,6 +357,7 @@ export default function DailyStatusPage() {
             </div>
           )}
 
+          {appliedVehicleId && (
           <div className="rounded-2xl border border-white/10 bg-slate-900/70 shadow-lg shadow-black/25 overflow-hidden">
             <div className="flex items-center justify-between border-b border-white/10 px-4 py-3 text-sm font-semibold text-white">
               <div className="flex items-center gap-2">
@@ -426,6 +419,7 @@ export default function DailyStatusPage() {
               </div>
             )}
           </div>
+          )}
         </>
       )}
     </div>

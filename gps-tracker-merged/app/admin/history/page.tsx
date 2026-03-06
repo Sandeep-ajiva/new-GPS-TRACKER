@@ -557,21 +557,6 @@ export default function HistoryPage() {
                             </div>
                         </div>
 
-                        <div className="rounded-xl border border-slate-800 bg-slate-900 p-4 shadow-md space-y-2">
-                            <h3 className="text-sm font-semibold text-white">Event Timeline</h3>
-                            <div className="max-h-64 overflow-auto space-y-2 text-xs text-slate-200">
-                                {routeEvents.length === 0 ? (
-                                    <div className="text-slate-500">No events detected.</div>
-                                ) : (
-                                    routeEvents.map((ev, idx) => (
-                                        <div key={`ev-${idx}`} className="rounded-lg bg-slate-800/70 px-3 py-2 flex justify-between">
-                                            <span className="font-semibold">{ev.label}</span>
-                                            <span className="text-slate-400">{new Date(ev.timestamp).toLocaleTimeString()}</span>
-                                        </div>
-                                    ))
-                                )}
-                            </div>
-                        </div>
                     </div>
 
                     {/* Right panel */}
@@ -602,59 +587,6 @@ export default function HistoryPage() {
                     </div>
                 </div>
 
-                {/* Timeline */}
-                <div className="rounded-xl border border-slate-800 bg-slate-900 shadow-md">
-                    <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800 text-sm font-semibold text-white">
-                        <span>Event Timeline</span>
-                        <span className="text-xs text-slate-400">{activePoints.length} records</span>
-                    </div>
-                    <div className="max-h-[360px] overflow-auto">
-                        <table className="min-w-full text-xs text-slate-200">
-                            <thead className="bg-slate-800 text-[11px] uppercase tracking-[0.18em] text-slate-400">
-                                <tr>
-                                    <th className="px-3 py-2 text-left">Time</th>
-                                    <th className="px-3 py-2 text-right">Speed</th>
-                                    <th className="px-3 py-2 text-center">Ign</th>
-                                    <th className="px-3 py-2 text-right">Lat</th>
-                                    <th className="px-3 py-2 text-right">Lng</th>
-                                    <th className="px-3 py-2 text-left">Alert</th>
-                                    <th className="px-3 py-2 text-right">Odometer</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {activePoints.map((p, idx, arr) => {
-                                    const alert = (p.alertType || "").toLowerCase();
-                                    const isOverspeed = alert.includes("over");
-                                    const isEmergency = alert.includes("emer") || alert.includes("panic");
-                                    const prevIgn = idx > 0 ? arr[idx - 1].ignition : p.ignition;
-                                    const ignTransition = prevIgn !== p.ignition && !p.ignition;
-                                    const rowClass = isEmergency
-                                        ? "bg-red-900/40"
-                                        : isOverspeed
-                                            ? "bg-rose-900/30"
-                                            : ignTransition
-                                                ? "bg-amber-900/30"
-                                                : idx % 2 === 0
-                                                    ? "bg-slate-900/40"
-                                                    : "bg-slate-900/20";
-                                    return (
-                                        <tr key={`${p.timestamp}-${idx}`} className={rowClass}>
-                                            <td className="px-3 py-2">{formatTime(p.timestamp)}</td>
-                                            <td className="px-3 py-2 text-right">{p.speed.toFixed(1)} km/h</td>
-                                            <td className="px-3 py-2 text-center">{p.ignition ? "ON" : "OFF"}</td>
-                                            <td className="px-3 py-2 text-right">{p.lat.toFixed(5)}</td>
-                                            <td className="px-3 py-2 text-right">{p.lng.toFixed(5)}</td>
-                                            <td className="px-3 py-2 text-left">
-                                                {isEmergency ? <span className="rounded bg-red-600/70 px-2 py-0.5 text-white">Emergency</span> : (p.alertType || "-")}
-                                            </td>
-                                            <td className="px-3 py-2 text-right">{p.mileage ? p.mileage.toFixed(1) : "-"}</td>
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
             </div>
         </ApiErrorBoundary>
     );

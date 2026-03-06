@@ -1,18 +1,47 @@
 const net = require("net");
+const fs = require("fs");
 const path = require("path");
-try {
-  require("dotenv").config({ path: path.resolve(__dirname, "../.env") });
-} catch (_) { }
+
+// Load env from probable locations (root, server, frontend)
+const envPaths = [
+  path.resolve(__dirname, "../.env"),
+  path.resolve(__dirname, "../server/.env"),
+  path.resolve(__dirname, "../gps-tracker-merged/.env"),
+];
+
+// Tiny fallback parser (in case dotenv isn't installed in this workspace)
+const loadEnvManually = (filePath) => {
+  if (!fs.existsSync(filePath)) return;
+  const raw = fs.readFileSync(filePath, "utf8");
+  raw.split(/\r?\n/).forEach((line) => {
+    if (!line || line.trim().startsWith("#")) return;
+    const idx = line.indexOf("=");
+    if (idx === -1) return;
+    const key = line.slice(0, idx).trim();
+    const val = line.slice(idx + 1).trim().replace(/^['\"]|['\"]$/g, "");
+    if (!process.env[key]) process.env[key] = val;
+  });
+};
+
+envPaths.forEach((p) => {
+  if (!fs.existsSync(p)) return;
+  try {
+    // Prefer dotenv if available
+    require("dotenv").config({ path: p, override: false });
+  } catch (_) {
+    loadEnvManually(p);
+  }
+});
 
 const HOST = process.env.TCP_HOST || "127.0.0.1";
 const PORT = Number(process.env.TCP_PORT || 6000);
-const IMEI = "123456789025866"; // mapped IMEI
-const VEHICLE_NO = process.env.SIM_VEHICLE || "PB-20-9876"; // optional
+const IMEI = "123456789025800"; // mapped IMEI
+const VEHICLE_NO = process.env.SIM_VEHICLE || "DL20E4750"; // optional
 const ORS_KEY = process.env.ORS_API_KEY;
 
-// Custom start/end (provided)
-const START = [76.69127258955892, 30.70539884232405]; // [lng, lat]
-const END = [76.78513656598908, 30.745971269062274]; // [lng, lat]
+// Custom start/end (provided) - keep order [lon, lat] for ORS
+const START = [76.721365, 30.710563]; // Chandigarh area
+const END = [76.81054368003592, 30.74487272570436];
 
 async function getRealRoute() {
   if (!ORS_KEY) {
@@ -20,17 +49,23 @@ async function getRealRoute() {
     return [START, END];
   }
   try {
-    const res = await fetch("https://api.openrouteservice.org/v2/directions/driving-car/geojson", {
-      method: "POST",
-      headers: {
-        Authorization: ORS_KEY,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ coordinates: [START, END] }),
+    // ORS expects lon,lat order in query params
+    const qs = new URLSearchParams({
+      api_key: ORS_KEY,
+      start: START.join(","), // lng,lat
+      end: END.join(","),     // lng,lat
+      format: "geojson",
     });
-    if (!res.ok) throw new Error(`ORS HTTP ${res.status}`);
+    const url = `https://api.openrouteservice.org/v2/directions/driving-car?${qs.toString()}`;
+    const res = await fetch(url, { method: "GET" });
+    if (!res.ok) {
+      const txt = await res.text();
+      throw new Error(`ORS HTTP ${res.status}: ${txt.slice(0, 200)}`);
+    }
     const data = await res.json();
-    return data.features[0].geometry.coordinates;
+    const coords = data.features?.[0]?.geometry?.coordinates;
+    if (!coords || !coords.length) throw new Error("ORS returned empty geometry");
+    return coords;
   } catch (err) {
     console.warn("ORS fetch failed, using fallback:", err.message || err);
     return [START, END];

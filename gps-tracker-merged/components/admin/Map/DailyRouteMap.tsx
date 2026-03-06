@@ -332,15 +332,6 @@ export default function DailyRouteMap({ points, satellite = true }: { points: Po
         )}
       </MapContainer>
 
-      {/* Speed bubble */}
-      <div className="pointer-events-none absolute left-3 bottom-3 z-[5000]">
-        <div className="pointer-events-auto flex items-center gap-2 rounded-full bg-white/90 px-3 py-2 text-sm font-semibold text-slate-900 shadow-lg">
-          <span className="text-xs font-bold">{renderPoint ? renderPoint.speed.toFixed(0) : "--"} km/h</span>
-          <span className="h-4 w-px bg-slate-300" />
-          <span className="text-[11px] uppercase tracking-wide text-slate-600">{renderPoint ? new Date(renderPoint.timestamp).toLocaleTimeString() : "--"}</span>
-        </div>
-      </div>
-
       {/* Right rail */}
       <div className="pointer-events-none absolute right-3 top-3 z-[5000] flex flex-col gap-2">
         <button
@@ -354,8 +345,13 @@ export default function DailyRouteMap({ points, satellite = true }: { points: Po
           className="pointer-events-auto inline-flex h-10 w-10 items-center justify-center rounded-full bg-slate-900/85 text-white shadow-lg border border-white/10"
           title="Re-center on vehicle"
           onClick={() => {
-            if (centerOnActive({ forceZoom: true })) return;
-            if (map && path.length) map.fitBounds(latLngBounds(path.map((p) => [p.lat, p.lng])), { padding: [40, 40] });
+            if (renderPoint) {
+              centerOnActive({ forceZoom: true, point: renderPoint });
+            } else if (activePoint) {
+              centerOnActive({ forceZoom: true, point: activePoint });
+            } else if (map && path.length) {
+              map.fitBounds(latLngBounds(path.map((p) => [p.lat, p.lng])), { padding: [40, 40] });
+            }
           }}
         >
           <Crosshair size={18} />
@@ -392,40 +388,50 @@ export default function DailyRouteMap({ points, satellite = true }: { points: Po
         </div>
       </div>
 
-      {/* Play controls */}
+      {/* Play controls + live HUD */}
       <div className="pointer-events-none absolute inset-x-0 bottom-4 z-[5000] flex justify-center">
-        <div className="pointer-events-auto inline-flex items-center gap-3 rounded-full bg-slate-900/90 px-4 py-2 text-white shadow-2xl border border-white/10 backdrop-blur">
-          <button
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500 text-emerald-950 shadow-lg"
-            onClick={() => {
-              setIsPlaying((p) => {
-                const next = !p;
-                if (!p && activePoint) centerOnActive({ forceZoom: true });
-                return next;
-              });
-            }}
-            aria-label={isPlaying ? "Pause playback" : "Play playback"}
-          >
-            {isPlaying ? <Pause size={18} /> : <Play size={18} />}
-          </button>
-          <button
-            className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-slate-800 hover:bg-slate-700"
-            onClick={() => { setPlayheadIdx(0); setIsPlaying(false); centerOnActive({ forceZoom: true }); }}
-            aria-label="Restart"
-          >
-            <RotateCcw size={18} />
-          </button>
-          <div className="flex items-center gap-1 text-xs text-slate-200">
-            <span className="uppercase tracking-wide text-[10px] text-slate-400">Speed</span>
-            {[1, 2, 4].map((s) => (
-              <button
-                key={s}
-                onClick={() => setPlaySpeed(s)}
-                className={`px-2 py-1 rounded-full border text-xs ${playSpeed === s ? "bg-emerald-500 text-emerald-950 border-emerald-400" : "bg-slate-800 border-white/10 text-white"}`}
-              >
-                {s}x
-              </button>
-            ))}
+        <div className="pointer-events-auto inline-flex items-center gap-4 rounded-full bg-slate-900/90 px-5 py-3 text-white shadow-2xl border border-white/10 backdrop-blur">
+          <div className="flex items-center gap-3 text-sm font-semibold">
+            <span className="rounded-full bg-slate-800 px-3 py-1 text-emerald-200">
+              {renderPoint ? `${renderPoint.speed.toFixed(1)} km/h` : "-- km/h"}
+            </span>
+            <span className="text-xs text-slate-300">
+              {renderPoint ? new Date(renderPoint.timestamp).toLocaleTimeString() : "--"}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500 text-emerald-950 shadow-lg"
+              onClick={() => {
+                setIsPlaying((p) => {
+                  const next = !p;
+                  if (!p && activePoint) centerOnActive({ forceZoom: true });
+                  return next;
+                });
+              }}
+              aria-label={isPlaying ? "Pause playback" : "Play playback"}
+            >
+              {isPlaying ? <Pause size={18} /> : <Play size={18} />}
+            </button>
+            <button
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-slate-800 hover:bg-slate-700"
+              onClick={() => { setPlayheadIdx(0); setIsPlaying(false); centerOnActive({ forceZoom: true }); }}
+              aria-label="Restart"
+            >
+              <RotateCcw size={18} />
+            </button>
+            <div className="flex items-center gap-1 text-xs text-slate-200">
+              <span className="uppercase tracking-wide text-[10px] text-slate-400">Playback</span>
+              {[1, 2, 4].map((s) => (
+                <button
+                  key={s}
+                  onClick={() => setPlaySpeed(s)}
+                  className={`px-2 py-1 rounded-full border text-xs ${playSpeed === s ? "bg-emerald-500 text-emerald-950 border-emerald-400" : "bg-slate-800 border-white/10 text-white"}`}
+                >
+                  {s}x
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       </div>
