@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Loader2, AlertTriangle, Calendar, Car, Filter, TrendingUp, Clock3, Zap, Activity, Gauge, AlertOctagon, ShieldOff, History } from "lucide-react";
+import { Loader2, AlertTriangle, Calendar, Car, Filter, TrendingUp, Clock3, Zap, Activity, Gauge, AlertOctagon, ShieldOff, History, Copy, MapPin, Search, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { useGetVehiclesQuery } from "@/redux/api/vehicleApi";
 import {
@@ -11,6 +11,8 @@ import {
 } from "@/redux/api/vehicleDailyStatsApi";
 import { useGetVehicleHistoryQuery } from "@/redux/api/gpsHistoryApi";
 import dynamic from "next/dynamic";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 
 const DailyRouteMap = dynamic(() => import("@/components/admin/Map/DailyRouteMap"), {
   ssr: false,
@@ -32,6 +34,7 @@ type DailyStat = {
   harshBrakingCount?: number;
   emergencyCount?: number;
   lastCalculatedAt?: string;
+  currentDistance?: number;
 };
 
 const todayInput = () => {
@@ -68,14 +71,14 @@ const haversine = (a: { lat: number; lng: number }, b: { lat: number; lng: numbe
 
 function SummaryCard({ label, value, icon: Icon, accent }: { label: string; value: string; icon: any; accent: string }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-4 shadow-lg shadow-black/20">
+    <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
       <div className="flex items-center gap-3">
         <div className={`h-10 w-10 rounded-xl flex items-center justify-center ${accent}`}>
           <Icon size={18} />
         </div>
         <div>
-          <p className="text-[11px] uppercase tracking-[0.18em] text-slate-400">{label}</p>
-          <p className="text-xl font-bold text-white">{value}</p>
+          <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">{label}</p>
+          <p className="text-xl font-bold text-gray-900">{value}</p>
         </div>
       </div>
     </div>
@@ -238,190 +241,301 @@ export default function DailyStatusPage() {
     setAppliedDate(selectedDate);
   };
 
+  const getStatusBadge = (runningTime: number, idleTime: number, stoppedTime: number) => {
+    if (runningTime > 0) return { label: "Running", variant: "success" as const };
+    if (idleTime > 0) return { label: "Idle", variant: "warning" as const };
+    if (stoppedTime > 0) return { label: "Stopped", variant: "secondary" as const };
+    return { label: "Offline", variant: "destructive" as const };
+  };
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    toast.success("Copied to clipboard");
+  };
+
   return (
-    <div className="p-6 space-y-6 text-white">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-black text-white">Vehicle Daily Status</h1>
-          <p className="text-sm text-slate-400">View per-vehicle daily rollups with distance, runtime and alerts.</p>
-        </div>
-        <div className="flex items-center gap-2 text-slate-400 text-xs">
-          <Calendar size={14} />
-          <span>{formatDate(appliedDate)}</span>
+    <div className="min-h-screen bg-gray-50">
+      {/* STICKY HEADER + FILTERS */}
+      <div className="sticky top-0 z-40 border-b border-gray-200 bg-white shadow-sm">
+        <div className="px-6 py-4">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+            <div>
+              <h1 className="text-2xl font-black text-gray-900">Daily Status</h1>
+              <p className="text-sm text-gray-600">Vehicle Daily Activity Summary</p>
+            </div>
+            
+            <div className="flex items-center gap-2 text-gray-600">
+              <Calendar size={14} />
+              <span className="text-sm">{formatDate(appliedDate)}</span>
+            </div>
+          </div>
+
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-3">
+            <div>
+              <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-gray-600">Date</label>
+              <input
+                type="date"
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-gray-600">Vehicle</label>
+              <select
+                value={selectedVehicleId}
+                onChange={(e) => setSelectedVehicleId(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              >
+                <option value="">Select vehicle...</option>
+                {vehicles.map((v: any) => (
+                  <option key={v._id} value={v._id}>
+                    {v.vehicleNumber || v.registrationNumber || v._id}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex items-end">
+              <Button
+                onClick={handleApply}
+                variant="default"
+                size="default"
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold"
+              >
+                <Filter size={16} className="mr-2" />
+                Apply Filters
+              </Button>
+            </div>
+
+            <div className="flex items-end">
+              <Button
+                onClick={handleApply}
+                variant="outline"
+                size="default"
+                className="w-full border-gray-300 text-gray-700 hover:bg-gray-50"
+              >
+                <RefreshCw size={16} className="mr-2" />
+                Refresh
+              </Button>
+            </div>
+          </div>
+
+          {/* STATUS LEGEND */}
+          <div className="mt-4 flex items-center gap-4 text-xs text-gray-600">
+            <span className="font-semibold">Status:</span>
+            <div className="flex items-center gap-1">
+              <div className="w-2 h-2 rounded-full bg-green-500"></div>
+              <span>Running</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="w-2 h-2 rounded-full bg-yellow-500"></div>
+              <span>Idle</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="w-2 h-2 rounded-full bg-gray-500"></div>
+              <span>Stopped</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="w-2 h-2 rounded-full bg-red-500"></div>
+              <span>Offline</span>
+            </div>
+          </div>
         </div>
       </div>
 
-      <div className="rounded-2xl border border-white/10 bg-slate-900/80 backdrop-blur p-4 shadow-lg shadow-black/20">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <label className="flex flex-col gap-1 text-sm text-slate-300">
-            <span className="text-[11px] uppercase tracking-[0.2em] text-slate-400">Date</span>
-            <input
-              type="date"
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
-              className="rounded-xl border border-white/10 bg-slate-800 px-3 py-2 text-white outline-none focus:border-emerald-400"
-            />
-          </label>
-
-          <label className="flex flex-col gap-1 text-sm text-slate-300">
-            <span className="text-[11px] uppercase tracking-[0.2em] text-slate-400">Vehicle</span>
-            <select
-              value={selectedVehicleId}
-              onChange={(e) => setSelectedVehicleId(e.target.value)}
-              className="rounded-xl border border-white/10 bg-slate-800 px-3 py-2 text-white outline-none focus:border-emerald-400"
-            >
-              <option value="">Select vehicle...</option>
-              {vehicles.map((v: any) => (
-                <option key={v._id} value={v._id}>
-                  {v.vehicleNumber || v.registrationNumber || v._id}
-                </option>
+      {/* MAIN CONTENT */}
+      <div className="p-6">
+        {!appliedVehicleId ? (
+          <div className="flex flex-col items-center justify-center rounded-xl border border-gray-200 bg-white py-16">
+            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-100 flex items-center justify-center">
+              <Car size={32} className="text-gray-400" />
+            </div>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">No Vehicle Selected</h3>
+            <p className="text-sm text-gray-600">Select a vehicle and apply filters to view daily status.</p>
+          </div>
+        ) : loading ? (
+          <div className="space-y-4">
+            {/* SKELETON LOADING */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {[...Array(6)].map((_, i) => (
+                <div key={i} className="rounded-xl border border-gray-200 bg-white p-4">
+                  <div className="animate-pulse">
+                    <div className="h-4 bg-gray-200 rounded w-1/2 mb-2"></div>
+                    <div className="h-6 bg-gray-200 rounded w-3/4"></div>
+                  </div>
+                </div>
               ))}
-            </select>
-          </label>
-
-          <div className="flex items-end">
-            <button
-              type="button"
-              onClick={handleApply}
-              className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-emerald-950 shadow-lg shadow-emerald-500/30 transition hover:bg-emerald-400"
-            >
-              <Filter size={16} />
-              Apply Filters
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {!appliedVehicleId ? (
-        <div className="flex items-center justify-center rounded-2xl border border-white/10 bg-slate-900/60 py-10 text-slate-400">
-          Select a vehicle and apply filters to view daily status.
-        </div>
-      ) : loading ? (
-        <div className="flex items-center justify-center py-16 text-slate-300">
-          <Loader2 className="h-6 w-6 animate-spin mr-2" />
-          Loading daily status...
-        </div>
-      ) : error ? (
-        <div className="flex items-center gap-3 rounded-2xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-100">
-          <AlertTriangle size={16} />
-          Failed to load daily status. Please try again.
-        </div>
-      ) : (
-        <>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            <SummaryCard label="Travelled Distance" value={`${summaryMetrics.travelledDistance.toFixed(2)} km`} icon={TrendingUp} accent="bg-emerald-500/15 text-emerald-300" />
-            <SummaryCard label="Current Distance" value={`${summaryMetrics.currentDistance.toFixed(2)} km`} icon={Gauge} accent="bg-sky-500/15 text-sky-200" />
-            <SummaryCard label="Average Speed" value={`${summaryMetrics.averageSpeed.toFixed(1)} km/h`} icon={Clock3} accent="bg-purple-500/15 text-purple-200" />
-            <SummaryCard label="Driving Duration" value={formatSeconds(summaryMetrics.drivingDuration)} icon={Activity} accent="bg-emerald-500/15 text-emerald-300" />
-            <SummaryCard label="Idle Duration" value={formatSeconds(summaryMetrics.idleDuration)} icon={ShieldOff} accent="bg-amber-500/15 text-amber-200" />
-            <SummaryCard label="Stoppage Duration" value={formatSeconds(summaryMetrics.stoppageDuration)} icon={AlertOctagon} accent="bg-rose-500/15 text-rose-200" />
-            <SummaryCard label="Turns" value={`${summaryMetrics.turns}`} icon={History} accent="bg-blue-500/15 text-blue-200" />
-            <SummaryCard label="Stops" value={`${summaryMetrics.stops}`} icon={History} accent="bg-slate-500/15 text-slate-200" />
-            <SummaryCard label="Harsh Brakes" value={`${summaryMetrics.harshBrakes}`} icon={History} accent="bg-red-500/15 text-red-200" />
-          </div>
-
-          {appliedVehicleId && (
-            <div className="rounded-2xl border border-white/10 bg-slate-900/80 shadow-lg shadow-black/25 p-3">
-              <div className="flex items-center justify-between mb-3">
-                <div className="text-sm font-semibold text-white">Route Map ({formatDate(appliedDate)})</div>
-                <div className="text-xs text-slate-400">
-                  {historyLoading ? "Loading route..." : `${routePoints.length} points`}
-                </div>
+            </div>
+            <div className="rounded-xl border border-gray-200 bg-white p-8">
+              <div className="animate-pulse text-center">
+                <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2 text-blue-600" />
+                <p className="text-gray-600">Loading daily status...</p>
               </div>
-              {historyLoading ? (
-                <div className="flex h-[500px] items-center justify-center text-slate-300">
-                  <Loader2 className="h-6 w-6 animate-spin mr-2" />
-                  Loading route...
-                </div>
-              ) : routePoints.length === 0 ? (
-                <div className="flex h-[500px] items-center justify-center text-slate-400">
-                  No route data for this day.
-                </div>
-              ) : (
-                <DailyRouteMap points={routePoints as any} />
-              )}
             </div>
-          )}
+          </div>
+        ) : error ? (
+          <div className="flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+            <AlertTriangle size={16} className="text-red-600" />
+            <div className="text-sm text-red-800">
+              <strong>Unable to load daily status.</strong> Please try again.
+            </div>
+            <Button onClick={handleApply} variant="outline" size="sm" className="ml-auto border-red-300 text-red-700 hover:bg-red-50">
+              Retry
+            </Button>
+          </div>
+        ) : (
+          <>
+            {/* SUMMARY CARDS */}
+            <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <SummaryCard label="Travelled Distance" value={`${summaryMetrics.travelledDistance.toFixed(2)} km`} icon={TrendingUp} accent="bg-green-100 text-green-600" />
+              <SummaryCard label="Current Distance" value={`${summaryMetrics.currentDistance.toFixed(2)} km`} icon={Gauge} accent="bg-blue-100 text-blue-600" />
+              <SummaryCard label="Average Speed" value={`${summaryMetrics.averageSpeed.toFixed(1)} km/h`} icon={Clock3} accent="bg-purple-100 text-purple-600" />
+              <SummaryCard label="Driving Duration" value={formatSeconds(summaryMetrics.drivingDuration)} icon={Activity} accent="bg-green-100 text-green-600" />
+              <SummaryCard label="Idle Duration" value={formatSeconds(summaryMetrics.idleDuration)} icon={ShieldOff} accent="bg-yellow-100 text-yellow-600" />
+              <SummaryCard label="Stoppage Duration" value={formatSeconds(summaryMetrics.stoppageDuration)} icon={AlertOctagon} accent="bg-gray-100 text-gray-600" />
+            </div>
 
-          {appliedVehicleId && routeStats && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              <SummaryCard label="Travelled Distance" value={`${routeStats.travelled.toFixed(2)} km`} icon={TrendingUp} accent="bg-emerald-500/15 text-emerald-300" />
-              <SummaryCard label="Current Distance" value={`${routeStats.currentDistance.toFixed(2)} km`} icon={Gauge} accent="bg-sky-500/15 text-sky-200" />
-              <SummaryCard label="Average Speed" value={`${routeStats.avgSpeed.toFixed(1)} km/h`} icon={Clock3} accent="bg-purple-500/15 text-purple-200" />
-              <SummaryCard label="Driving Duration" value={formatSeconds(routeStats.driving)} icon={Activity} accent="bg-emerald-500/15 text-emerald-300" />
-              <SummaryCard label="Idling Duration" value={formatSeconds(routeStats.idling)} icon={ShieldOff} accent="bg-amber-500/15 text-amber-200" />
-              <SummaryCard label="Stoppage Duration" value={formatSeconds(routeStats.stoppage)} icon={AlertOctagon} accent="bg-rose-500/15 text-rose-200" />
-              <SummaryCard label="Turns" value={`${routeEvents.turns}`} icon={History} accent="bg-blue-500/15 text-blue-200" />
-              <SummaryCard label="Stops" value={`${routeEvents.stops}`} icon={History} accent="bg-slate-500/15 text-slate-200" />
-              <SummaryCard label="Harsh Brakes" value={`${routeEvents.harsh}`} icon={History} accent="bg-red-500/15 text-red-200" />
-            </div>
-          )}
-
-          {appliedVehicleId && (
-          <div className="rounded-2xl border border-white/10 bg-slate-900/70 shadow-lg shadow-black/25 overflow-hidden">
-            <div className="flex items-center justify-between border-b border-white/10 px-4 py-3 text-sm font-semibold text-white">
-              <div className="flex items-center gap-2">
-                <History size={16} />
-                Daily Breakdown
-              </div>
-              <span className="text-xs text-slate-400">Showing {rows.length} record(s)</span>
-            </div>
-            {rows.length === 0 ? (
-              <div className="flex items-center justify-center py-10 text-slate-400">No Daily Data Found</div>
-            ) : (
-              <div className="overflow-auto">
-                <table className="min-w-full text-sm text-slate-200">
-                  <thead className="bg-slate-800/70 text-[12px] uppercase tracking-[0.18em] text-slate-400">
-                    <tr>
-                      <th className="px-4 py-3 text-left">Vehicle</th>
-                      <th className="px-4 py-3 text-left">Date</th>
-                      <th className="px-4 py-3 text-right">Total Distance</th>
-                      <th className="px-4 py-3 text-right">Running Time</th>
-                      <th className="px-4 py-3 text-right">Idle Time</th>
-                      <th className="px-4 py-3 text-right">Stopped Time</th>
-                      <th className="px-4 py-3 text-right">Max Speed</th>
-                      <th className="px-4 py-3 text-right">Avg Speed</th>
-                      <th className="px-4 py-3 text-right">Total Trips</th>
-                      <th className="px-4 py-3 text-right">Ign On</th>
-                      <th className="px-4 py-3 text-right">Overspeed</th>
-                      <th className="px-4 py-3 text-right">Harsh Braking</th>
-                      <th className="px-4 py-3 text-right">Emergency</th>
-                      <th className="px-4 py-3 text-left">Last Calculated</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map((row, idx) => {
-                      const vehicleLabel =
-                        typeof row.vehicleId === "string"
-                          ? row.vehicleId
-                          : row.vehicleId?.vehicleNumber || row.vehicleId?._id || "Vehicle";
-                      return (
-                        <tr key={idx} className={idx % 2 === 0 ? "bg-slate-900/40" : "bg-slate-900/20"}>
-                          <td className="px-4 py-3">{vehicleLabel}</td>
-                          <td className="px-4 py-3">{formatDate(row.date)}</td>
-                          <td className="px-4 py-3 text-right">{toKm(row.totalDistance)} km</td>
-                          <td className="px-4 py-3 text-right">{formatSeconds(row.runningTime)}</td>
-                          <td className="px-4 py-3 text-right">{formatSeconds(row.idleTime)}</td>
-                          <td className="px-4 py-3 text-right">{formatSeconds(row.stoppedTime)}</td>
-                          <td className="px-4 py-3 text-right">{(Number(row.maxSpeed || 0)).toFixed(1)} km/h</td>
-                          <td className="px-4 py-3 text-right">{(Number(row.avgSpeed || 0)).toFixed(1)} km/h</td>
-                          <td className="px-4 py-3 text-right">{row.totalTrips ?? 0}</td>
-                          <td className="px-4 py-3 text-right">{row.ignitionOnCount ?? 0}</td>
-                          <td className="px-4 py-3 text-right">{row.overspeedCount ?? 0}</td>
-                          <td className="px-4 py-3 text-right">{row.harshBrakingCount ?? 0}</td>
-                          <td className="px-4 py-3 text-right">{row.emergencyCount ?? 0}</td>
-                          <td className="px-4 py-3 text-left text-slate-400">{formatDate(row.lastCalculatedAt)}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+            {/* ROUTE MAP */}
+            {appliedVehicleId && (
+              <div className="mb-6 rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+                <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3">
+                  <div className="flex items-center gap-2">
+                    <MapPin size={16} className="text-gray-600" />
+                    <h3 className="text-sm font-semibold text-gray-900">Route Map</h3>
+                  </div>
+                  <div className="text-xs text-gray-500">
+                    {historyLoading ? "Loading route..." : `${routePoints.length} points`}
+                  </div>
+                </div>
+                {historyLoading ? (
+                  <div className="flex h-[500px] items-center justify-center bg-gray-50">
+                    <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
+                  </div>
+                ) : routePoints.length === 0 ? (
+                  <div className="flex h-[500px] items-center justify-center bg-gray-50">
+                    <div className="text-center">
+                      <MapPin size={48} className="text-gray-300 mx-auto mb-2" />
+                      <p className="text-gray-500">No route data for this day.</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="h-[500px]">
+                    <DailyRouteMap points={routePoints as any} />
+                  </div>
+                )}
               </div>
             )}
-          </div>
-          )}
-        </>
-      )}
+
+            {/* MAIN DATA TABLE */}
+            <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+              <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3">
+                <div className="flex items-center gap-2">
+                  <History size={16} className="text-gray-600" />
+                  <h3 className="text-sm font-semibold text-gray-900">Daily Breakdown</h3>
+                </div>
+                <span className="text-xs text-gray-500">{rows.length} record(s)</span>
+              </div>
+              
+              {rows.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16">
+                  <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-100 flex items-center justify-center">
+                    <History size={32} className="text-gray-400" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">No Data Found</h3>
+                  <p className="text-sm text-gray-600">No daily data found for selected vehicle and date.</p>
+                  <p className="text-xs text-gray-500 mt-2">Try changing the date or clearing filters.</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-[11px] font-black uppercase tracking-widest text-gray-600">Vehicle Information</th>
+                        <th className="px-6 py-3 text-left text-[11px] font-black uppercase tracking-widest text-gray-600">Date</th>
+                        <th className="px-6 py-3 text-left text-[11px] font-black uppercase tracking-widest text-gray-600">Status</th>
+                        <th className="px-6 py-3 text-right text-[11px] font-black uppercase tracking-widest text-gray-600">Running Time</th>
+                        <th className="px-6 py-3 text-right text-[11px] font-black uppercase tracking-widest text-gray-600">Distance</th>
+                        <th className="px-6 py-3 text-right text-[11px] font-black uppercase tracking-widest text-gray-600">Max Speed</th>
+                        <th className="px-6 py-3 text-right text-[11px] font-black uppercase tracking-widest text-gray-600">Avg Speed</th>
+                        <th className="px-6 py-3 text-right text-[11px] font-black uppercase tracking-widest text-gray-600">Stops / Idle</th>
+                        <th className="px-6 py-3 text-left text-[11px] font-black uppercase tracking-widest text-gray-600">Last Location</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {rows.map((row, idx) => {
+                        const vehicleLabel =
+                          typeof row.vehicleId === "string"
+                            ? row.vehicleId
+                            : row.vehicleId?.vehicleNumber || row.vehicleId?._id || "Vehicle";
+                        const status = getStatusBadge(row.runningTime || 0, row.idleTime || 0, row.stoppedTime || 0);
+                        const vehicle = vehicles.find((v: any) => v._id === (typeof row.vehicleId === "object" ? row.vehicleId?._id : row.vehicleId));
+                        
+                        return (
+                          <tr key={idx} className="hover:bg-gray-50 transition-colors">
+                            <td className="px-6 py-4">
+                              <div>
+                                <div className="text-sm font-semibold text-gray-900">{vehicleLabel}</div>
+                                {vehicle?.organizationId && (
+                                  <div className="text-xs text-gray-500">
+                                    {typeof vehicle.organizationId === "object" ? vehicle.organizationId.name : vehicle.organizationId}
+                                  </div>
+                                )}
+                                {vehicle?.driverName && (
+                                  <div className="text-xs text-gray-500">Driver: {vehicle.driverName}</div>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 text-sm text-gray-900">{formatDate(row.date)}</td>
+                            <td className="px-6 py-4">
+                              {status && status.variant && status.label ? (
+                                <Badge variant={status.variant} className="text-xs">
+                                  {status.label}
+                                </Badge>
+                              ) : (
+                                <Badge variant="secondary" className="text-xs">
+                                  Unknown
+                                </Badge>
+                              )}
+                            </td>
+                            <td className="px-6 py-4 text-sm text-gray-900 text-right">{formatSeconds(row.runningTime)}</td>
+                            <td className="px-6 py-4 text-sm text-gray-900 text-right">{toKm(row.totalDistance)} km</td>
+                            <td className="px-6 py-4 text-sm text-gray-900 text-right">{(Number(row.maxSpeed || 0)).toFixed(1)} km/h</td>
+                            <td className="px-6 py-4 text-sm text-gray-900 text-right">{(Number(row.avgSpeed || 0)).toFixed(1)} km/h</td>
+                            <td className="px-6 py-4 text-sm text-gray-900 text-right">
+                              <div className="space-y-1">
+                                <div className="text-xs">Stops: {row.totalTrips ?? 0}</div>
+                                <div className="text-xs text-gray-500">Idle: {formatSeconds(row.idleTime)}</div>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 text-sm text-gray-500">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs">
+                                  {routePoints.length > 0 ? "Route Available" : "No location data"}
+                                </span>
+                                {routePoints.length > 0 && (
+                                  <button
+                                    onClick={() => copyToClipboard(`${routePoints[0]?.lat || 0}, ${routePoints[0]?.lng || 0}`)}
+                                    className="text-gray-400 hover:text-gray-600 transition-colors"
+                                    title="Copy coordinates"
+                                  >
+                                    <Copy size={12} />
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }

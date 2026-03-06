@@ -48,15 +48,13 @@ export default function DriversPage() {
         status: "",
         organizationId: "",
         startDate: "",
-        organizationId: "",
-        startDate: "",
         endDate: "",
     });
 
     const [editingDriver, setEditingDriver] = useState<any>(null);
 
     // API Hooks
-    const { data: driversData, isLoading: isDriversLoading, refetch: refetchDrivers, refetch: refetchDrivers } = useGetDriversQuery(
+    const { data: driversData, isLoading: isDriversLoading, refetch: refetchDrivers } = useGetDriversQuery(
         { page: page - 1, limit: LIMIT },
         { refetchOnMountOrArgChange: true }
     );
@@ -340,8 +338,6 @@ export default function DriversPage() {
             organizationId: "",
             startDate: "",
             endDate: "",
-            startDate: "",
-            endDate: "",
         });
     };
 
@@ -487,7 +483,6 @@ export default function DriversPage() {
                                 licenseNumber: filters.licenseNumber,
                                 status: filters.status,
                                 organizationId: filters.organizationId,
-                                from: filters.startDate,
                                 from: filters.startDate,
                                 to: filters.endDate,
                             }}

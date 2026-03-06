@@ -1,4 +1,5 @@
 "use client";
+
 import React, { useState, useEffect, useRef } from "react";
 import { Bell, Search, X, Building2, Car, Radio, User, Trash2, Menu, LayoutDashboard } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -12,12 +13,12 @@ import {
     useClearAllNotificationsMutation
 } from "@/redux/api/notificationsApi";
 import { useGetOrganizationsQuery } from "@/redux/api/organizationApi";
-
-// 🔐 ORG CONTEXT UPDATE
 import { useOrgContext } from "@/hooks/useOrgContext";
 import { useGetVehiclesQuery } from "@/redux/api/vehicleApi";
 import { useGetGpsDevicesQuery } from "@/redux/api/gpsDeviceApi";
 import { useGetUsersQuery } from "@/redux/api/usersApi";
+import { NotificationDropdown } from "./NotificationDropdown";
+import { Badge } from "@/components/ui/badge";
 
 type HeaderProps = {
     onOpenSidebar?: () => void;
@@ -35,7 +36,7 @@ export default function Header({ onOpenSidebar }: HeaderProps) {
     // Redux Hooks
     const { data: userData } = useGetMeQuery(undefined, { refetchOnMountOrArgChange: true });
     const { data: notifData } = useGetNotificationsQuery(undefined, {
-        pollingInterval: 60000,
+        pollingInterval: 30000, // Poll every 30 seconds for real-time updates
         refetchOnMountOrArgChange: true,
     });
 
@@ -157,7 +158,7 @@ export default function Header({ onOpenSidebar }: HeaderProps) {
         }
     };
 
-    const unreadCount = notifications.filter((n: any) => !n.read).length;
+    const unreadCount = notifications.filter((n: any) => !n.acknowledged).length;
 
     const getIcon = (type: string) => {
         switch (type) {
@@ -253,68 +254,30 @@ export default function Header({ onOpenSidebar }: HeaderProps) {
                 </button>
 
 
+                {/* Enhanced Notification Bell */}
                 <div className="relative" ref={notifRef}>
                     <button
                         onClick={() => setShowNotifications(!showNotifications)}
-                        className="relative p-2 text-slate-500 hover:bg-slate-100 rounded-full transition"
+                        className="relative p-2 text-gray-500 hover:bg-gray-100 rounded-full transition-colors"
+                        title="Notifications"
                     >
                         <Bell size={20} />
+                        {/* Unread count badge */}
                         {unreadCount > 0 && (
-                            <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border border-white"></span>
+                            <Badge 
+                                variant="default" 
+                                className="absolute -top-1 -right-1 min-w-[20px] h-5 text-xs font-bold bg-red-600 text-white flex items-center justify-center"
+                            >
+                                {unreadCount > 99 ? '99+' : unreadCount}
+                            </Badge>
                         )}
                     </button>
 
-                    {showNotifications && (
-                        <div className="absolute right-0 top-full mt-2 w-72 sm:w-80 bg-white border border-slate-200 rounded-xl shadow-lg max-h-96 overflow-y-auto z-50">
-                            <div className="p-4 border-b border-slate-200 flex items-center justify-between sticky top-0 bg-white/95">
-                                <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Notifications</h3>
-                                <div className="flex items-center gap-2">
-                                    {unreadCount > 0 && (
-                                        <span className="text-xs font-semibold text-red-500">{unreadCount} unread</span>
-                                    )}
-                                    {notifications.length > 0 && (
-                                        <button
-                                            onClick={handleClearAllNotifications}
-                                            className="text-xs font-semibold text-slate-500 hover:text-slate-900 underline"
-                                        >
-                                            Clear All
-                                        </button>
-                                    )}
-                                </div>
-                            </div>
-                            <div className="max-h-80 overflow-y-auto">
-                                {notifications.length === 0 ? (
-                                    <div className="p-4 text-sm text-slate-500 text-center">No notifications</div>
-                                ) : (
-                                    notifications.map((notif: any) => (
-                                        <div
-                                            key={notif._id}
-                                            className={`relative group px-4 py-3 border-b border-slate-100 last:border-b-0 transition-colors ${!notif.read ? "bg-blue-50/60" : ""
-                                                }`}
-                                        >
-                                            <button
-                                                onClick={() => handleNotificationClick(notif)}
-                                                className="w-full text-left"
-                                            >
-                                                <div className="text-sm font-semibold text-slate-900 pr-8">{notif.title}</div>
-                                                <div className="text-xs text-slate-500 mt-1">{notif.message}</div>
-                                                <div className="text-[10px] text-slate-400 mt-1">
-                                                    {new Date(notif.createdAt || notif.timestamp).toLocaleString()}
-                                                </div>
-                                            </button>
-                                            <button
-                                                onClick={(e) => handleDeleteNotification(e, notif._id)}
-                                                className="absolute top-3 right-3 p-1 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
-                                                title="Delete notification"
-                                            >
-                                                <Trash2 size={14} />
-                                            </button>
-                                        </div>
-                                    ))
-                                )}
-                            </div>
-                        </div>
-                    )}
+                    {/* Enhanced Notification Dropdown */}
+                    <NotificationDropdown 
+                        isOpen={showNotifications} 
+                        onClose={() => setShowNotifications(false)} 
+                    />
                 </div>
 
                 <div className="h-8 w-px bg-slate-200"></div>

@@ -7,12 +7,12 @@
 const net = require("net");
 
 // Editable identifiers
-const IMEI = "352094087654321"; // 15-digit IMEI
-const VEHICLE_NO = "DL20E4788";
+const IMEI = "124536587451265"; // 15-digit IMEI
+const VEHICLE_NO = "239";
 
 // TCP target
 const HOST = "127.0.0.1";
-const PORT = 5000;
+const PORT = 6000;
 
 // Helpers --------------------------------------------------------------
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));

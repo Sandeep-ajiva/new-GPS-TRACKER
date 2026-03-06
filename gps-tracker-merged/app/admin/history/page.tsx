@@ -3,10 +3,12 @@
 import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import ApiErrorBoundary from "@/components/admin/ErrorBoundary/ApiErrorBoundary";
-import { Search, Loader2, Activity, AlertOctagon, Gauge, Timer, Clock3, Zap, MapPin } from "lucide-react";
+import { Search, Loader2, Activity, AlertOctagon, Gauge, Timer, Clock3, Zap, MapPin, Play, Pause, SkipBack, SkipForward, Copy, Calendar, Filter, List, Map } from "lucide-react";
 import { toast } from "sonner";
 import { useGetVehiclesQuery } from "@/redux/api/vehicleApi";
 import { useGetVehicleHistoryQuery } from "@/redux/api/gpsHistoryApi";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 
 // Dynamically import Map
 const HistoryMap = dynamic(() => import("@/components/admin/Map/HistoryMap"), {
@@ -130,6 +132,8 @@ export default function HistoryPage() {
     const [isPlaying, setIsPlaying] = useState(false);
     const [playbackSpeed, setPlaybackSpeed] = useState(1);
     const [stopFilter, setStopFilter] = useState<StopFilter>("all");
+    const [activeTab, setActiveTab] = useState<"points" | "stops" | "events">("points");
+    const [isMobilePanelOpen, setIsMobilePanelOpen] = useState(false);
 
     // API Hooks
     // 🔐 If superadmin, we can filter vehicles by org. 
@@ -458,135 +462,394 @@ export default function HistoryPage() {
 
     return (
         <ApiErrorBoundary hasError={false}>
-            <div className="space-y-6">
-                {/* Filters */}
-                <div className="rounded-xl border border-slate-800 bg-slate-900 p-4 shadow-md">
-                    <div className="mb-3">
-                        <p className="text-[11px] font-black uppercase tracking-[0.28em] text-slate-400">History Playback</p>
-                        <h1 className="text-2xl font-black text-white">Route Analytics</h1>
+            <div className="min-h-screen bg-gray-50">
+                {/* STICKY TOP FILTER BAR */}
+                <div className="sticky top-0 z-40 border-b border-gray-200 bg-white/95 backdrop-blur-sm">
+                    <div className="px-4 py-4">
+                        <div className="mb-4">
+                            <p className="text-[11px] font-black uppercase tracking-[0.28em] text-gray-500">History Playback</p>
+                            <h1 className="text-2xl font-black text-gray-900">Route Analytics</h1>
+                        </div>
+                        <form onSubmit={handleSearch} className="space-y-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
+                                {isSuperAdmin && (
+                                    <div>
+                                        <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-gray-600">Organization</label>
+                                        <select
+                                            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                            value={selectedOrgId}
+                                            onChange={e => { setSelectedOrgId(e.target.value); setVehicleId(""); setShouldFetch(false); }}
+                                        >
+                                            <option value="">All Organizations</option>
+                                            {organizations.map((org: any) => (
+                                                <option key={org._id} value={org._id}>{org.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
+                                <div>
+                                    <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-gray-600">Vehicle</label>
+                                    <select required className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                        value={vehicleId} onChange={e => { setVehicleId(e.target.value); setShouldFetch(false); setSelectedRouteIndex(0); }}>
+                                        <option value="">Choose Vehicle...</option>
+                                        {vehicles.map((v: any) => (
+                                            <option key={v._id} value={v._id}>{v.vehicleNumber || v.registrationNumber || v._id}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-gray-600">From</label>
+                                    <input type="datetime-local" required className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                        value={dateFrom} onChange={e => { setDateFrom(e.target.value); setShouldFetch(false); setSelectedRouteIndex(0); }} />
+                                </div>
+                                <div>
+                                    <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-gray-600">To</label>
+                                    <input type="datetime-local" required className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                        value={dateTo} onChange={e => { setDateTo(e.target.value); setShouldFetch(false); setSelectedRouteIndex(0); }} />
+                                </div>
+                                <div className="flex items-end">
+                                    <Button type="submit" disabled={isLoading} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold">
+                                        {isLoading ? <Loader2 className="animate-spin w-4 h-4 mr-2" /> : <Search className="w-4 h-4 mr-2" />}
+                                        Load History
+                                    </Button>
+                                </div>
+                            </div>
+                        </form>
                     </div>
-                    <form onSubmit={handleSearch} className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 items-end">
-                        {isSuperAdmin && (
-                            <div>
-                                <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-slate-400">Organization</label>
-                                <select
-                                    className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white"
-                                    value={selectedOrgId}
-                                    onChange={e => { setSelectedOrgId(e.target.value); setVehicleId(""); setShouldFetch(false); }}
-                                >
-                                    <option value="">All Organizations</option>
-                                    {organizations.map((org: any) => (
-                                        <option key={org._id} value={org._id}>{org.name}</option>
-                                    ))}
-                                </select>
+                </div>
+
+                {/* MAIN CONTENT AREA */}
+                <div className="flex h-[calc(100vh-180px)]">
+                    {/* LEFT SIDE - MAP (70%) */}
+                    <div className="flex-1 relative">
+                        {routeSegments.length > 0 ? (
+                            <>
+                                {/* Map Legend Overlay */}
+                                <div className="absolute top-4 left-4 z-30 bg-white/95 backdrop-blur-sm rounded-lg border border-gray-200 p-3 shadow-lg">
+                                    <h4 className="text-xs font-semibold text-gray-900 mb-2">Map Legend</h4>
+                                    <div className="space-y-1">
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                                            <span className="text-xs text-gray-700">Start Point</span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-3 h-3 rounded-full bg-red-500"></div>
+                                            <span className="text-xs text-gray-700">End Point</span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
+                                            <span className="text-xs text-gray-700">Events</span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-3 h-3 rounded-full bg-blue-500"></div>
+                                            <span className="text-xs text-gray-700">Stops</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="h-full rounded-xl border border-gray-200 bg-white shadow-md overflow-hidden">
+                                    <HistoryPlaybackMap
+                                        key={`map-${activePoints.length}`}
+                                        points={activePoints as any}
+                                        playheadIndex={playheadIndex}
+                                        stopFilter={stopFilter}
+                                        events={routeEvents as any}
+                                        showControls={false}
+                                        isPlaying={isPlaying}
+                                        speed={playbackSpeed}
+                                        onTogglePlay={() => setIsPlaying((p) => !p)}
+                                        onReplay={() => { setPlayheadIndex(0); setIsPlaying(false); }}
+                                        onSpeedChange={(s) => setPlaybackSpeed(s)}
+                                        onStopFilterChange={(f) => setStopFilter(f)}
+                                    />
+                                </div>
+                            </>
+                        ) : (
+                            <div className="h-full flex items-center justify-center">
+                                <div className="text-center">
+                                    <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-gray-100 flex items-center justify-center">
+                                        <MapPin size={32} className="text-gray-400" />
+                                    </div>
+                                    <h3 className="text-lg font-semibold text-gray-900 mb-2">No History Data</h3>
+                                    <p className="text-sm text-gray-500">Select vehicle and date range to view history</p>
+                                </div>
                             </div>
                         )}
-                        <div>
-                            <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-slate-400">Vehicle</label>
-                            <select required className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white"
-                                value={vehicleId} onChange={e => { setVehicleId(e.target.value); setShouldFetch(false); setSelectedRouteIndex(0); }}>
-                                <option value="">Choose Vehicle...</option>
-                                {vehicles.map((v: any) => (
-                                    <option key={v._id} value={v._id}>{v.vehicleNumber || v.registrationNumber || v._id}</option>
-                                ))}
-                            </select>
-                        </div>
-                        <div>
-                            <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-slate-400">From</label>
-                            <input type="datetime-local" required className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white"
-                                value={dateFrom} onChange={e => { setDateFrom(e.target.value); setShouldFetch(false); setSelectedRouteIndex(0); }} />
-                        </div>
-                        <div className="flex gap-2">
-                            <div className="flex-1">
-                                <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-slate-400">To</label>
-                                <input type="datetime-local" required className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white"
-                                    value={dateTo} onChange={e => { setDateTo(e.target.value); setShouldFetch(false); setSelectedRouteIndex(0); }} />
-                            </div>
-                            <button type="submit" disabled={isLoading} className="h-10 self-end rounded-lg bg-emerald-500 px-4 text-sm font-semibold text-emerald-950 shadow hover:bg-emerald-400 disabled:opacity-60">
-                                {isLoading ? <Loader2 className="animate-spin w-4 h-4 inline" /> : "View"}
-                            </button>
-                        </div>
-                    </form>
-                </div>
+                    </div>
 
-                {/* Main split */}
-                <div className="grid grid-cols-1 lg:grid-cols-10 gap-6">
-                    {/* Left panel */}
-                    <div className="lg:col-span-3 space-y-4">
-                        <div className="rounded-xl border border-slate-800 bg-slate-900 p-4 shadow-md">
-                            <h3 className="text-sm font-semibold text-white mb-3">Route Summary</h3>
-                            {summary ? (
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                    <SummaryCard icon={Activity} label="Travelled Distance" value={`${summary.totalDistance.toFixed(2)} km`} />
-                                    <SummaryCard icon={Timer} label="Driving Duration" value={formatTimeLabel(summary.runningTime)} />
-                                    <SummaryCard icon={Clock3} label="Idle Duration" value={formatTimeLabel(summary.idleTime)} />
-                                    <SummaryCard icon={AlertOctagon} label="Stops" value={`${summary.stops}`} />
-                                    <SummaryCard icon={Gauge} label="Max Speed" value={`${summary.maxSpeed.toFixed(1)} km/h`} />
-                                    <SummaryCard icon={Zap} label="Ignition On" value={`${summary.ignOnCount}`} />
-                                    <SummaryCard icon={Search} label="Turns" value={`${eventCounts.turns}`} />
-                                    <SummaryCard icon={Search} label="Harsh Brakes" value={`${eventCounts.harsh}`} />
+                    {/* RIGHT SIDE - DETAILS PANEL (30%) */}
+                    <div className="hidden lg:block w-[30%] max-w-md border-l border-gray-200 bg-white">
+                        <div className="h-full flex flex-col">
+                            {/* Summary Cards */}
+                            {summary && (
+                                <div className="p-4 border-b border-gray-200">
+                                    <h3 className="text-sm font-semibold text-gray-900 mb-3">Trip Summary</h3>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <SummaryCard icon={Activity} label="Distance" value={`${summary.totalDistance.toFixed(1)} km`} />
+                                        <SummaryCard icon={Timer} label="Duration" value={formatTimeLabel(summary.runningTime)} />
+                                        <SummaryCard icon={Gauge} label="Max Speed" value={`${summary.maxSpeed.toFixed(0)} km/h`} />
+                                        <SummaryCard icon={AlertOctagon} label="Stops" value={`${summary.stops}`} />
+                                    </div>
                                 </div>
-                            ) : (
-                                <p className="text-sm text-slate-400">Run a query to see summary.</p>
                             )}
-                        </div>
 
-                        <div className="rounded-xl border border-slate-800 bg-slate-900 p-4 shadow-md space-y-3">
-                            <h3 className="text-sm font-semibold text-white">Playback Controls</h3>
-                            <div className="flex flex-wrap items-center gap-2">
-                                <button onClick={() => setIsPlaying((p) => !p)} className="rounded-lg bg-emerald-500 px-3 py-1.5 text-sm font-semibold text-emerald-950 shadow hover:bg-emerald-400">
-                                    {isPlaying ? "Pause" : "Play"}
-                                </button>
-                                <button onClick={() => { setPlayheadIndex(0); setIsPlaying(false); }} className="rounded-lg border border-slate-700 px-3 py-1.5 text-sm text-white hover:bg-white/5">
-                                    Replay
-                                </button>
-                                <select value={playbackSpeed} onChange={(e) => setPlaybackSpeed(Number(e.target.value))} className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-sm text-white">
-                                    {[1, 2, 3].map((s) => <option key={s} value={s}>{s}x</option>)}
-                                </select>
-                            </div>
-                            <div className="flex flex-wrap items-center gap-2">
-                                <span className="text-xs text-slate-300">Stop Filter:</span>
-                                {(["all", "normal", "idle", "hide"] as const).map((f) => (
-                                    <button key={f} onClick={() => setStopFilter(f)} className={`rounded-lg px-2.5 py-1 text-xs font-semibold ${stopFilter === f ? "bg-blue-500 text-white" : "bg-slate-800 text-slate-200"}`}>
-                                        {f === "all" ? "All" : f === "normal" ? "Normal Stops" : f === "idle" ? "Idle Stops" : "Hide"}
+                            {/* Tabs */}
+                            <div className="border-b border-gray-200">
+                                <div className="flex">
+                                    <button
+                                        onClick={() => setActiveTab("points")}
+                                        className={`flex-1 px-4 py-3 text-xs font-semibold border-b-2 transition-colors ${
+                                            activeTab === "points"
+                                                ? "text-blue-600 border-blue-600"
+                                                : "text-gray-500 border-transparent hover:text-gray-700"
+                                        }`}
+                                    >
+                                        <List className="w-4 h-4 inline mr-1" />
+                                        Points
                                     </button>
-                                ))}
-                            </div>
-                            <div className="text-xs text-slate-300">
-                                {activePoints.length} points • Speed {playbackSpeed}x
-                            </div>
-                        </div>
-
-                    </div>
-
-                    {/* Right panel */}
-                    <div className="lg:col-span-7 space-y-4">
-                        <div className="rounded-xl border border-slate-800 bg-slate-900 shadow-md overflow-hidden relative" style={{ height: 500 }}>
-                            {routeSegments.length > 0 ? (
-                                <HistoryPlaybackMap
-                                    key={`map-${activePoints.length}`}
-                                    points={activePoints as any}
-                                    playheadIndex={playheadIndex}
-                                    stopFilter={stopFilter}
-                                    events={routeEvents as any}
-                                    showControls
-                                    isPlaying={isPlaying}
-                                    speed={playbackSpeed}
-                                    onTogglePlay={() => setIsPlaying((p) => !p)}
-                                    onReplay={() => { setPlayheadIndex(0); setIsPlaying(false); }}
-                                    onSpeedChange={(s) => setPlaybackSpeed(s)}
-                                    onStopFilterChange={(f) => setStopFilter(f)}
-                                />
-                            ) : (
-                                <div className="flex h-[500px] w-full flex-col items-center justify-center text-slate-400">
-                                    <Search size={48} className="mb-4 opacity-20" />
-                                    <p className="font-semibold">Select vehicle and date range to view history</p>
+                                    <button
+                                        onClick={() => setActiveTab("stops")}
+                                        className={`flex-1 px-4 py-3 text-xs font-semibold border-b-2 transition-colors ${
+                                            activeTab === "stops"
+                                                ? "text-blue-600 border-blue-600"
+                                                : "text-gray-500 border-transparent hover:text-gray-700"
+                                        }`}
+                                    >
+                                        <MapPin className="w-4 h-4 inline mr-1" />
+                                        Stops
+                                    </button>
+                                    <button
+                                        onClick={() => setActiveTab("events")}
+                                        className={`flex-1 px-4 py-3 text-xs font-semibold border-b-2 transition-colors ${
+                                            activeTab === "events"
+                                                ? "text-blue-600 border-blue-600"
+                                                : "text-gray-500 border-transparent hover:text-gray-700"
+                                        }`}
+                                    >
+                                        <Activity className="w-4 h-4 inline mr-1" />
+                                        Events
+                                    </button>
                                 </div>
-                            )}
+                            </div>
+
+                            {/* Tab Content */}
+                            <div className="flex-1 overflow-hidden">
+                                <div className="h-full overflow-y-auto custom-scrollbar">
+                                    {activeTab === "points" && (
+                                        <div className="p-4 space-y-2">
+                                            {activePoints.slice(0, 50).map((point, index) => (
+                                                <div key={index} className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+                                                    <div className="flex items-start justify-between">
+                                                        <div className="flex-1">
+                                                            <div className="flex items-center gap-2 mb-1">
+                                                                <Badge variant={point.ignition ? "success" : "secondary"} className="text-xs">
+                                                                    {point.ignition ? "ON" : "OFF"}
+                                                                </Badge>
+                                                                <span className="text-xs text-gray-600">{point.speed.toFixed(0)} km/h</span>
+                                                            </div>
+                                                            <div className="text-xs text-gray-700 mb-1">
+                                                                {point.lat.toFixed(6)}, {point.lng.toFixed(6)}
+                                                            </div>
+                                                            <div className="text-xs text-gray-500">
+                                                                {formatTime(point.timestamp)}
+                                                            </div>
+                                                        </div>
+                                                        <button
+                                                            onClick={() => navigator.clipboard.writeText(`${point.lat}, ${point.lng}`)}
+                                                            className="text-gray-400 hover:text-gray-600 transition-colors"
+                                                        >
+                                                            <Copy size={14} />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                            {activePoints.length > 50 && (
+                                                <div className="text-center text-xs text-gray-500 py-2">
+                                                    Showing first 50 of {activePoints.length} points
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {activeTab === "stops" && (
+                                        <div className="p-4 space-y-2">
+                                            {routeEvents.filter(e => e.type === "stop" || e.type === "idle").map((event, index) => (
+                                                <div key={index} className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+                                                    <div className="flex items-center gap-2 mb-2">
+                                                        <Badge variant={event.type === "idle" ? "warning" : "destructive"}>
+                                                            {event.label}
+                                                        </Badge>
+                                                        <span className="text-xs text-gray-600">
+                                                            {formatDuration(event.start, event.end)}
+                                                        </span>
+                                                    </div>
+                                                    <div className="text-xs text-gray-700 mb-1">
+                                                        {formatTime(event.start)} - {formatTime(event.end)}
+                                                    </div>
+                                                    <div className="text-xs text-gray-500">
+                                                        Location: {event.lat.toFixed(6)}, {event.lng.toFixed(6)}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                            {routeEvents.filter(e => e.type === "stop" || e.type === "idle").length === 0 && (
+                                                <div className="text-center text-gray-500 py-8">
+                                                    No stops detected
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {activeTab === "events" && (
+                                        <div className="p-4 space-y-2">
+                                            {routeEvents.map((event, index) => (
+                                                <div key={index} className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+                                                    <div className="flex items-center gap-2 mb-1">
+                                                        <Badge variant="outline">
+                                                            {event.label}
+                                                        </Badge>
+                                                        {event.speed > 0 && (
+                                                            <span className="text-xs text-gray-600">{event.speed.toFixed(0)} km/h</span>
+                                                        )}
+                                                    </div>
+                                                    <div className="text-xs text-gray-500">
+                                                        {formatTime(event.timestamp)}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                            {routeEvents.length === 0 && (
+                                                <div className="text-center text-gray-500 py-8">
+                                                    No events detected
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
 
+                {/* PLAYBACK CONTROLS BAR - STICKY BOTTOM */}
+                {routeSegments.length > 0 && (
+                    <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-gray-200 bg-white/95 backdrop-blur-sm">
+                        <div className="px-4 py-3">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <Button
+                                        onClick={() => setIsPlaying((p) => !p)}
+                                        variant="outline"
+                                        size="sm"
+                                        className="bg-white border-gray-300 text-gray-700 hover:bg-gray-50"
+                                    >
+                                        {isPlaying ? <Pause size={16} /> : <Play size={16} />}
+                                    </Button>
+                                    <Button
+                                        onClick={() => { setPlayheadIndex(0); setIsPlaying(false); }}
+                                        variant="outline"
+                                        size="sm"
+                                        className="bg-white border-gray-300 text-gray-700 hover:bg-gray-50"
+                                    >
+                                        <SkipBack size={16} />
+                                    </Button>
+                                    <Button
+                                        onClick={() => setPlayheadIndex(Math.min(playheadIndex + 10, activePoints.length - 1))}
+                                        variant="outline"
+                                        size="sm"
+                                        className="bg-white border-gray-300 text-gray-700 hover:bg-gray-50"
+                                    >
+                                        <SkipForward size={16} />
+                                    </Button>
+                                    <select
+                                        value={playbackSpeed}
+                                        onChange={(e) => setPlaybackSpeed(Number(e.target.value))}
+                                        className="bg-white border border-gray-300 text-gray-700 text-sm rounded-lg px-2 py-1 focus:border-blue-500 focus:outline-none"
+                                    >
+                                        <option value={0.5}>0.5x</option>
+                                        <option value={1}>1x</option>
+                                        <option value={2}>2x</option>
+                                        <option value={4}>4x</option>
+                                        <option value={8}>8x</option>
+                                    </select>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-xs text-gray-600">Stop Filter:</span>
+                                        {(["all", "normal", "idle", "hide"] as const).map((f) => (
+                                            <button
+                                                key={f}
+                                                onClick={() => setStopFilter(f)}
+                                                className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-colors ${
+                                                    stopFilter === f
+                                                        ? "bg-blue-600 text-white"
+                                                        : "bg-white text-gray-600 border border-gray-300 hover:bg-gray-50"
+                                                }`}
+                                            >
+                                                {f === "all" ? "All" : f === "normal" ? "Normal" : f === "idle" ? "Idle" : "Hide"}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div className="text-xs text-gray-600">
+                                    {playheadIndex} / {activePoints.length} points • {playbackSpeed}x speed
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* MOBILE PANEL */}
+                <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40">
+                    <Button
+                        onClick={() => setIsMobilePanelOpen(!isMobilePanelOpen)}
+                        className="w-full rounded-t-none bg-blue-600 hover:bg-blue-700 text-white"
+                    >
+                        <List className="w-4 h-4 mr-2" />
+                        {isMobilePanelOpen ? "Hide" : "Show"} Details
+                    </Button>
+                    {isMobilePanelOpen && (
+                        <div className="bg-white border-t border-gray-200 max-h-96 overflow-y-auto">
+                            {/* Mobile tabs and content similar to desktop */}
+                            <div className="border-b border-gray-200">
+                                <div className="flex">
+                                    <button
+                                        onClick={() => setActiveTab("points")}
+                                        className={`flex-1 px-4 py-3 text-xs font-semibold border-b-2 transition-colors ${
+                                            activeTab === "points"
+                                                ? "text-blue-600 border-blue-600"
+                                                : "text-gray-500 border-transparent hover:text-gray-700"
+                                        }`}
+                                    >
+                                        Points
+                                    </button>
+                                    <button
+                                        onClick={() => setActiveTab("stops")}
+                                        className={`flex-1 px-4 py-3 text-xs font-semibold border-b-2 transition-colors ${
+                                            activeTab === "stops"
+                                                ? "text-blue-600 border-blue-600"
+                                                : "text-gray-500 border-transparent hover:text-gray-700"
+                                        }`}
+                                    >
+                                        Stops
+                                    </button>
+                                    <button
+                                        onClick={() => setActiveTab("events")}
+                                        className={`flex-1 px-4 py-3 text-xs font-semibold border-b-2 transition-colors ${
+                                            activeTab === "events"
+                                                ? "text-blue-600 border-blue-600"
+                                                : "text-gray-500 border-transparent hover:text-gray-700"
+                                        }`}
+                                    >
+                                        Events
+                                    </button>
+                                </div>
+                            </div>
+                            {/* Mobile tab content would go here - simplified version */}
+                            <div className="p-4">
+                                <div className="text-center text-gray-500">
+                                    {activeTab} content - {activePoints.length} points available
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
             </div>
         </ApiErrorBoundary>
     );
@@ -594,13 +857,13 @@ export default function HistoryPage() {
 
 function SummaryCard({ label, value, icon: Icon }: { label: string; value: string; icon: any }) {
     return (
-        <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-3 shadow-lg shadow-black/15 flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-slate-800 flex items-center justify-center text-slate-200">
+        <div className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm flex items-center gap-3">
+            <div className="h-10 w-10 rounded-xl bg-gray-100 flex items-center justify-center text-gray-600">
                 <Icon size={18} />
             </div>
             <div>
-                <div className="text-[11px] uppercase tracking-[0.18em] text-slate-400">{label}</div>
-                <div className="text-lg font-bold text-white">{value}</div>
+                <div className="text-[11px] uppercase tracking-[0.18em] text-gray-500">{label}</div>
+                <div className="text-lg font-bold text-gray-900">{value}</div>
             </div>
         </div>
     );
