@@ -276,9 +276,11 @@ const GpsLiveDataController = {
 
   getLiveData: async (req, res) => {
     const filter = {};
-    // 🔐 ORG SCOPE FIX
-    if (req.user.role !== "superadmin" && req.orgScope !== "ALL") {
-      filter.organizationId = { $in: req.orgScope };
+    // 🔐 ORG SCOPE FIX (handles unauthenticated/system calls too)
+    const role = req.user?.role;
+    const scope = req.orgScope;
+    if (role && role !== "superadmin" && scope && scope !== "ALL") {
+      filter.organizationId = { $in: scope };
     }
     const data = await GpsLiveData.find(filter)
       .populate("vehicleId")
@@ -289,8 +291,10 @@ const GpsLiveDataController = {
   getByVehicle: async (req, res) => {
     const filter = { vehicleId: req.params.vehicleId };
     // 🔐 ORG SCOPE FIX
-    if (req.user.role !== "superadmin" && req.orgScope !== "ALL") {
-      filter.organizationId = { $in: req.orgScope };
+    const role = req.user?.role;
+    const scope = req.orgScope;
+    if (role && role !== "superadmin" && scope && scope !== "ALL") {
+      filter.organizationId = { $in: scope };
     }
     const data = await GpsLiveData.findOne(filter);
     if (!data) return res.status(404).json({ status: false, message: "Details not found.." });
@@ -300,8 +304,10 @@ const GpsLiveDataController = {
   getByDevice: async (req, res) => {
     const filter = { gpsDeviceId: req.params.gpsDeviceId };
     // 🔐 ORG SCOPE FIX
-    if (req.user.role !== "superadmin" && req.orgScope !== "ALL") {
-      filter.organizationId = { $in: req.orgScope };
+    const role = req.user?.role;
+    const scope = req.orgScope;
+    if (role && role !== "superadmin" && scope && scope !== "ALL") {
+      filter.organizationId = { $in: scope };
     }
     const data = await GpsLiveData.findOne(filter);
     if (!data) return res.status(404).json({ status: false });
@@ -311,8 +317,10 @@ const GpsLiveDataController = {
   getByImei: async (req, res) => {
     const filter = { imei: req.params.imei };
     // 🔐 ORG SCOPE FIX
-    if (req.user.role !== "superadmin" && req.orgScope !== "ALL") {
-      filter.organizationId = { $in: req.orgScope };
+    const role = req.user?.role;
+    const scope = req.orgScope;
+    if (role && role !== "superadmin" && scope && scope !== "ALL") {
+      filter.organizationId = { $in: scope };
     }
     const data = await GpsLiveData.findOne(filter);
     if (!data) return res.status(404).json({ status: false });

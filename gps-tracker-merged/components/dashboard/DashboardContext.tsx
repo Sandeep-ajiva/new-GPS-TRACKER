@@ -7,6 +7,8 @@ import type { Vehicle } from "@/lib/vehicles"; // Assuming this is the correct p
 interface DashboardContextProps {
     selectedVehicle: Vehicle | null;
     setSelectedVehicle: (vehicle: Vehicle | null) => void;
+    focusKey: number;
+    bumpFocusKey: () => void;
 }
 
 // Create the context
@@ -15,9 +17,12 @@ const DashboardContext = createContext<DashboardContextProps | undefined>(undefi
 // Create the provider component
 export const DashboardProvider = ({ children }: { children: ReactNode }) => {
     const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
+    const [focusKey, setFocusKey] = useState(0);
+
+    const bumpFocusKey = () => setFocusKey((k) => k + 1);
 
     return (
-        <DashboardContext.Provider value={{ selectedVehicle, setSelectedVehicle }}>
+        <DashboardContext.Provider value={{ selectedVehicle, setSelectedVehicle, focusKey, bumpFocusKey }}>
             {children}
         </DashboardContext.Provider>
     );

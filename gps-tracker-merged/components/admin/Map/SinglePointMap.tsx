@@ -1,10 +1,11 @@
 "use client";
 
 import { DivIcon, LatLngExpression } from "leaflet";
-import { MapContainer, Marker, Popup, TileLayer } from "react-leaflet";
+import { MapContainer, Marker, Popup } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import "leaflet-defaulticon-compatibility/dist/leaflet-defaulticon-compatibility.css";
 import "leaflet-defaulticon-compatibility";
+import MapTileLayer from "./MapTileLayer";
 
 type SinglePointMapProps = {
   position: { lat: number; lng: number };
@@ -22,11 +23,8 @@ export default function SinglePointMap({ position, label }: SinglePointMapProps)
   const center = position as LatLngExpression;
   return (
     <div className="relative h-full w-full overflow-hidden rounded-xl bg-slate-50">
-      <MapContainer center={center} zoom={12} className="h-full w-full">
-        <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        />
+      <MapContainer center={center} zoom={12} className="h-full w-full" attributionControl={false}>
+        <MapTileLayer satellite={false} />
         <Marker position={position} icon={markerIcon}>
           {label ? (
             <Popup>

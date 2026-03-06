@@ -1,10 +1,11 @@
 "use client";
 
 import { DivIcon } from "leaflet";
-import { MapContainer, Marker, Popup, TileLayer } from "react-leaflet";
+import { MapContainer, Marker, Popup } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import "leaflet-defaulticon-compatibility/dist/leaflet-defaulticon-compatibility.css";
 import "leaflet-defaulticon-compatibility";
+import MapTileLayer from "./MapTileLayer";
 
 type Props = {
   center?: [number, number];
@@ -25,11 +26,8 @@ export default function DashboardMap({ center, zoom = 12 }: Props) {
 
   return (
     <div className="relative h-full w-full overflow-hidden bg-slate-50">
-      <MapContainer center={markerPosition} zoom={zoom} className="h-full w-full">
-        <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        />
+      <MapContainer center={markerPosition} zoom={zoom} className="h-full w-full" attributionControl={false}>
+        <MapTileLayer satellite={false} />
         <Marker position={markerPosition} icon={markerIcon}>
           <Popup>
             <div className="text-sm font-semibold text-slate-900">
