@@ -1,6 +1,7 @@
 import { baseApi } from "./baseApi";
 
 export const organizationApi = baseApi.injectEndpoints({
+  overrideExisting: true,
   endpoints: (builder) => ({
     /* =========================
        READ
@@ -8,13 +9,19 @@ export const organizationApi = baseApi.injectEndpoints({
 
     // 1️⃣ Get organizations (scoped)
     getOrganizations: builder.query({
-      query: () => "/organizations",
+      query: (params) => ({
+        url: "/organizations",
+        params,
+      }),
       providesTags: ["Organization"],
     }),
 
     // 2️⃣ Get sub-organizations
     getSubOrganizations: builder.query({
-      query: () => "/organizations/sub",
+      query: (params) => ({
+        url: "/organizations/sub",
+        params,
+      }),
       providesTags: ["Organization"],
     }),
 
@@ -54,12 +61,12 @@ export const organizationApi = baseApi.injectEndpoints({
 
     // 6️⃣ Update organization
     updateOrganization: builder.mutation({
-      query: ({ id, ...body }) => ({
+      query: ({ id, body }) => ({
         url: `/organizations/${id}`,
         method: "PUT",
         body,
       }),
-      invalidatesTags: ["Organization"],
+      invalidatesTags: ["Organization", "User"],
     }),
 
     /* =========================

@@ -1,3 +1,5 @@
+import type { ZodSchema } from "zod";
+
 export type FieldType =
   | "text"
   | "email"
@@ -30,6 +32,7 @@ export interface FormField {
   groups?: FormOptionGroup[]; // For grouped select type
   rows?: number; // For textarea type
   icon?: React.ReactNode;
+  helperText?: string;
   // Optional UI behavior hooks
   disabled?: boolean;
   onChange?: (value: string) => void;
@@ -42,6 +45,7 @@ export interface DynamicModalProps {
   description?: string;
   fields: FormField[];
   initialData?: Record<string, string | number | boolean | File>;
+  schema?: ZodSchema<any>;
   onSubmit: (
     data: Record<string, string | number | boolean | File>,
   ) => Promise<void> | void;

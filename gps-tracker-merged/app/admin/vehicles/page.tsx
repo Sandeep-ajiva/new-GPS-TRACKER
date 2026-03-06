@@ -3,9 +3,11 @@
 import { useState, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 import Table from "@/components/ui/Table";
+import Pagination from "@/components/ui/Pagination";
 import ApiErrorBoundary from "@/components/admin/ErrorBoundary/ApiErrorBoundary";
 import { Plus, Edit, Trash2, Filter, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { z } from "zod";
 import {
   useGetVehiclesQuery,
   useCreateVehicleMutation,
@@ -71,19 +73,23 @@ export default function VehiclesPage() {
 
   const canSelectOrg = isSuperAdmin || isRootOrgAdmin;
   const searchQueryParam = searchParams.get("search");
+  const [page, setPage] = useState(1);
+  const LIMIT = 10;
 
   // API Hooks
   const { data: vehData, isLoading: isVehLoading, refetch: refetchVehicles } =
-    useGetVehiclesQuery(undefined, { refetchOnMountOrArgChange: true });
+    useGetVehiclesQuery({ page: page - 1, limit: LIMIT }, { refetchOnMountOrArgChange: true });
+  const { data: allVehData } =
+    useGetVehiclesQuery({ page: 0, limit: 1000 }, { refetchOnMountOrArgChange: true });
   const { data: orgData, isLoading: isOrgLoading } =
-    useGetOrganizationsQuery(undefined, {
+    useGetOrganizationsQuery({ page: 0, limit: 1000 }, {
       skip: !(isSuperAdmin || isRootOrgAdmin), // 🔐 Only superadmin or root-org-admin needs full org list
       refetchOnMountOrArgChange: true,
     });
   const { data: devData, isLoading: isDevLoading } =
-    useGetGpsDevicesQuery(undefined, { refetchOnMountOrArgChange: true });
+    useGetGpsDevicesQuery({ page: 0, limit: 1000 }, { refetchOnMountOrArgChange: true });
   const { data: driverData, isLoading: isDriverLoading } =
-    useGetDriversQuery(undefined);
+    useGetDriversQuery({ page: 0, limit: 1000 });
 
   const [createVehicle, { isLoading: isCreating }] = useCreateVehicleMutation();
   const [updateVehicle, { isLoading: isUpdating }] = useUpdateVehicleMutation();
@@ -95,6 +101,10 @@ export default function VehiclesPage() {
   const [unassignDriver] = useUnassignDriverMutation();
 
   const vehicles = useMemo(() => (vehData?.data as Vehicle[]) || [], [vehData]);
+  const allVehicles = useMemo(
+    () => (allVehData?.data as Vehicle[]) || vehicles,
+    [allVehData, vehicles],
+  );
   const organizations = useMemo(
     () => (orgData?.data as { _id: string; name: string; parentOrganizationId?: string | null }[]) || [],
     [orgData],
@@ -210,7 +220,7 @@ export default function VehiclesPage() {
   // Device is available if NOT used by ANY vehicle, OR if it is used by CURRENT editing vehicle
   const getAvailableDevices = (currentVehicleId?: string) => {
     const assignedDeviceIds = new Set(
-      vehicles
+      allVehicles
         .filter((v) => v._id !== currentVehicleId) // Exclude current vehicle's assignment
         .map((v) => getRefId((v as any).deviceId))
         .filter(Boolean) as string[],
@@ -224,7 +234,7 @@ export default function VehiclesPage() {
 
     // Drivers already assigned to some vehicle (excluding current editing vehicle)
     const assignedDriverIds = new Set(
-      vehicles
+      allVehicles
         .filter((v) => !editingVehicle || v._id !== editingVehicle._id)
         .map((v) => getRefId((v as any).driverId))
         .filter(Boolean) as string[],
@@ -247,7 +257,7 @@ export default function VehiclesPage() {
 
       return false;
     });
-  }, [drivers, vehicles, editingVehicle, effectiveOrgIdForForm]);
+  }, [drivers, allVehicles, editingVehicle, effectiveOrgIdForForm]);
 
   // 🔐 Calculate available devices scoped by organization and assignment
   const getAvailableDevicesForForm = (currentVehicleId?: string) => {
@@ -538,6 +548,30 @@ export default function VehiclesPage() {
     },
   ], [organizations, availableDriversForForm, vehicles, editingVehicle, effectiveOrgIdForForm, formDeviceId]);
 
+  const vehicleSchema = useMemo(() => {
+    const base = z.object({
+      organizationId: z.string().optional(),
+      vehicleType: z.enum(["car", "truck", "bus", "bike", "other"]),
+      vehicleNumber: z.string().min(1, "Vehicle number is required"),
+      model: z.string().optional(),
+      year: z.string().optional(),
+      color: z.string().optional(),
+      status: z.enum(["active", "inactive"]),
+      runningStatus: z.enum(["running", "idle", "stopped", "inactive"]).optional(),
+      deviceId: z.string().optional(),
+      driverId: z.string().optional(),
+    });
+
+    return base.superRefine((val, ctx) => {
+      if (canSelectOrg && !val.organizationId) {
+        ctx.addIssue({ code: "custom", path: ["organizationId"], message: "Organization is required" });
+      }
+      if (val.year && !/^\d{4}$/.test(String(val.year))) {
+        ctx.addIssue({ code: "custom", path: ["year"], message: "Year must be 4 digits" });
+      }
+    });
+  }, [canSelectOrg]);
+
 
   const handleAssignDevice = async (deviceId: string) => {
     if (!selectedVehicleForAssignment) return;
@@ -718,6 +752,13 @@ export default function VehiclesPage() {
   ];
 
   const isLoading = isVehLoading || isOrgLoading || isDevLoading || isDriverLoading;
+  const totalRecords =
+    (vehData as any)?.pagination?.totalrecords ??
+    (vehData as any)?.total ??
+    vehicles.length;
+  const totalPages =
+    (vehData as any)?.pagination?.totalPages ??
+    Math.max(1, Math.ceil(totalRecords / LIMIT));
 
   if (isLoading) {
     return (
@@ -823,7 +864,7 @@ export default function VehiclesPage() {
                 </select>
               </div>
               {/* 🔐 ORG CONTEXT UPDATE */}
-              {isSuperAdmin && (
+              {(isSuperAdmin || isRootOrgAdmin) && (
                 <div>
                   <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
                     Organization
@@ -939,14 +980,22 @@ export default function VehiclesPage() {
         )}
 
         <Table columns={columns} data={filteredVehicles} loading={isLoading} />
+        <Pagination
+          page={page}
+          totalPages={totalPages}
+          totalItems={totalRecords}
+          onPageChange={setPage}
+          disabled={isVehLoading}
+        />
 
         {canCreateVehicle && (
           <DynamicModal
             isOpen={isPopupOpen("vehicleModal")}
             onClose={closeModal}
-            title={editingVehicle ? "Edit Vehicle" : "New Vehicle"}
+            title={editingVehicle ? "Edit Vehicle" : "  "}
             description="Configure vehicle details and fleet assignment."
             fields={vehicleFormFields}
+            schema={vehicleSchema}
             initialData={
               editingVehicle
                 ? {

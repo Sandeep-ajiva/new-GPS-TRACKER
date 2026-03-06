@@ -1,6 +1,7 @@
 import { baseApi } from "./baseApi";
 
 export const usersApi = baseApi.injectEndpoints({
+  overrideExisting: true,
   endpoints: (builder) => ({
     getUsers: builder.query({
       query: (params) => ({
@@ -14,7 +15,10 @@ export const usersApi = baseApi.injectEndpoints({
       providesTags: ["User"],
     }),
     getManagerByOrganization: builder.query({
-      query: (organizationId) => `/users/manager/${organizationId}`,
+      query: (params) => ({
+        url: "/users/by-organization",
+        params,
+      }),
       providesTags: ["User"],
     }),
 

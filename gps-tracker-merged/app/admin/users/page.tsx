@@ -3,9 +3,11 @@
 import { useState, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 import Table from "@/components/ui/Table";
+import Pagination from "@/components/ui/Pagination";
 import ApiErrorBoundary from "@/components/admin/ErrorBoundary/ApiErrorBoundary";
 import { Plus, Edit, Trash2, Filter, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { z } from "zod";
 import {
   useGetUsersQuery,
   useGetManagerByOrganizationQuery,
@@ -23,7 +25,7 @@ import { capitalizeFirstLetter } from "../Helpers/CapitalizeFirstLetter";
 import { DynamicModal } from "@/components/common";
 import { FormField } from "@/lib/formTypes";
 
-import ImportExportButton from "@/components/admin/import-export/ImportExportButton";
+// import ImportExportButton from "@/components/admin/import-export/ImportExportButton";
 import {
   User as UserIcon,
   Mail,
@@ -49,11 +51,13 @@ export default function UsersPage() {
   const { openPopup, closePopup, isPopupOpen } = usePopups();
 
   // 🔐 ORG CONTEXT UPDATE
-  const { orgId, isSuperAdmin, isRootOrgAdmin, isSubOrgAdmin } = useOrgContext();
+  const { user, orgId, isSuperAdmin, isRootOrgAdmin, isSubOrgAdmin } = useOrgContext();
   const searchParams = useSearchParams();
   const searchQueryParam = searchParams.get("search");
 
   const [showFilters, setShowFilters] = useState(false);
+  const [page, setPage] = useState(1);
+  const LIMIT = 10;
 
   // 🔐 ORG CONTEXT UPDATE
   const canCreateUser = isSuperAdmin || isRootOrgAdmin || isSubOrgAdmin;
@@ -67,6 +71,9 @@ export default function UsersPage() {
     role: "",
     status: "",
     organizationId: "",
+    organizationName: "",
+    startDate: "",
+    endDate: "",
   });
 
   const [editingUser, setEditingUser] = useState<User | null>(null);
@@ -75,7 +82,7 @@ export default function UsersPage() {
   // If organizationId filter is set, use the dedicated endpoint
   // Otherwise, fetch all users (for superadmin)
   const { data: usersData, isLoading: isUsersLoading, refetch: refetchUsers } = useGetUsersQuery(
-    undefined,
+    { page: page - 1, limit: LIMIT },
     {
       skip: !!filters.organizationId, // Skip if filtering by org
       refetchOnMountOrArgChange: true,
@@ -83,13 +90,13 @@ export default function UsersPage() {
   );
 
   const { data: orgUsersData, isLoading: isOrgUsersLoading, refetch: refetchOrgUsers } =
-    useGetManagerByOrganizationQuery(filters.organizationId, {
+    useGetManagerByOrganizationQuery({ organizationId: filters.organizationId, page: page - 1, limit: LIMIT }, {
       skip: !filters.organizationId, // Skip if NOT filtering by org
       refetchOnMountOrArgChange: true,
     });
 
   const { data: orgData, isLoading: isOrgLoading } =
-    useGetOrganizationsQuery(undefined, {
+    useGetOrganizationsQuery({ page: 0, limit: 1000 }, {
       refetchOnMountOrArgChange: true,
     });
 
@@ -120,6 +127,19 @@ export default function UsersPage() {
   const filteredUsers = useMemo(() => {
     let filtered = users;
 
+    // 🔐 ACCESS CONTROL REFINEMENT
+    if (isRootOrgAdmin) {
+      filtered = filtered.filter((u) => {
+        // 1. Exclude self
+        const isSelf = user?._id && u._id === user._id;
+        // 2. Exclude drivers
+        const isDriver = u.role === "driver";
+        // 3. Show only admins/managers
+        const isManagerial = u.role === "admin" || u.role === "manager";
+        return !isSelf && !isDriver && isManagerial;
+      });
+    }
+
     if (filters.name) {
       filtered = filtered.filter((u) =>
         `${u.firstName} ${u.lastName}`
@@ -148,8 +168,18 @@ export default function UsersPage() {
       filtered = filtered.filter((u) => u.status === filters.status);
     }
 
+    // Filter by organization name
+    if (filters.organizationName) {
+      filtered = filtered.filter((u) => {
+        const orgName = typeof u.organizationId === "object"
+          ? u.organizationId?.name || ""
+          : organizations.find((o) => o._id === u.organizationId)?.name || "";
+        return orgName.toLowerCase().includes(filters.organizationName.toLowerCase());
+      });
+    }
+
     return filtered;
-  }, [users, filters.name, filters.email, filters.mobile, filters.role, filters.status]);
+  }, [users, filters.name, filters.email, filters.mobile, filters.role, filters.status, filters.organizationName, isRootOrgAdmin, orgId, user, organizations]);
 
   const handleSubmit = async (
     data: Record<string, string | number | boolean | File>,
@@ -208,6 +238,7 @@ export default function UsersPage() {
       type: "tel",
       required: true,
       placeholder: "+1 234 567 890",
+      helperText: "Include country code",
       icon: <Phone size={14} className="text-slate-500" />,
     },
     // Password only on creation
@@ -230,8 +261,6 @@ export default function UsersPage() {
       required: true,
       options: [
         { label: "Admin", value: "admin" },
-        { label: "Manager", value: "manager" },
-        { label: "Driver", value: "driver" },
         { label: "Viewer", value: "viewer" },
       ],
 
@@ -262,6 +291,35 @@ export default function UsersPage() {
       }
     ] : []),
   ], [editingUser, organizations, isSuperAdmin]);
+
+  const userSchema = useMemo(() => {
+    const base = z.object({
+      firstName: z.string().min(1, "First name is required"),
+      lastName: z.string().min(1, "Last name is required"),
+      email: z.string().email("Valid email is required"),
+      mobile: z.string().regex(/^\+?[1-9]\d{7,14}$/, "Enter valid mobile with country code"),
+      role: z.enum(["admin", "manager", "driver", "viewer", "superadmin"]),
+      status: z.enum(["active", "inactive"]),
+      organizationId: z.string().optional(),
+      passwordHash: z.string().optional(),
+    });
+
+    if (!editingUser) {
+      return base.extend({
+        passwordHash: z.string().min(6, "Password is required (min 6)"),
+      }).superRefine((val, ctx) => {
+        if (isSuperAdmin && !val.organizationId) {
+          ctx.addIssue({ code: "custom", path: ["organizationId"], message: "Organization is required" });
+        }
+      });
+    }
+
+    return base.superRefine((val, ctx) => {
+      if (isSuperAdmin && !val.organizationId) {
+        ctx.addIssue({ code: "custom", path: ["organizationId"], message: "Organization is required" });
+      }
+    });
+  }, [editingUser, isSuperAdmin]);
 
 
 
@@ -301,6 +359,9 @@ export default function UsersPage() {
       role: "",
       status: "",
       organizationId: "",
+      organizationName: "",
+      startDate: "",
+      endDate: "",
     });
   };
 
@@ -369,6 +430,14 @@ export default function UsersPage() {
   ];
 
   const isLoading = isUsersLoading || isOrgUsersLoading || isOrgLoading;
+  const activeData = filters.organizationId ? orgUsersData : usersData;
+  const totalRecords =
+    (activeData as any)?.pagination?.totalrecords ??
+    (activeData as any)?.total ??
+    users.length;
+  const totalPages =
+    (activeData as any)?.pagination?.totalPages ??
+    Math.max(1, Math.ceil(totalRecords / LIMIT));
 
   if (isLoading) {
     return (
@@ -392,7 +461,7 @@ export default function UsersPage() {
             </p>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row">
-            <ImportExportButton
+            {/* <ImportExportButton
               moduleName="users"
               importUrl="/importexport/import/users"
               exportUrl="/importexport/export/users"
@@ -404,8 +473,9 @@ export default function UsersPage() {
                 "role",
                 "status",
                 "organizationId",
+                "password",
               ]}
-              requiredFields={["firstName", "lastName", "email", "mobile", "role"]}
+              requiredFields={["firstName", "lastName", "email", "mobile", "role", "password"]}
               filters={{
                 name: filters.name,
                 email: filters.email,
@@ -413,12 +483,14 @@ export default function UsersPage() {
                 role: filters.role,
                 status: filters.status,
                 organizationId: filters.organizationId,
+                from: filters.startDate,
+                to: filters.endDate,
               }}
               onCompleted={() => {
                 void refetchUsers();
                 void refetchOrgUsers();
               }}
-            />
+            /> */}
             <button
               onClick={() => setShowFilters(!showFilters)}
               className="rounded-xl bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-widest text-slate-700 shadow-sm transition hover:bg-slate-200"
@@ -472,6 +544,23 @@ export default function UsersPage() {
                   placeholder="Search mobile"
                 />
               </div>
+               {/* 🔐 ORG CONTEXT UPDATE */}
+              {/* Organization Name Text Search - visible for all admins */}
+              {(isSuperAdmin || isRootOrgAdmin) && (
+                <div>
+                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
+                    Organization Name
+                  </label>
+                  <input
+                    className="w-full rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
+                    value={filters.organizationName}
+                    onChange={(e) =>
+                      setFilters({ ...filters, organizationName: e.target.value })
+                    }
+                    placeholder="Search by organization"
+                  />
+                </div>
+              )}
               <div>
                 <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
                   Role
@@ -485,8 +574,6 @@ export default function UsersPage() {
                 >
                   <option value="">All Roles</option>
                   <option value="admin">Admin</option>
-                  <option value="manager">Manager</option>
-                  <option value="driver">Driver</option>
                   <option value="viewer">Viewer</option>
                 </select>
               </div>
@@ -506,7 +593,33 @@ export default function UsersPage() {
                   <option value="inactive">Inactive</option>
                 </select>
               </div>
-              {/* 🔐 ORG CONTEXT UPDATE */}
+              <div>
+                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
+                  Start Date
+                </label>
+                <input
+                  type="date"
+                  className="w-full rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
+                  value={filters.startDate}
+                  onChange={(e) =>
+                    setFilters({ ...filters, startDate: e.target.value })
+                  }
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
+                  End Date
+                </label>
+                <input
+                  type="date"
+                  className="w-full rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
+                  value={filters.endDate}
+                  onChange={(e) =>
+                    setFilters({ ...filters, endDate: e.target.value })
+                  }
+                />
+              </div>
+              {/* Organization select dropdown - SuperAdmin only */}
               {isSuperAdmin && (
                 <div>
                   <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
@@ -571,6 +684,13 @@ export default function UsersPage() {
         )}
 
         <Table columns={columns} data={filteredUsers} loading={isLoading} />
+        <Pagination
+          page={page}
+          totalPages={totalPages}
+          totalItems={totalRecords}
+          onPageChange={setPage}
+          disabled={isUsersLoading || isOrgUsersLoading}
+        />
 
         {canCreateUser && (
           <DynamicModal
@@ -579,6 +699,7 @@ export default function UsersPage() {
             title={editingUser ? "Edit User" : "New User"}
             description="Define roles and assign organization scope."
             fields={userFormFields}
+            schema={userSchema}
             initialData={
               editingUser
                 ? {

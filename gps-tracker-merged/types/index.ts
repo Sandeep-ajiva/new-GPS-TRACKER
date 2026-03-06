@@ -3,7 +3,13 @@ export interface Organization {
     name: string;
     email: string;
     phone: string;
-    address: string;
+    address: string | {
+        addressLine?: string;
+        city?: string;
+        state?: string;
+        country?: string;
+        pincode?: string;
+    };
     logo?: string;
     contactPerson?: string;
     status: string;

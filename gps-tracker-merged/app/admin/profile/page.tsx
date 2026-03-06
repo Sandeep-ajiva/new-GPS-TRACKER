@@ -1,16 +1,18 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { User, Mail, Phone, Building, Save, Loader2 } from "lucide-react";
+import { User, Mail, Phone, Building, Save, Loader2, Camera, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import ApiErrorBoundary from "@/components/admin/ErrorBoundary/ApiErrorBoundary";
-import Validator from "../Helpers/validators";
 import { useGetMeQuery, useUpdateUserMutation } from "@/redux/api/usersApi";
-import { capitalizeFirstLetter } from "../Helpers/CapitalizeFirstLetter";
+import { useUpdateOrganizationMutation } from "@/redux/api/organizationApi";
+import { z } from "zod";
+import PhoneInputField from "@/components/common/PhoneInputField";
 
 export default function ProfilePage() {
     const { data: userData, isLoading, error } = useGetMeQuery(undefined, { refetchOnMountOrArgChange: true });
     const [updateUser, { isLoading: isUpdating }] = useUpdateUserMutation();
+    const [updateOrganization, { isLoading: isUpdatingOrg }] = useUpdateOrganizationMutation();
 
     const user = userData?.data;
 
@@ -34,29 +36,33 @@ export default function ProfilePage() {
         }
     }, [user]);
 
-    const Rules = {
-        firstName: { required: true, errorMessage: "First Name is required." },
-        lastName: { required: true, errorMessage: "Last Name is required." },
-        email: { required: true, type: "email" as const, errorMessage: "Valid Email is required." },
-        mobile: { required: true, errorMessage: "Mobile is required." },
-    };
+    const profileSchema = z.object({
+        firstName: z.string().min(1, "First Name is required."),
+        lastName: z.string().min(1, "Last Name is required."),
+        email: z.string().email("Valid Email is required."),
+        mobile: z.string().regex(/^\+?[1-9]\d{7,14}$/, "Enter valid mobile with country code"),
+    });
 
-    const validator = new Validator(Rules);
-
-    const handleBlur = async (name: string, value: any) => {
-        const validationErrors = await validator.validateFormField(name, value);
+    const handleBlur = (name: string, value: any) => {
+        const fieldSchema = profileSchema.pick({ [name]: true } as any);
+        const result = fieldSchema.safeParse({ [name]: value });
         setErrors((prev: any) => ({
             ...prev,
-            [name]: validationErrors[name]
+            [name]: result.success ? "" : result.error.issues[0]?.message || "Invalid value",
         }));
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
-        const validationErrors = await validator.validate(formData);
-        if (Object.keys(validationErrors).length > 0) {
-            setErrors(validationErrors);
+        const parsed = profileSchema.safeParse(formData);
+        if (!parsed.success) {
+            const nextErrors: any = {};
+            parsed.error.issues.forEach((issue) => {
+                const key = issue.path[0] as string;
+                if (!nextErrors[key]) nextErrors[key] = issue.message;
+            });
+            setErrors(nextErrors);
             toast.error("Please fix profile errors");
             return;
         }
@@ -97,47 +103,82 @@ export default function ProfilePage() {
     return (
         <ApiErrorBoundary hasError={false}>
             <div className="max-w-4xl space-y-8 pb-10">
-                <div>
-                    <h1 className="text-3xl font-black text-slate-900 tracking-tight">My Profile</h1>
-                    <p className="text-slate-500 text-sm font-bold mt-1">Manage your personal information and account settings.</p>
-                </div>
-
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                    {/* ID Card / Summary */}
+                    {/* Sidebar: Branding & Summary */}
                     <div className="md:col-span-1 space-y-6">
-                        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 text-center">
-                            <div className="w-24 h-24 bg-slate-100 rounded-full mx-auto mb-4 flex items-center justify-center text-slate-300">
-                                <User size={48} />
+                        {user?.organizationId && (
+                            <div className="bg-white p-6 rounded-2xl text-slate-900 shadow-sm border border-slate-200">
+                                <div className="flex items-center gap-3 mb-4 text-slate-500">
+                                    <Building size={16} />
+                                    <span className="text-xs font-black uppercase tracking-widest">Organization Branding</span>
+                                </div>
+
+                                {/* Logo Management */}
+                                <div className="mb-6 flex flex-col items-center">
+                                    <div className="relative group">
+                                        <div className="w-40 h-40 rounded-2xl bg-slate-50 border-2 border-slate-100 overflow-hidden flex items-center justify-center relative shadow-inner">
+                                            {user.organizationId.logo ? (
+                                                <img
+                                                    src={`http://localhost:5000${user.organizationId.logo}`}
+                                                    alt="Organization Logo"
+                                                    className="w-full h-full object-contain p-3"
+                                                />
+                                            ) : (
+                                                <div className="text-slate-200">
+                                                    <Building size={48} />
+                                                </div>
+                                            )}
+
+                                            {/* Restrict Editing to Main Admin (No parentOrganizationId or SuperAdmin) */}
+                                            {(!user.organizationId.parentOrganizationId || user.role === 'superadmin') ? (
+                                                <label className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
+                                                    <input
+                                                        type="file"
+                                                        className="hidden"
+                                                        accept="image/*"
+                                                        onChange={async (e) => {
+                                                            const file = e.target.files?.[0];
+                                                            if (!file) return;
+                                                            const formData = new FormData();
+                                                            formData.append('logo', file);
+                                                            try {
+                                                                await updateOrganization({ id: user.organizationId._id, body: formData }).unwrap();
+                                                                toast.success("Logo updated successfully");
+                                                            } catch (err: any) {
+                                                                toast.error(err?.data?.message || "Logo update failed");
+                                                            }
+                                                        }}
+                                                    />
+                                                    <Camera className="text-white" size={32} />
+                                                </label>
+                                            ) : null}
+                                        </div>
+                                        <div className="mt-4 text-center">
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                                                {(!user.organizationId.parentOrganizationId || user.role === 'superadmin') ? "Change Logo" : "Official Logo"}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <h3 className="text-xl font-bold text-center">{user.organizationId.name}</h3>
                             </div>
+                        )}
+
+                        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 text-center">
                             <h2 className="text-lg font-black text-slate-900">{user?.firstName} {user?.lastName}</h2>
                             <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">{user?.role}</p>
 
-                            <div className="mt-6 flex justify-center">
+                            <div className="mt-4 flex justify-center">
                                 <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${user?.status === 'active' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
                                     {user?.status || "Unknown"}
                                 </span>
                             </div>
                         </div>
-
-                        {user?.organizationId && (
-                            <div className="bg-white p-6 rounded-2xl text-slate-900 shadow-sm border border-slate-200">
-                                <div className="flex items-center gap-3 mb-4 text-slate-500">
-                                    <Building size={16} />
-                                    <span className="text-xs font-black uppercase tracking-widest">Organization</span>
-                                </div>
-                                <h3 className="text-xl font-bold">{user.organizationId.name || "My Organization"}</h3>
-                                <p className="text-xs text-slate-500 mt-2">{user.organizationId.email}</p>
-                            </div>
-                        )}
                     </div>
 
                     {/* Form */}
                     <div className="md:col-span-2">
                         <form onSubmit={handleSubmit} className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100 space-y-6">
-                            <h3 className="text-lg font-black text-slate-900 mb-6 uppercase tracking-widest flex items-center gap-2">
-                                <span className="w-2 h-2 bg-blue-600 rounded-full"></span> Basic Details
-                            </h3>
-
                             <div className="grid grid-cols-2 gap-6">
                                 <div>
                                     <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">First Name</label>
@@ -178,12 +219,11 @@ export default function ProfilePage() {
 
                             <div>
                                 <label className="flex text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 icon-label items-center gap-2"><Phone size={12} /> Mobile Number</label>
-                                <input
-                                    type="text"
-                                    className={`w-full px-4 py-3 rounded-xl bg-slate-50 border ${errors.mobile ? 'border-red-500' : 'border-transparent'} text-sm font-bold text-slate-900 focus:bg-white focus:ring-2 focus:ring-slate-900/10 transition-all outline-none`}
+                                <PhoneInputField
                                     value={formData.mobile}
-                                    onChange={e => setFormData({ ...formData, mobile: e.target.value })}
-                                    onBlur={e => handleBlur("mobile", e.target.value)}
+                                    onChange={(val) => setFormData({ ...formData, mobile: val })}
+                                    placeholder="Enter phone number"
+                                    required
                                 />
                                 {errors.mobile && <p className="text-red-500 text-[10px] mt-1 font-bold">{errors.mobile}</p>}
                             </div>

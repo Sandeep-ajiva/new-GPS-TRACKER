@@ -169,10 +169,13 @@ export default function Header({ onOpenSidebar }: HeaderProps) {
         }
     };
 
-    // User Avatar Initials
-    const userInitials = adminUser.name
-        ? adminUser.name.split(" ").map((n: string) => n[0]).join("").substring(0, 2).toUpperCase()
-        : "AD";
+    const displayName = [adminUser.firstName, adminUser.lastName].filter(Boolean).join(" ") || adminUser.name || "Admin User";
+    const userInitials = displayName
+        .split(" ")
+        .map((n: string) => n[0])
+        .join("")
+        .substring(0, 2)
+        .toUpperCase() || "AD";
 
     return (
         <header className="h-16 bg-white/90 backdrop-blur border-b border-slate-200 fixed top-0 right-0 left-0 md:left-64 z-40 px-4 sm:px-6 flex items-center justify-between gap-4">
@@ -329,10 +332,13 @@ export default function Header({ onOpenSidebar }: HeaderProps) {
                         </div>
                         <p className="text-xs text-slate-500">{adminUser.email || "admin@example.com"}</p>
                     </div>
-                    {adminUser.avatar ? (
-                        <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold border-2 border-blue-200">
-                            {/* If avatar is URL, use img, else initials */}
-                            {adminUser.avatar.startsWith("http") ? <img src={adminUser.avatar} className="w-full h-full rounded-full object-cover" /> : adminUser.avatar}
+                    {adminUser?.organizationId?.logo ? (
+                        <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center border-2 border-blue-200 overflow-hidden shadow-sm">
+                            <img
+                                src={`http://localhost:5000${adminUser.organizationId.logo}`}
+                                alt="Org Logo"
+                                className="w-full h-full object-contain p-1"
+                            />
                         </div>
                     ) : (
                         <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold border-2 border-blue-200">

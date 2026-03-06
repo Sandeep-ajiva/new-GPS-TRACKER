@@ -1,6 +1,7 @@
 import { baseApi } from "./baseApi";
 
 export const notificationsApi = baseApi.injectEndpoints({
+    overrideExisting: true,
     endpoints: (builder) => ({
         getNotifications: builder.query({
             query: () => "/alerts", // Backend uses /alerts

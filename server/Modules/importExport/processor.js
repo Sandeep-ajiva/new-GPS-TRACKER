@@ -2,6 +2,9 @@ const mongoose = require("mongoose");
 const Vehicle = require("../vehicle/model");
 const GpsDevice = require("../gpsDevice/model");
 const Organization = require("../organizations/model");
+const Driver = require("../drivers/model");
+const User = require("../users/model");
+const bcrypt = require("bcryptjs");
 const DeviceMapping = require("../deviceMapping/model");
 const {
   mapCsvRowToEntity,
@@ -77,6 +80,362 @@ async function validateOrganizationsBulk(preRows, result) {
     valid.push(item);
   }
   return valid;
+}
+
+async function processDriversChunk(chunk, headers, req, result, state) {
+  const preRows = await preprocessChunkRows("drivers", chunk, headers, req, state, result);
+  if (preRows.length === 0) return;
+
+  const orgValidatedRows = await validateOrganizationsBulk(preRows, result);
+  if (orgValidatedRows.length === 0) return;
+
+  const dedupedRows = [];
+  for (const item of orgValidatedRows) {
+    const key = `${item.row.organizationId}:${item.row.licenseNumber}`;
+    if (state.seenDriverKeys.has(key)) {
+      appendError(result, item.rowNumber, "Duplicate licenseNumber in file for same organization");
+      continue;
+    }
+    state.seenDriverKeys.add(key);
+    if (!item.row.password) {
+      appendError(result, item.rowNumber, "password is required for driver user creation");
+      continue;
+    }
+    dedupedRows.push(item);
+  }
+  if (dedupedRows.length === 0) return;
+
+  const orgIds = [...new Set(dedupedRows.map((x) => x.row.organizationId))];
+  const emails = [...new Set(dedupedRows.map((x) => x.row.email).filter(Boolean))];
+  const phones = [...new Set(dedupedRows.map((x) => x.row.phone).filter(Boolean))];
+  const licenses = [...new Set(dedupedRows.map((x) => x.row.licenseNumber).filter(Boolean))];
+
+  const existingDrivers = await Driver.find({
+    organizationId: { $in: orgIds },
+    $or: [
+      emails.length ? { email: { $in: emails } } : null,
+      phones.length ? { phone: { $in: phones } } : null,
+      licenses.length ? { licenseNumber: { $in: licenses } } : null,
+    ].filter(Boolean),
+  })
+    .select("organizationId email phone licenseNumber")
+    .lean();
+
+  const existingDriverEmail = new Set();
+  const existingDriverPhone = new Set();
+  const existingDriverLicense = new Set();
+  for (const d of existingDrivers) {
+    if (d.email) existingDriverEmail.add(`${d.organizationId}:${d.email}`);
+    if (d.phone) existingDriverPhone.add(`${d.organizationId}:${d.phone}`);
+    if (d.licenseNumber) existingDriverLicense.add(`${d.organizationId}:${d.licenseNumber}`);
+  }
+
+  const existingUsers = await User.find({
+    $or: [
+      emails.length ? { email: { $in: emails } } : null,
+      phones.length ? { mobile: { $in: phones } } : null,
+    ].filter(Boolean),
+  })
+    .select("email mobile")
+    .lean();
+  const existingUserEmail = new Set(existingUsers.map((u) => u.email));
+  const existingUserMobile = new Set(existingUsers.map((u) => u.mobile));
+
+  const finalRows = [];
+  for (const item of dedupedRows) {
+    const orgId = item.row.organizationId;
+    if (
+      (item.row.email && existingDriverEmail.has(`${orgId}:${item.row.email}`)) ||
+      (item.row.phone && existingDriverPhone.has(`${orgId}:${item.row.phone}`)) ||
+      (item.row.licenseNumber && existingDriverLicense.has(`${orgId}:${item.row.licenseNumber}`))
+    ) {
+      appendError(result, item.rowNumber, "Driver with this email, phone, or license number already exists in this organization");
+      continue;
+    }
+    if (
+      (item.row.email && existingUserEmail.has(item.row.email)) ||
+      (item.row.phone && existingUserMobile.has(item.row.phone))
+    ) {
+      appendError(result, item.rowNumber, "User with this email or mobile already exists");
+      continue;
+    }
+    finalRows.push(item);
+  }
+  if (finalRows.length === 0) return;
+
+  const driverDocs = [];
+  const meta = [];
+  for (const item of finalRows) {
+    driverDocs.push({
+      organizationId: new mongoose.Types.ObjectId(item.row.organizationId),
+      assignedVehicleId: null,
+      firstName: item.row.firstName,
+      lastName: item.row.lastName,
+      phone: item.row.phone,
+      email: item.row.email,
+      licenseNumber: item.row.licenseNumber,
+      licenseExpiry: item.row.licenseExpiry || null,
+      status: item.row.status || "active",
+      availability: true,
+      totalTrips: 0,
+      rating: 0,
+      joiningDate: new Date(),
+      createdBy: req.user._id,
+    });
+    meta.push({
+      rowNumber: item.rowNumber,
+      key: `${item.row.organizationId}:${item.row.licenseNumber}`,
+      organizationId: item.row.organizationId,
+      email: item.row.email,
+      phone: item.row.phone,
+      password: item.row.password,
+      firstName: item.row.firstName,
+      lastName: item.row.lastName,
+      status: item.row.status || "active",
+    });
+  }
+
+  let failedDriverIndexes = new Set();
+  try {
+    await Driver.insertMany(driverDocs, { ordered: false });
+  } catch (error) {
+    if (error?.writeErrors?.length) {
+      for (const w of error.writeErrors) {
+        failedDriverIndexes.add(w.index);
+        const rowNumber = meta[w.index]?.rowNumber || 0;
+        if (w.code === 11000) {
+          appendError(result, rowNumber, "Duplicate driver unique key conflict");
+        } else {
+          appendError(result, rowNumber, w.errmsg || "Driver insert failed");
+        }
+      }
+    } else {
+      throw error;
+    }
+  }
+
+  const successfulMeta = meta.filter((_, idx) => !failedDriverIndexes.has(idx));
+  if (successfulMeta.length === 0) return;
+
+  const keys = successfulMeta.map((m) => {
+    const [organizationId, licenseNumber] = m.key.split(":");
+    return { organizationId, licenseNumber };
+  });
+
+  const insertedDrivers = await Driver.find({ $or: keys })
+    .select("_id organizationId licenseNumber")
+    .lean();
+  const driverByKey = new Map(
+    insertedDrivers.map((d) => [`${String(d.organizationId)}:${d.licenseNumber}`, d])
+  );
+
+  const userDocs = [];
+  const userMeta = [];
+  const passwordHashes = await Promise.all(
+    successfulMeta.map((m) => bcrypt.hash(m.password, 10))
+  );
+
+  successfulMeta.forEach((m, idx) => {
+    const driver = driverByKey.get(m.key);
+    if (!driver) {
+      appendError(result, m.rowNumber, "Driver insert failed");
+      return;
+    }
+    userDocs.push({
+      organizationId: new mongoose.Types.ObjectId(m.organizationId),
+      firstName: m.firstName,
+      lastName: m.lastName,
+      email: m.email,
+      mobile: m.phone,
+      passwordHash: passwordHashes[idx],
+      role: "driver",
+      status: m.status,
+      driverId: driver._id,
+      assignedVehicleId: null,
+    });
+    userMeta.push(m);
+  });
+
+  let failedUserIndexes = new Set();
+  try {
+    if (userDocs.length > 0) {
+      await User.insertMany(userDocs, { ordered: false });
+    }
+  } catch (error) {
+    if (error?.writeErrors?.length) {
+      for (const w of error.writeErrors) {
+        failedUserIndexes.add(w.index);
+        const rowNumber = userMeta[w.index]?.rowNumber || 0;
+        if (w.code === 11000) {
+          appendError(result, rowNumber, "Duplicate user unique key conflict");
+        } else {
+          appendError(result, rowNumber, w.errmsg || "User insert failed");
+        }
+      }
+    } else {
+      throw error;
+    }
+  }
+
+  result.successCount += Math.max(0, userDocs.length - failedUserIndexes.size);
+}
+
+async function processOrganizationsChunk(chunk, headers, req, result, state) {
+  const preRows = await preprocessChunkRows("organizations", chunk, headers, req, state, result);
+  if (preRows.length === 0) return;
+
+  for (const item of preRows) {
+    const existing = await Organization.findOne({
+      $or: [{ email: item.row.email }, { phone: item.row.phone }],
+    })
+      .select("_id")
+      .lean();
+
+    if (existing) {
+      appendError(result, item.rowNumber, "Organization with this email or phone already exists");
+      continue;
+    }
+
+    let parentOrg = null;
+    let parentOrganizationId = null;
+    if (req.user.role !== "superadmin") {
+      parentOrganizationId = String(req.orgId || "");
+    } else if (item.row.parentOrganizationId) {
+      parentOrganizationId = item.row.parentOrganizationId;
+    }
+
+    if (parentOrganizationId) {
+      parentOrg = await Organization.findById(parentOrganizationId).select("path").lean();
+      if (!parentOrg) {
+        appendError(result, item.rowNumber, "parentOrganizationId not found");
+        continue;
+      }
+    }
+
+    const baseSlug = item.row.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-+|-+$)/g, "");
+    let slug = baseSlug || `org-${Date.now()}`;
+    let path = parentOrg ? `${parentOrg.path}/${slug}` : `/${slug}`;
+    const existsPath = await Organization.findOne({ path }).select("_id").lean();
+    if (existsPath) {
+      slug = `${slug}-${Date.now()}`;
+      path = parentOrg ? `${parentOrg.path}/${slug}` : `/${slug}`;
+    }
+
+    const address = {
+      addressLine: item.row.addressLine || "",
+      city: item.row.city || "",
+      state: item.row.state || "",
+      country: item.row.country || "",
+      pincode: item.row.pincode || "",
+    };
+
+    try {
+      await Organization.create({
+        name: item.row.name,
+        organizationType: item.row.organizationType,
+        email: item.row.email,
+        phone: item.row.phone,
+        address,
+        geo: { timezone: "Asia/Kolkata" },
+        settings: {},
+        parentOrganizationId: parentOrganizationId || null,
+        path,
+        adminUser: null,
+        status: item.row.status || "active",
+        createdBy: req.user._id,
+      });
+      result.successCount += 1;
+    } catch (error) {
+      appendError(result, item.rowNumber, error.message || "Organization import failed");
+    }
+  }
+}
+
+async function processUsersChunk(chunk, headers, req, result, state) {
+  const preRows = await preprocessChunkRows("users", chunk, headers, req, state, result);
+  if (preRows.length === 0) return;
+
+  const orgValidatedRows = await validateOrganizationsBulk(preRows, result);
+  if (orgValidatedRows.length === 0) return;
+
+  const readyRows = [];
+  for (const item of orgValidatedRows) {
+    if (!item.row.password) {
+      appendError(result, item.rowNumber, "password is required for user creation");
+      continue;
+    }
+    readyRows.push(item);
+  }
+  if (readyRows.length === 0) return;
+
+  const emails = [...new Set(readyRows.map((x) => x.row.email).filter(Boolean))];
+  const mobiles = [...new Set(readyRows.map((x) => x.row.mobile).filter(Boolean))];
+
+  const existingUsers = await User.find({
+    $or: [
+      emails.length ? { email: { $in: emails } } : null,
+      mobiles.length ? { mobile: { $in: mobiles } } : null,
+    ].filter(Boolean),
+  })
+    .select("email mobile")
+    .lean();
+
+  const existingEmail = new Set(existingUsers.map((u) => u.email));
+  const existingMobile = new Set(existingUsers.map((u) => u.mobile));
+
+  const finalRows = [];
+  for (const item of readyRows) {
+    if (
+      (item.row.email && existingEmail.has(item.row.email)) ||
+      (item.row.mobile && existingMobile.has(item.row.mobile))
+    ) {
+      appendError(result, item.rowNumber, "User with this email or mobile already exists");
+      continue;
+    }
+    finalRows.push(item);
+  }
+  if (finalRows.length === 0) return;
+
+  const passwordHashes = await Promise.all(
+    finalRows.map((item) => bcrypt.hash(item.row.password, 10))
+  );
+
+  const docs = [];
+  const meta = [];
+  finalRows.forEach((item, idx) => {
+    docs.push({
+      organizationId: new mongoose.Types.ObjectId(item.row.organizationId),
+      firstName: item.row.firstName,
+      lastName: item.row.lastName,
+      email: item.row.email,
+      mobile: item.row.mobile,
+      passwordHash: passwordHashes[idx],
+      role: item.row.role,
+      status: item.row.status || "active",
+    });
+    meta.push({ rowNumber: item.rowNumber });
+  });
+
+  try {
+    await User.insertMany(docs, { ordered: false });
+    result.successCount += docs.length;
+  } catch (error) {
+    if (error?.writeErrors?.length) {
+      const failed = new Set();
+      for (const w of error.writeErrors) {
+        failed.add(w.index);
+        const rowNumber = meta[w.index]?.rowNumber || 0;
+        if (w.code === 11000) {
+          appendError(result, rowNumber, "Duplicate user unique key conflict");
+        } else {
+          appendError(result, rowNumber, w.errmsg || "User insert failed");
+        }
+      }
+      result.successCount += docs.length - failed.size;
+      return;
+    }
+    throw error;
+  }
 }
 
 async function processVehiclesChunk(chunk, headers, req, result, state) {
@@ -398,7 +757,19 @@ async function processChunk(entity, chunk, headers, req, result, state) {
     await processDevicesChunk(chunk, headers, req, result, state);
     return;
   }
-  throw { status: 400, message: "Import supported only for vehicles and devices" };
+  if (entity === "drivers") {
+    await processDriversChunk(chunk, headers, req, result, state);
+    return;
+  }
+  if (entity === "organizations") {
+    await processOrganizationsChunk(chunk, headers, req, result, state);
+    return;
+  }
+  if (entity === "users") {
+    await processUsersChunk(chunk, headers, req, result, state);
+    return;
+  }
+  throw { status: 400, message: "Unsupported import entity" };
 }
 
 module.exports = {

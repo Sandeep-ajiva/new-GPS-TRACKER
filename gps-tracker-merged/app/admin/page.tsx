@@ -48,13 +48,13 @@ export default function DashboardPage() {
      RTK QUERY (FORCED LOAD)
   ========================= */
   const { data: orgData, isLoading: isLoadingOrgs } =
-    useGetOrganizationsQuery(undefined, { refetchOnMountOrArgChange: true });
+    useGetOrganizationsQuery({ page: 0, limit: 1000 }, { refetchOnMountOrArgChange: true });
 
   const { data: vehData, isLoading: isLoadingVehicles } =
-    useGetVehiclesQuery(undefined, { refetchOnMountOrArgChange: true });
+    useGetVehiclesQuery({ page: 0, limit: 1000 }, { refetchOnMountOrArgChange: true });
 
   const { data: devData, isLoading: isLoadingDevices } =
-    useGetGpsDevicesQuery(undefined, { refetchOnMountOrArgChange: true });
+    useGetGpsDevicesQuery({ page: 0, limit: 1000 }, { refetchOnMountOrArgChange: true });
 
   const { data: liveData, isLoading: isLoadingLive } =
     useGetLiveVehiclesQuery(undefined, {
@@ -68,6 +68,9 @@ export default function DashboardPage() {
   const displayOrgs = orgData?.organizations || orgData?.data || [];
   const displayVehicles = vehData?.vehicles || vehData?.data || [];
   const displayDevices = devData?.devices || devData?.data || [];
+  const orgTotal = (orgData as any)?.pagination?.totalrecords ?? displayOrgs.length;
+  const vehicleTotal = (vehData as any)?.pagination?.totalrecords ?? displayVehicles.length;
+  const deviceTotal = (devData as any)?.pagination?.totalrecords ?? displayDevices.length;
   const displayLiveData = liveData?.vehicles || liveData?.data || [];
 
   const isLoading =
@@ -262,9 +265,9 @@ export default function DashboardPage() {
 
       {/* ===== STATS ===== */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard title="Total Organizations" value={displayOrgs.length} icon={<Users size={20} />} color="blue" />
-        <StatCard title="Total Vehicles" value={displayVehicles.length} icon={<Car size={20} />} color="orange" />
-        <StatCard title="GPS Devices" value={displayDevices.length} icon={<Radio size={20} />} color="purple" />
+        <StatCard title="Total Organizations" value={orgTotal} icon={<Users size={20} />} color="blue" />
+        <StatCard title="Total Vehicles" value={vehicleTotal} icon={<Car size={20} />} color="orange" />
+        <StatCard title="GPS Devices" value={deviceTotal} icon={<Radio size={20} />} color="purple" />
         <StatCard title="Online Vehicles" value={onlineVehicles} icon={<Activity size={20} />} color="green" />
       </div>
 

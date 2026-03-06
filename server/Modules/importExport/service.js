@@ -4,6 +4,9 @@ const readline = require("readline");
 const Vehicle = require("../vehicle/model");
 const GpsDevice = require("../gpsDevice/model");
 const GpsHistory = require("../gpsHistory/model");
+const Driver = require("../drivers/model");
+const Organization = require("../organizations/model");
+const User = require("../users/model");
 const {
   CHUNK_SIZE,
   validateUploadedFile,
@@ -133,14 +136,118 @@ function buildExportConfig(entity) {
     };
   }
 
+  if (entity === "drivers") {
+    return {
+      model: Driver,
+      filename: "drivers-export.csv",
+      headers: [
+        "organizationId",
+        "firstName",
+        "lastName",
+        "email",
+        "phone",
+        "licenseNumber",
+        "licenseExpiry",
+        "status",
+        "createdAt",
+      ],
+      mapper: (doc) => ({
+        organizationId: doc.organizationId || "",
+        firstName: doc.firstName || "",
+        lastName: doc.lastName || "",
+        email: doc.email || "",
+        phone: doc.phone || "",
+        licenseNumber: doc.licenseNumber || "",
+        licenseExpiry: doc.licenseExpiry ? new Date(doc.licenseExpiry).toISOString() : "",
+        status: doc.status || "",
+        createdAt: doc.createdAt ? new Date(doc.createdAt).toISOString() : "",
+      }),
+    };
+  }
+
+  if (entity === "organizations") {
+    return {
+      model: Organization,
+      filename: "organizations-export.csv",
+      headers: [
+        "name",
+        "organizationType",
+        "email",
+        "phone",
+        "addressLine",
+        "city",
+        "state",
+        "country",
+        "pincode",
+        "parentOrganizationId",
+        "status",
+      ],
+      mapper: (doc) => ({
+        name: doc.name || "",
+        organizationType: doc.organizationType || "",
+        email: doc.email || "",
+        phone: doc.phone || "",
+        addressLine: doc.address?.addressLine || "",
+        city: doc.address?.city || "",
+        state: doc.address?.state || "",
+        country: doc.address?.country || "",
+        pincode: doc.address?.pincode || "",
+        parentOrganizationId: doc.parentOrganizationId || "",
+        status: doc.status || "",
+      }),
+    };
+  }
+
+  if (entity === "users") {
+    return {
+      model: User,
+      filename: "users-export.csv",
+      headers: [
+        "organizationId",
+        "firstName",
+        "lastName",
+        "email",
+        "mobile",
+        "role",
+        "status",
+        "createdAt",
+      ],
+      mapper: (doc) => ({
+        organizationId: doc.organizationId || "",
+        firstName: doc.firstName || "",
+        lastName: doc.lastName || "",
+        email: doc.email || "",
+        mobile: doc.mobile || "",
+        role: doc.role || "",
+        status: doc.status || "",
+        createdAt: doc.createdAt ? new Date(doc.createdAt).toISOString() : "",
+      }),
+    };
+  }
+
   return null;
 }
 
 function buildExportFilter(entity, req) {
   const filter = {};
 
-  if (req.user.role !== "superadmin") {
-    filter.organizationId = req.orgId;
+  if (entity === "organizations") {
+    if (req.user.role !== "superadmin" && req.orgScope !== "ALL") {
+      filter._id = { $in: req.orgScope };
+    } else if (req.query.organizationId) {
+      filter._id = req.query.organizationId;
+    }
+    if (req.query.status) filter.status = req.query.status;
+    if (req.query.organizationType) filter.organizationType = req.query.organizationType;
+    return filter;
+  }
+
+  if (req.user.role !== "superadmin" && req.orgScope !== "ALL") {
+    if (req.query.organizationId && req.orgScope.includes(req.query.organizationId)) {
+      filter.organizationId = req.query.organizationId;
+    } else {
+      filter.organizationId = { $in: req.orgScope };
+    }
   } else if (req.query.organizationId) {
     filter.organizationId = req.query.organizationId;
   }
@@ -152,6 +259,26 @@ function buildExportFilter(entity, req) {
       filter.gpsTimestamp = {};
       if (req.query.from) filter.gpsTimestamp.$gte = new Date(req.query.from);
       if (req.query.to) filter.gpsTimestamp.$lte = new Date(req.query.to);
+    }
+  }
+
+  if (entity === "drivers") {
+    if (req.query.status) filter.status = req.query.status;
+    if (req.query.from || req.query.to) {
+      filter.createdAt = {};
+      if (req.query.from) filter.createdAt.$gte = new Date(req.query.from);
+      if (req.query.to) filter.createdAt.$lte = new Date(req.query.to);
+    }
+  }
+
+  if (entity === "users") {
+    if (req.query.role) filter.role = req.query.role;
+    if (req.query.status) filter.status = req.query.status;
+    if (req.query.organizationId) filter.organizationId = req.query.organizationId;
+    if (req.query.from || req.query.to) {
+      filter.createdAt = {};
+      if (req.query.from) filter.createdAt.$gte = new Date(req.query.from);
+      if (req.query.to) filter.createdAt.$lte = new Date(req.query.to);
     }
   }
 
@@ -172,6 +299,7 @@ async function importCsv({ entity, file, req }) {
   const state = {
     seenVehicleKeys: new Set(),
     seenDeviceImeis: new Set(),
+    seenDriverKeys: new Set(),
   };
 
   const stream = fs.createReadStream(file.path, { encoding: "utf8" });

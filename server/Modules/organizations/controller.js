@@ -394,8 +394,25 @@ exports.update = async (req, res) => {
         .json({ status: false, message: "Organization not found or access denied" });
     }
 
+    // 🛡️ LOGO UPDATE RESTRICTION & PROPAGATION
+    const isSuperAdmin = req.user.role === "superadmin";
+    const isRootAdmin = req.user.role === "admin" && 
+                       req.user.organizationId.toString() === organization._id.toString() && 
+                       !organization.parentOrganizationId;
+
     if (req.file) {
       req.body.logo = `/uploads/logos/${req.file.filename}`;
+    }
+
+    if (req.body.logo !== undefined) {
+      if (!isSuperAdmin && !isRootAdmin) {
+        // Non-main admins cannot update logo
+        delete req.body.logo;
+        if (req.file) {
+          // If they uploaded a file, it's already on disk, but we won't use it.
+          // Ideally delete it, but for now we just won't update the DB.
+        }
+      }
     }
 
     const allowedFields = [
@@ -410,8 +427,14 @@ exports.update = async (req, res) => {
       "status",
     ];
 
+    let logoChanged = false;
+    const oldLogo = organization.logo;
+
     allowedFields.forEach((field) => {
       if (req.body[field] !== undefined) {
+        if (field === "logo" && req.body.logo !== oldLogo) {
+          logoChanged = true;
+        }
         organization[field] =
           field === "email"
             ? req.body[field].toLowerCase()
@@ -422,6 +445,15 @@ exports.update = async (req, res) => {
     });
 
     await organization.save();
+
+    // 🌊 PROPAGATE LOGO TO SUB-ORGANIZATIONS
+    if (logoChanged && organization.logo) {
+      const regex = new RegExp(`^${organization.path}/`);
+      await Organization.updateMany(
+        { path: { $regex: regex } },
+        { $set: { logo: organization.logo, updatedAt: Date.now() } }
+      );
+    }
 
     return res.status(200).json({
       status: true,

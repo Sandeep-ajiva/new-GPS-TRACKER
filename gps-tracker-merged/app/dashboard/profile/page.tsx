@@ -17,6 +17,7 @@ import { toast } from "sonner"
 import { useGetMeQuery, useUpdateUserMutation } from "@/redux/api/usersApi"
 import { getSecureItem } from "@/app/admin/Helpers/encryptionHelper"
 import { Header } from "@/components/dashboard/header"
+import PhoneInputField from "@/components/common/PhoneInputField"
 
 // ─── Form types ───────────────────────────────────────────────────────────────
 interface FormState {
@@ -40,6 +41,7 @@ function validate(form: FormState): FormErrors {
     if (!form.email.trim()) errs.email = "Email is required"
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) errs.email = "Valid email required"
     if (!form.mobile.trim()) errs.mobile = "Mobile number is required"
+    else if (!/^\+?[1-9]\d{7,14}$/.test(form.mobile)) errs.mobile = "Enter valid mobile with country code"
     return errs
 }
 
@@ -69,21 +71,32 @@ function Field({
                 <Icon className="h-3.5 w-3.5" />
                 {label}
             </label>
-            <input
-                type={type}
-                value={value}
-                onChange={(e) => onChange(e.target.value)}
-                onBlur={onBlur}
-                disabled={disabled}
-                className={`w-full rounded-xl px-4 py-3 text-sm font-medium transition-all outline-none
+            {type === "tel" ? (
+                <PhoneInputField
+                    value={value}
+                    onChange={onChange}
+                    disabled={disabled}
+                    placeholder="Enter phone number"
+                    required
+                    variant="dark"
+                />
+            ) : (
+                <input
+                    type={type}
+                    value={value}
+                    onChange={(e) => onChange(e.target.value)}
+                    onBlur={onBlur}
+                    disabled={disabled}
+                    className={`w-full rounded-xl px-4 py-3 text-sm font-medium transition-all outline-none
           bg-slate-800/60 border focus:ring-2
           ${error
-                        ? "border-red-500/50 focus:ring-red-500/20 text-red-100"
-                        : "border-white/10 focus:ring-emerald-500/20 focus:border-emerald-500/40 text-slate-100"
-                    }
+                            ? "border-red-500/50 focus:ring-red-500/20 text-red-100"
+                            : "border-white/10 focus:ring-emerald-500/20 focus:border-emerald-500/40 text-slate-100"
+                        }
           ${disabled ? "opacity-50 cursor-not-allowed" : ""}
           placeholder-slate-600`}
-            />
+                />
+            )}
             {error && <p className="text-xs text-red-400">{error}</p>}
         </div>
     )

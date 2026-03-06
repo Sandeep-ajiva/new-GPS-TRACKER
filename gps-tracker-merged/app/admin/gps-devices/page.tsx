@@ -3,9 +3,11 @@
 import { useState, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 import Table from "@/components/ui/Table";
+import Pagination from "@/components/ui/Pagination";
 import ApiErrorBoundary from "@/components/admin/ErrorBoundary/ApiErrorBoundary";
 import { Plus, Edit, Trash2, Filter, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { z } from "zod";
 
 import {
   useGetGpsDevicesQuery,
@@ -68,17 +70,19 @@ export default function GpsDevicesPage() {
   const { orgId, isSuperAdmin, isRootOrgAdmin, isSubOrgAdmin } = useOrgContext();
   const searchParams = useSearchParams();
   const searchQueryParam = searchParams.get("search");
+  const [page, setPage] = useState(1);
+  const LIMIT = 10;
 
   /* ================= API ================= */
 
   const { data: devData, isLoading: isDevLoading, refetch: refetchDevices } =
-    useGetGpsDevicesQuery(undefined, { refetchOnMountOrArgChange: true });
+    useGetGpsDevicesQuery({ page: page - 1, limit: LIMIT }, { refetchOnMountOrArgChange: true });
 
   const { data: vehData, isLoading: isVehLoading } =
-    useGetVehiclesQuery(undefined, { refetchOnMountOrArgChange: true });
+    useGetVehiclesQuery({ page: 0, limit: 1000 }, { refetchOnMountOrArgChange: true });
 
   const { data: orgData, isLoading: isOrgLoading } =
-    useGetOrganizationsQuery(undefined, {
+    useGetOrganizationsQuery({ page: 0, limit: 1000 }, {
       skip: !(isSuperAdmin || isRootOrgAdmin), // 🔐 Only superadmin or root-org-admin needs full org list
       refetchOnMountOrArgChange: true,
     });
@@ -305,7 +309,7 @@ export default function GpsDevicesPage() {
         icon: <Building2 size={14} />,
       }
     ] : []),
-    { name: "imei", label: "IMEI", type: "text", required: true },
+    { name: "imei", label: "IMEI", type: "text", required: true, helperText: "Exactly 15 digits" },
     { name: "simNumber", label: "SIM Number", type: "text" },
     {
       name: "deviceModel",
@@ -333,6 +337,27 @@ export default function GpsDevicesPage() {
       ],
     },
   ], [organizations]);
+
+  const deviceSchema = useMemo(() => {
+    const base = z.object({
+      organizationId: z.string().optional(),
+      imei: z.string().regex(/^\d{15}$/, "IMEI must be exactly 15 digits"),
+      simNumber: z.string().optional(),
+      deviceModel: z.string().min(1, "Device model is required"),
+      manufacturer: z.string().optional(),
+      serialNumber: z.string().optional(),
+      firmwareVersion: z.string().optional(),
+      hardwareVersion: z.string().optional(),
+      warrantyExpiry: z.string().optional(),
+      status: z.enum(["active", "inactive"]),
+    });
+
+    return base.superRefine((val, ctx) => {
+      if ((isSuperAdmin || isRootOrgAdmin) && !val.organizationId) {
+        ctx.addIssue({ code: "custom", path: ["organizationId"], message: "Organization is required" });
+      }
+    });
+  }, [isSuperAdmin, isRootOrgAdmin]);
 
 
   /* ================= MODALS ================= */
@@ -472,6 +497,13 @@ export default function GpsDevicesPage() {
   ];
 
   const isLoading = isDevLoading || isVehLoading || isOrgLoading;
+  const totalRecords =
+    (devData as any)?.pagination?.totalrecords ??
+    (devData as any)?.total ??
+    devices.length;
+  const totalPages =
+    (devData as any)?.pagination?.totalPages ??
+    Math.max(1, Math.ceil(totalRecords / LIMIT));
 
   if (isLoading) {
     return (
@@ -720,6 +752,13 @@ export default function GpsDevicesPage() {
         {/* Table Section */}
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
           <Table columns={columns} data={filteredDevices} />
+          <Pagination
+            page={page}
+            totalPages={totalPages}
+            totalItems={totalRecords}
+            onPageChange={setPage}
+            disabled={isDevLoading}
+          />
         </div>
       </div>
 
@@ -729,6 +768,7 @@ export default function GpsDevicesPage() {
           onClose={closeModal}
           title={editingDevice ? "Edit Device" : "New Device"}
           fields={deviceFormFields}
+          schema={deviceSchema}
           initialData={
             editingDevice
               ? {

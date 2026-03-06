@@ -5,6 +5,7 @@ import Table from "@/components/ui/Table";
 import ApiErrorBoundary from "@/components/admin/ErrorBoundary/ApiErrorBoundary";
 import { Plus, Edit, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { z } from "zod";
 
 import {
   useGetUsersQuery,
@@ -58,9 +59,44 @@ export default function UsersPage() {
         role: "superadmin",
         organizationId: ""
     });
+    const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+
+    const userSchema = useMemo(() => {
+        const base = z.object({
+            name: z.string().min(1, "Name is required"),
+            email: z.string().email("Valid email is required"),
+            password: z.string().optional(),
+            role: z.enum(["admin", "superadmin"]),
+            organizationId: z.string().optional(),
+        });
+
+        return base.superRefine((val, ctx) => {
+            if (!editingUser && !val.password) {
+                ctx.addIssue({ code: "custom", path: ["password"], message: "Password is required" });
+            }
+            if (val.password && val.password.length < 6) {
+                ctx.addIssue({ code: "custom", path: ["password"], message: "Password must be at least 6 characters" });
+            }
+            if (val.role === "admin" && !val.organizationId) {
+                ctx.addIssue({ code: "custom", path: ["organizationId"], message: "Organization is required" });
+            }
+        });
+    }, [editingUser]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        setFieldErrors({});
+
+        const parsed = userSchema.safeParse(formData);
+        if (!parsed.success) {
+            const next: Record<string, string> = {};
+            parsed.error.issues.forEach((issue) => {
+                const key = String(issue.path[0] || "form");
+                if (!next[key]) next[key] = issue.message;
+            });
+            setFieldErrors(next);
+            return;
+        }
         try {
             // Split name if needed or backend handles 'name'
             // Assuming backend wrapper expects firstName/lastName for managers
@@ -209,17 +245,20 @@ export default function UsersPage() {
                                 <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Name</label>
                                 <input type="text" required className="w-full rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
                                     value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} />
+                                {fieldErrors.name && <p className="mt-1 text-[10px] font-bold text-rose-300">{fieldErrors.name}</p>}
                             </div>
                             <div>
                                 <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Email</label>
                                 <input type="email" required className="w-full rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
                                     value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })} />
+                                {fieldErrors.email && <p className="mt-1 text-[10px] font-bold text-rose-300">{fieldErrors.email}</p>}
                             </div>
                             <div>
                                 <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Password</label>
                                 <input type="password" required={!editingUser} className="w-full rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
                                     placeholder={editingUser ? "Leave blank to keep current" : ""}
                                     value={formData.password} onChange={e => setFormData({ ...formData, password: e.target.value })} />
+                                {fieldErrors.password && <p className="mt-1 text-[10px] font-bold text-rose-300">{fieldErrors.password}</p>}
                             </div>
                             <div>
                                 <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Role</label>
@@ -228,6 +267,7 @@ export default function UsersPage() {
                                     <option value="admin">Organization Admin</option>
                                     <option value="superadmin">Super Admin</option>
                                 </select>
+                                {fieldErrors.role && <p className="mt-1 text-[10px] font-bold text-rose-300">{fieldErrors.role}</p>}
                             </div>
                             {formData.role === 'admin' && (
                                 <div>
@@ -239,6 +279,7 @@ export default function UsersPage() {
                                             <option key={org._id} value={org._id}>{org.name}</option>
                                         ))}
                                     </select>
+                                    {fieldErrors.organizationId && <p className="mt-1 text-[10px] font-bold text-rose-300">{fieldErrors.organizationId}</p>}
                                 </div>
                             )}
 

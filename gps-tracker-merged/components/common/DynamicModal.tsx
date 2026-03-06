@@ -4,6 +4,14 @@ import React, { useState, useEffect } from "react";
 import { X, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DynamicModalProps } from "@/lib/formTypes";
+import { validateWithZod, type FieldErrorMap } from "@/lib/validation";
+import {
+  ensureOption,
+  getCityOptions,
+  getCountryOptions,
+  getStateOptions,
+} from "@/lib/locations";
+import PhoneInputField from "@/components/common/PhoneInputField";
 
 export function DynamicModal({
   isOpen,
@@ -12,6 +20,7 @@ export function DynamicModal({
   description,
   fields,
   initialData,
+  schema,
   onSubmit,
   variant = "light",
   submitLabel = "Submit",
@@ -22,6 +31,8 @@ export function DynamicModal({
   >({});
   const [isSaving, setIsSaving] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<FieldErrorMap>({});
+  const locationFieldNames = ["country", "state", "city"];
 
   useEffect(() => {
     if (initialData) {
@@ -36,11 +47,19 @@ export function DynamicModal({
     }
     // Only clear error if the modal is opening for the first time
     if (isOpen) {
-      // We keep the error if it was just set during a submission attempt
+      setFieldErrors({});
     }
   }, [initialData, isOpen]);
 
   if (!isOpen) return null;
+
+  const countryValue = String(formData.country || "");
+  const stateValue = String(formData.state || "");
+  const cityValue = String(formData.city || "");
+
+  const countryOptions = ensureOption(getCountryOptions(), countryValue);
+  const stateOptions = ensureOption(getStateOptions(countryValue), stateValue);
+  const cityOptions = ensureOption(getCityOptions(countryValue, stateValue), cityValue);
 
   const handleChange = (
     e: React.ChangeEvent<
@@ -57,6 +76,7 @@ export function DynamicModal({
     }
 
     setApiError(null); // clear error when user resumes typing
+    setFieldErrors((prev) => ({ ...prev, [name]: "" }));
     setFormData((prev) => ({ ...prev, [name]: val }));
 
     // Optional per-field onChange hook
@@ -70,7 +90,16 @@ export function DynamicModal({
     e.preventDefault();
     setIsSaving(true);
     setApiError(null);
+    setFieldErrors({});
     try {
+      if (schema) {
+        const result = validateWithZod(schema, formData);
+        if (!result.success) {
+          setFieldErrors(result.errors);
+          setIsSaving(false);
+          return;
+        }
+      }
       await onSubmit(formData);
       onClose();
     } catch (err: any) {
@@ -99,6 +128,20 @@ export function DynamicModal({
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const handleLocationChange = (name: string, value: string) => {
+    setApiError(null);
+    setFieldErrors((prev) => ({ ...prev, [name]: "" }));
+    setFormData((prev) => {
+      if (name === "country") {
+        return { ...prev, country: value, state: "", city: "" };
+      }
+      if (name === "state") {
+        return { ...prev, state: value, city: "" };
+      }
+      return { ...prev, city: value };
+    });
   };
 
 
@@ -195,7 +238,49 @@ export function DynamicModal({
                   {field.required && <span className="text-rose-500">*</span>}
                 </label>
 
-                {field.type === "textarea" ? (
+                {locationFieldNames.includes(field.name) ? (
+                  <select
+                    name={field.name}
+                    required={field.required}
+                    value={
+                      field.name === "country"
+                        ? countryValue
+                        : field.name === "state"
+                          ? stateValue
+                          : cityValue
+                    }
+                    onChange={(e) => handleLocationChange(field.name, e.target.value)}
+                    disabled={
+                      field.disabled ||
+                      (field.name === "state" && !countryValue) ||
+                      (field.name === "city" && (!countryValue || !stateValue))
+                    }
+                    className={cn(
+                      "w-full rounded-xl px-4 py-2.5 text-sm font-semibold outline-none transition-all appearance-none",
+                      isDark
+                        ? "bg-slate-950/60 border border-slate-800 text-slate-100 focus:ring-2 focus:ring-slate-500/20 focus:border-slate-500"
+                        : "bg-slate-50 border border-slate-200 text-slate-800 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500",
+                    )}
+                  >
+                    <option value="">
+                      {field.name === "country"
+                        ? "Select country"
+                        : field.name === "state"
+                          ? "Select state"
+                          : "Select city"}
+                    </option>
+                    {(field.name === "country"
+                      ? countryOptions
+                      : field.name === "state"
+                        ? stateOptions
+                        : cityOptions
+                    ).map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                ) : field.type === "textarea" ? (
                   <textarea
                     name={field.name}
                     required={field.required}
@@ -241,6 +326,19 @@ export function DynamicModal({
                         </option>
                       ))}
                   </select>
+                ) : field.type === "tel" ? (
+                  <PhoneInputField
+                    value={String(formData[field.name] || "")}
+                    onChange={(val) => {
+                      setApiError(null);
+                      setFieldErrors((prev) => ({ ...prev, [field.name]: "" }));
+                      setFormData((prev) => ({ ...prev, [field.name]: val }));
+                    }}
+                    variant={variant}
+                    disabled={field.disabled}
+                    placeholder={field.placeholder}
+                    required={field.required}
+                  />
                 ) : field.type === "checkbox" ? (
                   <div className="flex items-center gap-3 py-1">
                     <input
@@ -300,6 +398,22 @@ export function DynamicModal({
                         : "bg-slate-50 border border-slate-200 text-slate-800 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 placeholder:text-slate-400",
                     )}
                   />
+                )}
+                {!fieldErrors[field.name] && field.helperText && (
+                  <p className={cn(
+                    "mt-1 text-[10px] font-semibold",
+                    isDark ? "text-slate-400" : "text-slate-500"
+                  )}>
+                    {field.helperText}
+                  </p>
+                )}
+                {fieldErrors[field.name] && (
+                  <p className={cn(
+                    "mt-1 text-[11px] font-semibold",
+                    isDark ? "text-rose-300" : "text-rose-600"
+                  )}>
+                    {fieldErrors[field.name]}
+                  </p>
                 )}
               </div>
             ))}

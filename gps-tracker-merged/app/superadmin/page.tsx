@@ -9,14 +9,18 @@ import { useGetOrganizationsQuery } from "@/redux/api/organizationApi";
 import { useGetVehiclesQuery } from "@/redux/api/vehicleApi";
 import { useGetGpsDevicesQuery } from "@/redux/api/gpsDeviceApi";
 import { useGetLiveVehiclesQuery } from "@/redux/api/gpsLiveApi";
+import { formatAddress } from "@/lib/locations";
 
 interface ApiOrg {
   _id: string;
   name: string;
   address?: {
+    addressLine?: string;
     city?: string;
     state?: string;
-  };
+    country?: string;
+    pincode?: string;
+  } | string;
   adminUser?: string;
   email: string;
   phone: string;
@@ -96,7 +100,7 @@ export default function DashboardPage() {
     return orgsData.docs.map((org: ApiOrg) => ({
       id: org._id,
       name: org.name,
-      address: org.address ? `${org.address.city || ''}, ${org.address.state || ''}` : "N/A",
+      address: formatAddress(org.address) || "N/A",
       adminId: org.adminUser || "N/A",
       adminName: "Admin", // Should be fetched or populated
       email: org.email,

@@ -3,9 +3,11 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Table from "@/components/ui/Table";
+import Pagination from "@/components/ui/Pagination";
 import ApiErrorBoundary from "@/components/admin/ErrorBoundary/ApiErrorBoundary";
 import { Plus, Edit, Trash2, Loader2, Eye, Filter } from "lucide-react";
 import { toast } from "sonner";
+import { z } from "zod";
 import { getSecureItem } from "@/app/admin/Helpers/encryptionHelper";
 
 // 🔐 ORG CONTEXT UPDATE
@@ -13,6 +15,7 @@ import { useOrgContext } from "@/hooks/useOrgContext";
 
 import {
   useGetSubOrganizationsQuery,
+  useGetOrganizationsQuery,
   useCreateSubOrganizationWithManagerMutation,
   useUpdateOrganizationMutation,
   useDeleteOrganizationMutation,
@@ -47,17 +50,30 @@ export default function OrganizationsPage() {
   const router = useRouter();
 
   // 🔐 ORG CONTEXT UPDATE
-  const { role , orgId, orgName, isSuperAdmin, isRootOrgAdmin } = useOrgContext();
+  const { role, orgId, orgName, isSuperAdmin, isRootOrgAdmin } = useOrgContext();
 
   /* ---------------------------------------
      1️⃣ Fetch sub-organizations (NO parentId param)
   ---------------------------------------- */
+  const [page, setPage] = useState(1);
+  const LIMIT = 10;
+
   const { data: subOrgResponse, isLoading, error, refetch: refetchSubOrgs } =
-    useGetSubOrganizationsQuery(undefined);
+    useGetSubOrganizationsQuery({ page: page - 1, limit: LIMIT });
+
+  const { data: allOrgsResponse } = useGetOrganizationsQuery(
+    { page: 0, limit: 1000 },
+    { skip: !isSuperAdmin && !isRootOrgAdmin }
+  );
 
   const organizations: Organization[] = useMemo(
     () => subOrgResponse?.data || [],
     [subOrgResponse]
+  );
+
+  const allOrganizations = useMemo(
+    () => allOrgsResponse?.data || [],
+    [allOrgsResponse]
   );
 
   /* ---------------------------------------
@@ -101,7 +117,36 @@ export default function OrganizationsPage() {
     });
   }, [organizations, filters]);
 
-  const formFields = useMemo(() => getFormFields(!!editingOrg), [editingOrg]);
+  const formFields = useMemo(() => getFormFields(!!editingOrg, isSuperAdmin || isRootOrgAdmin, allOrganizations), [editingOrg, isSuperAdmin, isRootOrgAdmin, allOrganizations]);
+
+  const organizationSchema = useMemo(() => {
+    const base = z.object({
+      name: z.string().min(1, "Organization name is required"),
+      organizationType: z.enum(["logistics", "transport", "school", "taxi", "fleet"]),
+      email: z.string().email("Valid email is required"),
+      phone: z.string().regex(/^\+?[1-9]\d{7,14}$/, "Enter valid phone with country code"),
+      addressLine: z.string().min(1, "Address line is required"),
+      city: z.string().min(1, "City is required"),
+      state: z.string().min(1, "State is required"),
+      country: z.string().min(1, "Country is required"),
+      pincode: z.string().regex(/^\d{4,10}$/, "Pincode must be numeric"),
+      parentOrganizationId: z.string().optional(),
+      managerFirstName: z.string().optional(),
+      managerLastName: z.string().optional(),
+      managerPassword: z.string().optional(),
+    });
+
+    return base.superRefine((val, ctx) => {
+      if ((isSuperAdmin || isRootOrgAdmin) && !editingOrg && !val.parentOrganizationId) {
+        ctx.addIssue({ code: "custom", path: ["parentOrganizationId"], message: "Parent Organization is required" });
+      }
+      if (!editingOrg) {
+        if (!val.managerFirstName) ctx.addIssue({ code: "custom", path: ["managerFirstName"], message: "Admin first name is required" });
+        if (!val.managerLastName) ctx.addIssue({ code: "custom", path: ["managerLastName"], message: "Admin last name is required" });
+        if (!val.managerPassword || val.managerPassword.length < 6) ctx.addIssue({ code: "custom", path: ["managerPassword"], message: "Admin password is required (min 6)" });
+      }
+    });
+  }, [editingOrg, isSuperAdmin, isRootOrgAdmin]);
 
   /* ---------------------------------------
      Modal handlers
@@ -137,18 +182,20 @@ export default function OrganizationsPage() {
       if (editingOrg) {
         await updateOrganization({
           id: editingOrg._id,
-          name: form.name,
-          organizationType: form.organizationType,
-          email: form.email,
-          phone: form.phone,
-          address,
+          body: {
+            name: form.name,
+            organizationType: form.organizationType,
+            email: form.email,
+            phone: form.phone,
+            address,
+          }
         }).unwrap();
 
         toast.success("Organization updated successfully");
       } else {
         // 🔐 ORG CONTEXT UPDATE
         await createSubOrganizationWithManager({
-          parentOrganizationId: orgId, // use current org as parent
+          parentOrganizationId: form.parentOrganizationId || orgId, // use selected parent or current org
           organizationData: {
             name: form.name,
             organizationType: form.organizationType,
@@ -258,9 +305,11 @@ export default function OrganizationsPage() {
       <div className="space-y-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-2xl font-black">Sub Organizations</h1>
+            <h1 className="text-2xl font-black text-slate-900">Organizations</h1>
             {/* 🔐 ORG CONTEXT UPDATE */}
-            <p className="text-sm text-slate-500">Parent: {orgName}</p>
+            <p className="text-sm text-slate-500">
+              Manage your fleet organizations here. <span className="italic opacity-70">(Parent: {orgName})</span>
+            </p>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row">
             <ImportExportButton
@@ -292,58 +341,153 @@ export default function OrganizationsPage() {
               onClick={() => setShowFilters(!showFilters)}
               className="bg-slate-100 text-slate-700 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 hover:bg-slate-200 transition-colors"
             >
-              <Filter size={14} /> Filter
+              <Filter size={16} /> Filtered Organizations
             </button>
             {canCreateOrg && (
               <button
                 onClick={openCreateModal}
-                className="bg-blue-600 text-white px-4 py-2 rounded-xl text-xs font-black uppercase flex items-center gap-2 hover:bg-blue-700 transition-colors"
+                className="bg-blue-600 text-white px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 hover:bg-blue-700 transition-colors"
               >
-                <Plus size={14} /> Add Sub Organization
+                <Plus size={16} /> Add Organization
               </button>
             )}
           </div>
         </div>
-
-        <Table columns={columns} data={filteredOrganizations} />
-
-        <DynamicModal
-          isOpen={isModalOpen}
-          onClose={closeModal}
-          title={
-            editingOrg
-              ? "Edit Organization"
-              : "Create Sub Organization & Manager"
-          }
-          fields={formFields}
-          initialData={
-
-            editingOrg
-              ? {
-                name: editingOrg.name,
-                organizationType: editingOrg.organizationType,
-                email: editingOrg.email,
-                phone: editingOrg.phone,
-                addressLine: editingOrg.address?.addressLine || "",
-                city: editingOrg.address?.city || "",
-                state: editingOrg.address?.state || "",
-                country: editingOrg.address?.country || "",
-                pincode: editingOrg.address?.pincode || "",
-              }
-              : undefined
-          }
-          onSubmit={handleSubmit}
-          submitLabel={editingOrg ? "Update" : "Create"}
-        />
       </div>
-    </ApiErrorBoundary>
+
+      {showFilters && (
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div>
+              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">
+                Name
+              </label>
+              <input
+                className="admin-filter-select w-full border border-slate-200 rounded-xl p-2 text-sm font-bold text-slate-900 focus:ring-2 focus:ring-blue-500/20 outline-none"
+                value={filters.name}
+                onChange={(e) => setFilters({ ...filters, name: e.target.value })}
+                placeholder="Search name"
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">
+                Type
+              </label>
+              <select
+                className="admin-filter-select w-full border border-slate-200 rounded-xl p-2 text-sm font-bold text-slate-900 focus:ring-2 focus:ring-blue-500/20 outline-none"
+                value={filters.type}
+                onChange={(e) => setFilters({ ...filters, type: e.target.value })}
+              >
+                <option value="">All Types</option>
+                <option value="logistics">Logistics</option>
+                <option value="transport">Transport</option>
+                <option value="school">School</option>
+                <option value="taxi">Taxi</option>
+                <option value="fleet">Fleet</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">
+                Status
+              </label>
+              <select
+                className="admin-filter-select w-full border border-slate-200 rounded-xl p-2 text-sm font-bold text-slate-900 focus:ring-2 focus:ring-blue-500/20 outline-none"
+                value={filters.status}
+                onChange={(e) => setFilters({ ...filters, status: e.target.value })}
+              >
+                <option value="">All Status</option>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </select>
+            </div>
+            <div className="flex items-end">
+              <button
+                onClick={() => setFilters({ name: "", type: "", status: "" })}
+                className="w-full bg-slate-100 text-slate-700 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-slate-200 transition-colors"
+              >
+                Clear Filters
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <Table columns={columns} data={filteredOrganizations} />
+      <Pagination
+        page={page}
+        totalPages={(subOrgResponse as any)?.pagination?.totalPages ?? Math.max(1, Math.ceil(((subOrgResponse as any)?.pagination?.totalrecords ?? organizations.length) / LIMIT))}
+        totalItems={(subOrgResponse as any)?.pagination?.totalrecords ?? organizations.length}
+        onPageChange={setPage}
+        disabled={isLoading}
+      />
+
+      <DynamicModal
+        isOpen={isModalOpen}
+        onClose={closeModal}
+        title={
+          editingOrg
+            ? "Edit Organization"
+            : "Create Organization & Manager"
+        }
+        fields={formFields}
+        schema={organizationSchema}
+        initialData={
+
+          editingOrg
+            ? {
+              name: editingOrg.name,
+              organizationType: editingOrg.organizationType,
+              email: editingOrg.email,
+              phone: editingOrg.phone,
+              addressLine: editingOrg.address?.addressLine || "",
+              city: editingOrg.address?.city || "",
+              state: editingOrg.address?.state || "",
+              country: editingOrg.address?.country || "",
+              pincode: editingOrg.address?.pincode || "",
+            }
+            : undefined
+        }
+        onSubmit={handleSubmit}
+        submitLabel={editingOrg ? "Update" : "Create"}
+      />
+    </ApiErrorBoundary >
   );
 }
 
 /* ================= FORM FIELDS ================= */
 
-function getFormFields(isEdit: boolean): FormField[] {
+function getFormFields(isEdit: boolean, canSelectParent: boolean, allOrgs: any[]): FormField[] {
   const orgFields: FormField[] = [
+    ...(canSelectParent && !isEdit
+      ? [
+        {
+          name: "parentOrganizationId",
+          label: "Parent Organization",
+          type: "select" as const,
+          required: true,
+          groups: [
+            {
+              label: "Organizations",
+              options: allOrgs
+                .filter((org) => !org.parentOrganizationId)
+                .map((org) => ({
+                  label: org.name,
+                  value: org._id,
+                })),
+            },
+            {
+              label: "Sub-Organizations",
+              options: allOrgs
+                .filter((org) => org.parentOrganizationId)
+                .map((org) => ({
+                  label: org.name,
+                  value: org._id,
+                })),
+            },
+          ],
+        },
+      ]
+      : []),
     { name: "name", label: "Organization Name", type: "text", required: true },
     {
       name: "organizationType",
@@ -359,12 +503,12 @@ function getFormFields(isEdit: boolean): FormField[] {
       ],
     },
     { name: "email", label: "Email", type: "email", required: true },
-    { name: "phone", label: "Phone", type: "tel", required: true },
+    { name: "phone", label: "Phone", type: "tel", required: true, helperText: "Include country code" },
     { name: "addressLine", label: "Address Line", type: "text", required: true },
-    { name: "city", label: "City", type: "text", required: true },
-    { name: "state", label: "State", type: "text", required: true },
     { name: "country", label: "Country", type: "text", required: true },
-    { name: "pincode", label: "Pincode", type: "text", required: true },
+    { name: "state", label: "State", type: "text", required: true },
+    { name: "city", label: "City", type: "text", required: true },
+    { name: "pincode", label: "Pincode", type: "text", required: true, helperText: "Digits only" },
   ];
 
   if (isEdit) return orgFields;

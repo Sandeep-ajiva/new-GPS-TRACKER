@@ -22,6 +22,7 @@ type LoginResponse = {
 };
 
 export const authApi = baseApi.injectEndpoints({
+  overrideExisting: true,
   endpoints: (builder) => ({
     login: builder.mutation<
       LoginResponse,

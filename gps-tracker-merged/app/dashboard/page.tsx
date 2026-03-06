@@ -62,7 +62,7 @@ const LIVE_STALE_TIMEOUT_MS = 60 * 1000
 export default function DashboardPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { data: vehData } = useGetVehiclesQuery(undefined)
+  const { data: vehData } = useGetVehiclesQuery({ page: 0, limit: 1000 })
   const { data: liveData } = useGetLiveVehiclesQuery(undefined, {
     pollingInterval: 10000,
     refetchOnMountOrArgChange: true,
@@ -73,7 +73,7 @@ export default function DashboardPage() {
     refetchOnMountOrArgChange: true,
   })
   const { data: meData } = useGetMeQuery(undefined)
-  const { data: orgData } = useGetOrganizationsQuery(undefined)
+  const { data: orgData } = useGetOrganizationsQuery({ page: 0, limit: 1000 })
   const dispatch = useAppDispatch()
   const { selectedVehicleId: reduxSelectedVehicleId, activeTab } = useAppSelector((state) => state.vehicle)
   const { selectedVehicle, setSelectedVehicle } = useDashboardContext()

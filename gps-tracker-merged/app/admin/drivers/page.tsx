@@ -2,9 +2,11 @@
 
 import { useState, useMemo } from "react";
 import Table from "@/components/ui/Table";
+import Pagination from "@/components/ui/Pagination";
 import ApiErrorBoundary from "@/components/admin/ErrorBoundary/ApiErrorBoundary";
 import { Plus, Edit, Trash2, Filter, Loader2, User, Phone, Mail, IdCard, Calendar, CheckCircle } from "lucide-react";
 import { toast } from "sonner";
+import { z } from "zod";
 import {
     useGetDriversQuery,
     useCreateDriverWithUserMutation,
@@ -30,6 +32,8 @@ export default function DriversPage() {
     const { orgId, isSuperAdmin, isRootOrgAdmin, isSubOrgAdmin } = useOrgContext();
 
     const [showFilters, setShowFilters] = useState(false);
+    const [page, setPage] = useState(1);
+    const LIMIT = 10;
 
     // 🔐 ORG CONTEXT UPDATE
     const canCreateDriver = isSuperAdmin || isRootOrgAdmin || isSubOrgAdmin;
@@ -43,24 +47,30 @@ export default function DriversPage() {
         vehicleNumber: "",
         status: "",
         organizationId: "",
+        startDate: "",
+        organizationId: "",
+        startDate: "",
+        endDate: "",
     });
 
     const [editingDriver, setEditingDriver] = useState<any>(null);
 
     // API Hooks
-    const { data: driversData, isLoading: isDriversLoading } = useGetDriversQuery(undefined, { refetchOnMountOrArgChange: true });
+    const { data: driversData, isLoading: isDriversLoading, refetch: refetchDrivers } = useGetDriversQuery(
+        { page: page - 1, limit: LIMIT },
+        { refetchOnMountOrArgChange: true }
+    );
 
-    // 🔐 Only superadmin needs full org lists
-    const { data: orgData, isLoading: isOrgLoading } = useGetOrganizationsQuery(undefined, {
-        skip: !isSuperAdmin,
+    const { data: orgData, isLoading: isOrgLoading } = useGetOrganizationsQuery({ page: 0, limit: 1000 }, {
+        skip: !(isSuperAdmin || isRootOrgAdmin),
         refetchOnMountOrArgChange: true
     });
-    const { data: subOrgData, isLoading: isSubOrgLoading } = useGetSubOrganizationsQuery(undefined, {
-        skip: !isSuperAdmin,
+    const { data: subOrgData, isLoading: isSubOrgLoading } = useGetSubOrganizationsQuery({ page: 0, limit: 1000 }, {
+        skip: !(isSuperAdmin || isRootOrgAdmin),
         refetchOnMountOrArgChange: true
     });
 
-    const { data: vehData, isLoading: isVehLoading } = useGetVehiclesQuery(undefined, { refetchOnMountOrArgChange: true });
+    const { data: vehData, isLoading: isVehLoading } = useGetVehiclesQuery({ page: 0, limit: 1000 }, { refetchOnMountOrArgChange: true });
 
     const [createDriver, { isLoading: isCreating }] = useCreateDriverWithUserMutation();
     const [updateDriver, { isLoading: isUpdating }] = useUpdateDriverMutation();
@@ -189,6 +199,7 @@ export default function DriversPage() {
             type: "tel",
             required: true,
             placeholder: "+1 234 567 890",
+            helperText: "Include country code",
             icon: <Phone size={14} className="text-slate-500" />,
         },
         {
@@ -197,6 +208,7 @@ export default function DriversPage() {
             type: "text",
             required: true,
             placeholder: "DL12345678",
+            helperText: "Required",
             icon: <IdCard size={14} className="text-slate-500" />,
         },
         {
@@ -246,6 +258,36 @@ export default function DriversPage() {
         },
     ], [editingDriver, organizations, isSuperAdmin]);
 
+    const driverSchema = useMemo(() => {
+        const base = z.object({
+            firstName: z.string().min(1, "First name is required"),
+            lastName: z.string().min(1, "Last name is required"),
+            email: z.string().email("Valid email is required"),
+            phone: z.string().regex(/^\+?[1-9]\d{7,14}$/, "Enter valid phone with country code"),
+            licenseNumber: z.string().min(1, "License number is required"),
+            licenseExpiry: z.string().optional(),
+            status: z.enum(["active", "inactive", "blocked"]),
+            organizationId: z.string().optional(),
+            passwordHash: z.string().optional(),
+        });
+
+        if (!editingDriver) {
+            return base.extend({
+                passwordHash: z.string().min(6, "Password is required (min 6)"),
+            }).superRefine((val, ctx) => {
+                if (isSuperAdmin && !val.organizationId) {
+                    ctx.addIssue({ code: "custom", path: ["organizationId"], message: "Organization is required" });
+                }
+            });
+        }
+
+        return base.superRefine((val, ctx) => {
+            if (isSuperAdmin && !val.organizationId) {
+                ctx.addIssue({ code: "custom", path: ["organizationId"], message: "Organization is required" });
+            }
+        });
+    }, [editingDriver, isSuperAdmin]);
+
     const openCreateModal = () => {
         setEditingDriver(null);
         openPopup("driverModal");
@@ -280,6 +322,10 @@ export default function DriversPage() {
             vehicleNumber: "",
             status: "",
             organizationId: "",
+            startDate: "",
+            endDate: "",
+            startDate: "",
+            endDate: "",
         });
     };
 
@@ -370,6 +416,13 @@ export default function DriversPage() {
     ];
 
     const isLoading = isDriversLoading || isOrgLoading || isSubOrgLoading || isVehLoading;
+    const totalRecords =
+        (driversData as any)?.pagination?.totalrecords ??
+        (driversData as any)?.total ??
+        drivers.length;
+    const totalPages =
+        (driversData as any)?.pagination?.totalPages ??
+        Math.max(1, Math.ceil(totalRecords / LIMIT));
 
     if (isLoading) {
         return (
@@ -403,14 +456,24 @@ export default function DriversPage() {
                                 "licenseNumber",
                                 "licenseExpiry",
                                 "status",
+                                "password",
                             ]}
-                            requiredFields={["organizationId", "firstName", "phone", "licenseNumber"]}
+                            requiredFields={[
+                                ...(isSuperAdmin ? ["organizationId"] : []),
+                                "firstName",
+                                "phone",
+                                "licenseNumber",
+                                "password",
+                            ]}
                             filters={{
                                 name: filters.name,
                                 phone: filters.phone,
                                 licenseNumber: filters.licenseNumber,
                                 status: filters.status,
                                 organizationId: filters.organizationId,
+                                from: filters.startDate,
+                                from: filters.startDate,
+                                to: filters.endDate,
                             }}
                             onCompleted={() => {
                                 void refetchDrivers();
@@ -505,9 +568,34 @@ export default function DriversPage() {
                                     <option value="blocked">Blocked</option>
                                 </select>
                             </div>
+                            <div>
+                                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
+                                    Start Date
+                                </label>
+                                <input
+                                    type="date"
+                                    className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 outline-none"
+                                    value={filters.startDate}
+                                    onChange={(e) =>
+                                        setFilters({ ...filters, startDate: e.target.value })
+                                    }
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
+                                    End Date
+                                </label>
+                                <input
+                                    type="date"
+                                    className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 outline-none"
+                                    value={filters.endDate}
+                                    onChange={(e) =>
+                                        setFilters({ ...filters, endDate: e.target.value })
+                                    }
+                                />
+                            </div>
 
-                            {/* 🔐 ORG CONTEXT UPDATE */}
-                            {isSuperAdmin && (
+                            {(isSuperAdmin || isRootOrgAdmin) && (
                                 <div>
                                     <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
                                         Organization
@@ -540,6 +628,13 @@ export default function DriversPage() {
                 )}
 
                 <Table columns={columns} data={filteredDrivers} loading={isLoading} />
+                <Pagination
+                    page={page}
+                    totalPages={totalPages}
+                    totalItems={totalRecords}
+                    onPageChange={setPage}
+                    disabled={isDriversLoading}
+                />
 
                 {canCreateDriver && (
                     <DynamicModal
@@ -548,6 +643,7 @@ export default function DriversPage() {
                         title={editingDriver ? "Edit Driver" : "New Driver & User"}
                         description={editingDriver ? "Update driver information." : "Create a new driver and automatically generate their user account."}
                         fields={driverFormFields}
+                        schema={driverSchema}
                         initialData={
                             editingDriver
                                 ? {

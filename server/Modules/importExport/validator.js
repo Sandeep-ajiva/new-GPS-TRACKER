@@ -1,7 +1,7 @@
 const path = require("path");
 const mongoose = require("mongoose");
 
-const CHUNK_SIZE = 500;
+const CHUNK_SIZE = 2000;
 const ALLOWED_MIME_TYPES = new Set([
   "text/csv",
   "application/vnd.ms-excel",
@@ -52,6 +52,50 @@ const DEVICE_HEADER_MAP = {
   usermobile3: "userMobile3",
 };
 
+const DRIVER_HEADER_MAP = {
+  organizationid: "organizationId",
+  firstname: "firstName",
+  lastname: "lastName",
+  email: "email",
+  phone: "phone",
+  mobilenumber: "phone",
+  licensenumber: "licenseNumber",
+  licenseexpiry: "licenseExpiry",
+  status: "status",
+  password: "password",
+};
+
+const ORGANIZATION_HEADER_MAP = {
+  name: "name",
+  organizationtype: "organizationType",
+  email: "email",
+  phone: "phone",
+  addressline: "addressLine",
+  city: "city",
+  state: "state",
+  country: "country",
+  pincode: "pincode",
+  parentorganizationid: "parentOrganizationId",
+  status: "status",
+};
+
+const USER_HEADER_MAP = {
+  organizationid: "organizationId",
+  firstname: "firstName",
+  lastname: "lastName",
+  email: "email",
+  mobile: "mobile",
+  phone: "mobile",
+  role: "role",
+  status: "status",
+  password: "password",
+};
+
+const DRIVER_STATUS = new Set(["active", "inactive", "blocked"]);
+const ORG_TYPES = new Set(["logistics", "transport", "school", "taxi", "fleet"]);
+const USER_ROLES = new Set(["admin", "driver"]);
+const USER_STATUS = new Set(["active", "inactive"]);
+
 function sanitizeString(value) {
   if (value === null || value === undefined) return "";
   return String(value).trim();
@@ -64,6 +108,9 @@ function normalizeHeader(header) {
 function getHeaderMap(entity) {
   if (entity === "vehicles") return VEHICLE_HEADER_MAP;
   if (entity === "devices") return DEVICE_HEADER_MAP;
+  if (entity === "drivers") return DRIVER_HEADER_MAP;
+  if (entity === "organizations") return ORGANIZATION_HEADER_MAP;
+  if (entity === "users") return USER_HEADER_MAP;
   return null;
 }
 
@@ -104,8 +151,8 @@ function validateUploadedFile(file) {
 }
 
 function validateEntity(entity) {
-  if (!["vehicles", "devices", "history"].includes(entity)) {
-    throw { status: 400, message: "Unsupported entity. Allowed: vehicles, devices, history" };
+  if (!["vehicles", "devices", "history", "drivers", "organizations", "users"].includes(entity)) {
+    throw { status: 400, message: "Unsupported entity. Allowed: vehicles, devices, history, drivers, organizations, users" };
   }
 }
 
@@ -168,15 +215,65 @@ function mapCsvRowToEntity(entity, headerKeys, values) {
     return out;
   }
 
+  if (entity === "drivers") {
+    const out = {
+      organizationId: sanitizeString(mapped.organizationId),
+      firstName: sanitizeString(mapped.firstName),
+      lastName: sanitizeString(mapped.lastName),
+      email: sanitizeString(mapped.email).toLowerCase(),
+      phone: sanitizeString(mapped.phone),
+      licenseNumber: sanitizeString(mapped.licenseNumber).toUpperCase(),
+      status: sanitizeString(mapped.status).toLowerCase() || "active",
+      password: sanitizeString(mapped.password),
+    };
+
+    const licenseExpiry = parseDate(mapped.licenseExpiry);
+    if (licenseExpiry) out.licenseExpiry = licenseExpiry;
+
+    return out;
+  }
+
+  if (entity === "organizations") {
+    return {
+      name: sanitizeString(mapped.name),
+      organizationType: sanitizeString(mapped.organizationType).toLowerCase(),
+      email: sanitizeString(mapped.email).toLowerCase(),
+      phone: sanitizeString(mapped.phone),
+      addressLine: sanitizeString(mapped.addressLine),
+      city: sanitizeString(mapped.city),
+      state: sanitizeString(mapped.state),
+      country: sanitizeString(mapped.country),
+      pincode: sanitizeString(mapped.pincode),
+      parentOrganizationId: sanitizeString(mapped.parentOrganizationId),
+      status: sanitizeString(mapped.status).toLowerCase() || "active",
+    };
+  }
+
+  if (entity === "users") {
+    return {
+      organizationId: sanitizeString(mapped.organizationId),
+      firstName: sanitizeString(mapped.firstName),
+      lastName: sanitizeString(mapped.lastName),
+      email: sanitizeString(mapped.email).toLowerCase(),
+      mobile: sanitizeString(mapped.mobile),
+      role: sanitizeString(mapped.role).toLowerCase(),
+      status: sanitizeString(mapped.status).toLowerCase() || "active",
+      password: sanitizeString(mapped.password),
+    };
+  }
+
   return mapped;
 }
 
 function validateNormalizedRow(entity, row, req) {
   const errors = [];
 
-  const orgId = req.user.role === "superadmin" ? row.organizationId : String(req.orgId || "");
-  if (!orgId || !mongoose.isValidObjectId(orgId)) {
-    errors.push("organizationId is required and must be a valid ObjectId");
+  let orgId = null;
+  if (entity !== "organizations" && entity !== "history") {
+    orgId = req.user.role === "superadmin" ? row.organizationId : String(req.orgId || "");
+    if (!orgId || !mongoose.isValidObjectId(orgId)) {
+      errors.push("organizationId is required and must be a valid ObjectId");
+    }
   }
 
   if (entity === "vehicles") {
@@ -204,6 +301,44 @@ function validateNormalizedRow(entity, row, req) {
     if (!row.softwareVersion) errors.push("softwareVersion is required");
     if (row.status && !GPS_DEVICE_STATUS.has(row.status)) {
       errors.push("status must be one of active,inactive,suspended");
+    }
+  }
+
+  if (entity === "drivers") {
+    if (!row.firstName) errors.push("firstName is required");
+    if (!row.email) errors.push("email is required");
+    if (!row.phone) errors.push("phone is required");
+    if (!row.licenseNumber) errors.push("licenseNumber is required");
+    if (row.status && !DRIVER_STATUS.has(row.status)) {
+      errors.push("status must be one of active,inactive,blocked");
+    }
+  }
+
+  if (entity === "organizations") {
+    if (!row.name) errors.push("name is required");
+    if (!row.organizationType || !ORG_TYPES.has(row.organizationType)) {
+      errors.push("organizationType is required and must be one of logistics,transport,school,taxi,fleet");
+    }
+    if (!row.email) errors.push("email is required");
+    if (!row.phone) errors.push("phone is required");
+    if (row.status && !USER_STATUS.has(row.status)) {
+      errors.push("status must be one of active,inactive");
+    }
+    if (row.parentOrganizationId && !mongoose.isValidObjectId(row.parentOrganizationId)) {
+      errors.push("parentOrganizationId must be a valid ObjectId");
+    }
+  }
+
+  if (entity === "users") {
+    if (!row.firstName) errors.push("firstName is required");
+    if (!row.email) errors.push("email is required");
+    if (!row.mobile) errors.push("mobile is required");
+    if (!row.password) errors.push("password is required");
+    if (!row.role || !USER_ROLES.has(row.role)) {
+      errors.push("role is required and must be one of admin,driver");
+    }
+    if (row.status && !USER_STATUS.has(row.status)) {
+      errors.push("status must be one of active,inactive");
     }
   }
 

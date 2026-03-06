@@ -7,6 +7,8 @@ import MappingTable from "./MappingTable";
 import ValidationSummary from "./ValidationSummary";
 import { runExport } from "./ExportHandler";
 import { useImportExport } from "@/hooks/useImportExport";
+import { FilePond } from "react-filepond";
+import "filepond/dist/filepond.min.css";
 
 type ImportModalProps = {
   isOpen: boolean;
@@ -55,6 +57,8 @@ export default function ImportModal({
     failedCount: number;
     errors: { rowNumber: number; message: string }[];
   } | null>(null);
+  const [exportFromDate, setExportFromDate] = useState("");
+  const [exportToDate, setExportToDate] = useState("");
 
   const missingRequiredFields = useMemo(() => {
     const mapped = new Set(Object.values(mapping).filter(Boolean));
@@ -78,6 +82,8 @@ export default function ImportModal({
     setCsvColumns([]);
     setMapping({});
     setResult(null);
+    setExportFromDate("");
+    setExportToDate("");
     reset();
     onClose();
   };
@@ -179,8 +185,15 @@ export default function ImportModal({
       if (data) {
         setResult(data);
       }
+      const hasErrors = !!data && data.failedCount > 0;
+      if (hasErrors) {
+        toast.error("Import completed with errors. Please review the failed rows.");
+        onCompleted?.();
+        return;
+      }
       toast.success(response?.message || "Import completed");
       onCompleted?.();
+      closeAll();
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : "Import failed";
       toast.error(message);
@@ -189,12 +202,18 @@ export default function ImportModal({
 
   const onExport = async () => {
     try {
+      const finalFilters = { ...filters };
+      if (exportFromDate) finalFilters.from = exportFromDate;
+      if (exportToDate) finalFilters.to = exportToDate;
+
       await runExport({
         exportFile,
         exportUrl,
         moduleName,
-        filters,
+        filters: finalFilters,
       });
+      toast.success("Export completed");
+      closeAll();
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : "Export failed";
       toast.error(message);
@@ -211,7 +230,11 @@ export default function ImportModal({
             </h3>
             <p className="text-xs text-slate-500">Upload data or export with current filters.</p>
           </div>
-          <button onClick={closeAll} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100">
+          <button
+            onClick={closeAll}
+            className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 disabled:opacity-50"
+            disabled={loading}
+          >
             <X size={16} />
           </button>
         </div>
@@ -233,18 +256,25 @@ export default function ImportModal({
           </div>
         </div>
 
-        <div className="max-h-[70vh] overflow-auto p-4 space-y-4">
+        <div className="relative max-h-[70vh] overflow-auto p-4 space-y-4">
           {tab === "import" && (
             <>
               <div className="rounded-xl border border-dashed border-slate-300 p-4">
                 <label className="mb-2 block text-[10px] font-black uppercase tracking-widest text-slate-500">
                   Upload CSV / Excel
                 </label>
-                <input
-                  type="file"
-                  accept=".csv,.xlsx"
-                  onChange={(e) => void onPickFile(e.target.files?.[0] || null)}
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs"
+                <FilePond
+                  files={file ? [file] : []}
+                  onupdatefiles={(fileItems) => {
+                    const next = fileItems[0]?.file || null;
+                    void onPickFile(next);
+                  }}
+                  allowMultiple={false}
+                  maxFiles={1}
+                  acceptedFileTypes={["text/csv", ".csv", ".xlsx"]}
+                  labelIdle='Drag & Drop your file or <span class="filepond--label-action">Browse</span>'
+                  disabled={loading}
+                  credits={false}
                 />
                 {file && (
                   <p className="mt-2 text-xs text-slate-600">
@@ -298,6 +328,9 @@ export default function ImportModal({
                       style={{ width: `${progress}%` }}
                     />
                   </div>
+                  <div className="mt-2 text-[10px] font-semibold uppercase tracking-widest text-slate-500">
+                    {progress >= 100 ? "Upload complete. Processing rows..." : `Uploading... ${progress}%`}
+                  </div>
                 </div>
               )}
               {error && <div className="text-xs text-rose-600">{error}</div>}
@@ -305,8 +338,34 @@ export default function ImportModal({
           )}
 
           {tab === "export" && (
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
-              Export will include currently applied filters from this table view.
+            <div className="space-y-4">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+                Export will include currently applied filters from this table view. If you wish to export data for a specific date range, please select the dates below.
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
+                    Start Date (From)
+                  </label>
+                  <input
+                    type="date"
+                    className="w-full rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
+                    value={exportFromDate}
+                    onChange={(e) => setExportFromDate(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
+                    End Date (To)
+                  </label>
+                  <input
+                    type="date"
+                    className="w-full rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
+                    value={exportToDate}
+                    onChange={(e) => setExportToDate(e.target.value)}
+                  />
+                </div>
+              </div>
             </div>
           )}
         </div>
@@ -342,6 +401,15 @@ export default function ImportModal({
             </button>
           )}
         </div>
+
+        {loading && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/70 backdrop-blur-sm">
+            <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-semibold text-slate-700 shadow-lg">
+              <Loader2 size={16} className="animate-spin" />
+              Processing... Please wait
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

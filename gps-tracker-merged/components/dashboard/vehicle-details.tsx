@@ -248,7 +248,7 @@ export function VehicleDetails({
                                     {positions[vehicle.id]
                                         ? `${positions[vehicle.id]?.lat.toFixed(6)}, ${positions[vehicle.id]?.lng.toFixed(6)}`
                                         : "N/A"}
-                                </span>
+                                </span> 
                             </div>
                             <div className="flex justify-between gap-3">
                                 <span className="text-gray-400">POI</span>

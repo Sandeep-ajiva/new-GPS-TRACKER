@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { Lock, Mail, Loader2 } from "lucide-react"
+import { z } from "zod"
 
 import { saveSecureItem } from "@/app/admin/Helpers/encryptionHelper"
 
@@ -22,11 +23,32 @@ export default function LoginPage() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
+  const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const loginSchema = z.object({
+    email: z.string().email("Valid email is required"),
+    password: z.string().min(6, "Password must be at least 6 characters"),
+  })
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setError("")
+    setFieldErrors({})
+
+    const parsed = loginSchema.safeParse({ email, password })
+    if (!parsed.success) {
+      const nextErrors: { email?: string; password?: string } = {}
+      for (const issue of parsed.error.issues) {
+        const key = issue.path[0]
+        if (key === "email" || key === "password") {
+          nextErrors[key] = issue.message
+        }
+      }
+      setFieldErrors(nextErrors)
+      return
+    }
+
     setIsSubmitting(true)
 
     try {
@@ -111,6 +133,9 @@ export default function LoginPage() {
                   required
                   disabled={isSubmitting}
                 />
+                {fieldErrors.email && (
+                  <p className="mt-1 text-xs text-rose-300">{fieldErrors.email}</p>
+                )}
               </div>
             </div>
 
@@ -129,6 +154,9 @@ export default function LoginPage() {
                   required
                   disabled={isSubmitting}
                 />
+                {fieldErrors.password && (
+                  <p className="mt-1 text-xs text-rose-300">{fieldErrors.password}</p>
+                )}
               </div>
             </div>
 

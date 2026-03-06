@@ -7,6 +7,8 @@ import { ExternalLink, Plus, Edit, Trash2, Eye } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import OrganizationCreateModal from "@/components/admin/Modals/OrganizationCreateModal";
+import LocationSelects from "@/components/common/LocationSelects";
+import PhoneInputField from "@/components/common/PhoneInputField";
 
 import {
     useGetOrganizationsQuery,
@@ -39,13 +41,36 @@ export default function OrganizationsPage() {
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [editingOrg, setEditingOrg] = useState<any>(null);
-    const [formData, setFormData] = useState({ name: "", email: "", phone: "", address: "" });
+    const [formData, setFormData] = useState({
+        name: "",
+        email: "",
+        phone: "",
+        addressLine: "",
+        country: "",
+        state: "",
+        city: "",
+        pincode: ""
+    });
 
     const handleEditSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
             if (editingOrg) {
-                await updateOrg({ id: editingOrg._id, ...formData }).unwrap();
+                await updateOrg({
+                    id: editingOrg._id,
+                    body: {
+                        name: formData.name,
+                        email: formData.email,
+                        phone: formData.phone,
+                        address: {
+                            addressLine: formData.addressLine,
+                            city: formData.city,
+                            state: formData.state,
+                            country: formData.country,
+                            pincode: formData.pincode || undefined
+                        }
+                    }
+                }).unwrap();
                 toast.success("Organization updated successfully");
             }
             closeEditModal();
@@ -59,12 +84,20 @@ export default function OrganizationsPage() {
     };
 
     const openEditModal = (org: any) => {
+        const normalizedAddress =
+            typeof org?.address === "string"
+                ? { addressLine: org.address, city: "", state: "", country: "", pincode: "" }
+                : (org?.address || { addressLine: "", city: "", state: "", country: "", pincode: "" });
         setEditingOrg(org);
         setFormData({
             name: org.name,
             email: org.email,
             phone: org.phone,
-            address: org.address || ""
+            addressLine: normalizedAddress.addressLine || "",
+            city: normalizedAddress.city || "",
+            state: normalizedAddress.state || "",
+            country: normalizedAddress.country || "",
+            pincode: normalizedAddress.pincode || ""
         });
         setIsEditModalOpen(true);
     };
@@ -213,13 +246,39 @@ export default function OrganizationsPage() {
                                 </div>
                                 <div>
                                     <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Phone</label>
-                                    <input type="text" required className="w-full rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
-                                        value={formData.phone} onChange={e => setFormData({ ...formData, phone: e.target.value })} />
+                                    <PhoneInputField
+                                        value={formData.phone}
+                                        onChange={(val) => setFormData({ ...formData, phone: val })}
+                                        placeholder="Enter phone number"
+                                        required
+                                        variant="dark"
+                                    />
                                 </div>
                                 <div>
-                                    <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Address</label>
-                                    <textarea className="w-full rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
-                                        value={formData.address} onChange={e => setFormData({ ...formData, address: e.target.value })} />
+                                    <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Address Line</label>
+                                    <input
+                                        className="w-full rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
+                                        value={formData.addressLine}
+                                        onChange={e => setFormData({ ...formData, addressLine: e.target.value })}
+                                        placeholder="123 Business Way"
+                                        required
+                                    />
+                                </div>
+                                <LocationSelects
+                                    variant="dark"
+                                    country={formData.country}
+                                    state={formData.state}
+                                    city={formData.city}
+                                    onChange={(next) => setFormData({ ...formData, ...next })}
+                                />
+                                <div>
+                                    <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Pincode</label>
+                                    <input
+                                        className="w-full rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
+                                        value={formData.pincode}
+                                        onChange={e => setFormData({ ...formData, pincode: e.target.value })}
+                                        placeholder="e.g. 110001"
+                                    />
                                 </div>
                                 <div className="flex gap-3 mt-6">
                                     <button type="button" onClick={closeEditModal} className="flex-1 rounded-xl border border-slate-800 bg-slate-950/70 py-2.5 text-[11px] font-black uppercase tracking-widest text-slate-200 hover:bg-slate-900">Cancel</button>

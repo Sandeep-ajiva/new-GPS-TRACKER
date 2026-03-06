@@ -109,7 +109,7 @@ exports.getMe = async (req, res) => {
   try {
     const user = await User.findById(req.user._id)
       .select("-passwordHash")
-      .populate("organizationId", "name email phone")
+      .populate("organizationId", "name email phone logo")
       .populate("assignedVehicleId", "vehicleNumber vehicleType model status runningStatus deviceId");
     if (!user)
       return res.status(404).json({ status: false, message: "User not found" });
@@ -140,7 +140,7 @@ exports.getAll = async (req, res) => {
 
     const users = await User.find(query)
       .select("-passwordHash")
-      .populate("organizationId", "name email phone")
+      .populate("organizationId", "name email phone logo")
       .sort({ createdAt: -1 });
 
     return res.status(200).json({
@@ -170,12 +170,18 @@ exports.getManagerByOrganization = async (req, res) => {
         ? scopedOrgIds.filter((id) => id !== parentOrgId)
         : scopedOrgIds;
 
+      console.log("--- getManagerByOrganization Diagnostics ---");
+      console.log("User Role:", req.user.role);
+      console.log("Parent Org ID:", parentOrgId);
+      console.log("Scoped Org IDs (Total):", scopedOrgIds.length);
+      console.log("Sub Org IDs Only (Total):", subOrgIdsOnly.length);
+
       usersQuery.organizationId = { $in: subOrgIdsOnly };
     }
 
     const users = await User.find(usersQuery)
       .select("-passwordHash")
-      .populate("organizationId", "name email phone")
+      .populate("organizationId", "name email phone logo")
       .sort({ createdAt: -1 });
 
     return res.status(200).json({

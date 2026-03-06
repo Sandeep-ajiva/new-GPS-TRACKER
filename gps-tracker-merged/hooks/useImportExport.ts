@@ -91,10 +91,15 @@ export function useImportExport() {
           }
 
           const message = (parsed as { message?: string })?.message || `Request failed: ${xhr.status}`;
+          setState({ loading: false, progress: 0, error: message, success: null });
           reject(new Error(message));
         };
 
-        xhr.onerror = () => reject(new Error("Network error while uploading file"));
+        xhr.onerror = () => {
+          const message = "Network error while uploading file";
+          setState({ loading: false, progress: 0, error: message, success: null });
+          reject(new Error(message));
+        };
         xhr.send(formData);
       });
 

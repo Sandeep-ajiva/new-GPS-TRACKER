@@ -4,6 +4,8 @@ import { X, Building2, Mail, Phone, MapPin, User } from "lucide-react";
 import { Organization, IApiError } from "@/types";
 import { useCreateOrganizationMutation, useUpdateOrganizationMutation } from "@/redux/api/organizationApi";
 import { toast } from "sonner";
+import LocationSelects from "@/components/common/LocationSelects";
+import PhoneInputField from "@/components/common/PhoneInputField";
 
 interface OrganizationModalProps {
     isOpen: boolean;
@@ -15,11 +17,20 @@ export default function OrganizationModal({ isOpen, onClose, organization }: Org
     const [createOrg, { isLoading: isCreating }] = useCreateOrganizationMutation();
     const [updateOrg, { isLoading: isUpdating }] = useUpdateOrganizationMutation();
 
+    const normalizedAddress =
+        typeof organization?.address === "string"
+            ? { addressLine: organization.address, city: "", state: "", country: "", pincode: "" }
+            : (organization?.address || { addressLine: "", city: "", state: "", country: "", pincode: "" });
+
     const [formData, setFormData] = useState({
         name: organization?.name || "",
         email: organization?.email || "",
         phone: organization?.phone || "",
-        address: organization?.address || "",
+        addressLine: normalizedAddress.addressLine || "",
+        city: normalizedAddress.city || "",
+        state: normalizedAddress.state || "",
+        country: normalizedAddress.country || "",
+        pincode: normalizedAddress.pincode || "",
         contactPerson: organization?.contactPerson || "",
         logo: organization?.logo || ""
     });
@@ -30,10 +41,39 @@ export default function OrganizationModal({ isOpen, onClose, organization }: Org
         e.preventDefault();
         try {
             if (organization) {
-                await updateOrg({ id: organization._id, ...formData }).unwrap();
+                await updateOrg({
+                    id: organization._id,
+                    body: {
+                        name: formData.name,
+                        email: formData.email,
+                        phone: formData.phone,
+                        contactPerson: formData.contactPerson,
+                        logo: formData.logo,
+                        address: {
+                            addressLine: formData.addressLine,
+                            city: formData.city,
+                            state: formData.state,
+                            country: formData.country,
+                            pincode: formData.pincode || undefined
+                        }
+                    }
+                }).unwrap();
                 toast.success("Organization updated successfully");
             } else {
-                await createOrg(formData).unwrap();
+                await createOrg({
+                    name: formData.name,
+                    email: formData.email,
+                    phone: formData.phone,
+                    contactPerson: formData.contactPerson,
+                    logo: formData.logo,
+                    address: {
+                        addressLine: formData.addressLine,
+                        city: formData.city,
+                        state: formData.state,
+                        country: formData.country,
+                        pincode: formData.pincode || undefined
+                    }
+                }).unwrap();
                 toast.success("Organization created successfully");
             }
             onClose();
@@ -94,13 +134,11 @@ export default function OrganizationModal({ isOpen, onClose, organization }: Org
                                     <Phone size={14} className="text-blue-500" />
                                     Phone Number
                                 </label>
-                                <input
-                                    required
-                                    type="tel"
-                                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-bold text-gray-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
-                                    placeholder="+1 (234) 567-8900"
+                                <PhoneInputField
                                     value={formData.phone}
-                                    onChange={e => setFormData({ ...formData, phone: e.target.value })}
+                                    onChange={(val) => setFormData({ ...formData, phone: val })}
+                                    placeholder="Enter phone number"
+                                    required
                                 />
                             </div>
                         </div>
@@ -123,15 +161,36 @@ export default function OrganizationModal({ isOpen, onClose, organization }: Org
                             <div>
                                 <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-1.5 flex items-center gap-2">
                                     <MapPin size={14} className="text-blue-500" />
-                                    Address
+                                    Address Line
                                 </label>
-                                <textarea
+                                <input
                                     required
-                                    rows={4}
-                                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-bold text-gray-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all resize-none"
-                                    placeholder="123 Business Way, City, Country"
-                                    value={formData.address}
-                                    onChange={e => setFormData({ ...formData, address: e.target.value })}
+                                    type="text"
+                                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-bold text-gray-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                                    placeholder="123 Business Way"
+                                    value={formData.addressLine}
+                                    onChange={e => setFormData({ ...formData, addressLine: e.target.value })}
+                                />
+                            </div>
+
+                            <LocationSelects
+                                country={formData.country}
+                                state={formData.state}
+                                city={formData.city}
+                                onChange={(next) => setFormData({ ...formData, ...next })}
+                            />
+
+                            <div>
+                                <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-1.5 flex items-center gap-2">
+                                    <MapPin size={14} className="text-blue-500" />
+                                    Pincode
+                                </label>
+                                <input
+                                    type="text"
+                                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-bold text-gray-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                                    placeholder="e.g. 110001"
+                                    value={formData.pincode}
+                                    onChange={e => setFormData({ ...formData, pincode: e.target.value })}
                                 />
                             </div>
                         </div>

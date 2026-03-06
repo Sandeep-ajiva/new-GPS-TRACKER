@@ -10,6 +10,7 @@ type VehicleListParams = {
 };
 
 export const vehicleApi = baseApi.injectEndpoints({
+  overrideExisting: true,
   endpoints: (builder) => ({
     getVehicles: builder.query({
       query: (params?: VehicleListParams) => {

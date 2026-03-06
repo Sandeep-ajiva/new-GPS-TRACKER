@@ -146,6 +146,7 @@ function ProfileDropdown({
     displayName,
     email,
     role,
+    user,
     onProfile,
     onSettings,
     onLogout,
@@ -154,6 +155,7 @@ function ProfileDropdown({
     displayName: string
     email: string
     role: string
+    user: any
     onProfile: () => void
     onSettings: () => void
     onLogout: () => void
@@ -164,8 +166,18 @@ function ProfileDropdown({
         <div className="absolute right-0 top-full mt-2 w-64 rounded-2xl bg-slate-800 border border-white/10 shadow-2xl ring-1 ring-black/40 z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
             {/* Avatar header */}
             <div className="flex items-center gap-3 px-4 py-4 border-b border-white/10 bg-gradient-to-r from-emerald-900/30 to-slate-800">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-400 text-lg font-bold text-slate-900 shrink-0">
-                    {displayName.charAt(0).toUpperCase()}
+                <div className="flex h-12 w-12 items-center justify-center rounded-full border-2 border-emerald-400 bg-white overflow-hidden shrink-0">
+                    {user?.organizationId?.logo ? (
+                        <img
+                            src={`http://localhost:5000${user.organizationId.logo}`}
+                            alt="Org Logo"
+                            className="h-full w-full object-contain p-1"
+                        />
+                    ) : (
+                        <span className="text-lg font-bold text-slate-900">
+                            {displayName.charAt(0).toUpperCase()}
+                        </span>
+                    )}
                 </div>
                 <div className="min-w-0">
                     <p className="text-sm font-bold text-slate-100 truncate">{displayName}</p>
@@ -326,11 +338,23 @@ export function Header({
 
             {/* Left: Logo */}
             <div className="relative z-10 flex items-center gap-2 group cursor-pointer" onClick={() => router.push("/dashboard")}>
-                <div className="relative h-9 w-9 shrink-0">
-                    <div className="absolute inset-0 rounded-full border-2 border-emerald-400/40 group-hover:border-emerald-400/80 transition-colors" />
-                    <div className="relative flex h-full w-full items-center justify-center rounded-full bg-emerald-400 text-xs font-black text-slate-900 shadow-lg shadow-emerald-400/20">
-                        AT
-                    </div>
+                <div className="relative h-9 w-9 shrink-0 flex items-center justify-center">
+                    {user?.organizationId?.logo ? (
+                        <div className="relative h-full w-full rounded-full border-2 border-emerald-400/40 group-hover:border-emerald-400/80 transition-all overflow-hidden bg-white/5 p-1">
+                            <img
+                                src={`http://localhost:5000${user.organizationId.logo}`}
+                                alt="Logo"
+                                className="h-full w-full object-contain"
+                            />
+                        </div>
+                    ) : (
+                        <>
+                            <div className="absolute inset-0 rounded-full border-2 border-emerald-400/40 group-hover:border-emerald-400/80 transition-colors" />
+                            <div className="relative flex h-full w-full items-center justify-center rounded-full bg-emerald-400 text-xs font-black text-slate-900 shadow-lg shadow-emerald-400/20">
+                                AT
+                            </div>
+                        </>
+                    )}
                 </div>
                 <span className="hidden leading-tight font-black text-lg tracking-tighter sm:block">
                     Ajiva<span className="text-emerald-400">Tracker</span>
@@ -408,8 +432,18 @@ export function Header({
                         }}
                         className={`flex items-center gap-1.5 sm:gap-2 rounded-full p-0.5 sm:pr-3 transition-all active:scale-95 ${showProfileDropdown ? 'bg-emerald-500/20 shadow-lg shadow-emerald-500/10' : 'hover:bg-white/5'}`}
                     >
-                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 text-sm font-black text-slate-900 shrink-0 shadow-md">
-                            {displayName.charAt(0).toUpperCase()}
+                        <div className="flex h-8 w-8 items-center justify-center rounded-full border border-emerald-400/50 bg-white overflow-hidden shrink-0 shadow-md">
+                            {user?.organizationId?.logo ? (
+                                <img
+                                    src={`http://localhost:5000${user.organizationId.logo}`}
+                                    alt="Org Logo"
+                                    className="h-full w-full object-contain p-0.5"
+                                />
+                            ) : (
+                                <span className="text-sm font-black text-slate-900">
+                                    {displayName.charAt(0).toUpperCase()}
+                                </span>
+                            )}
                         </div>
                         <span className="hidden text-sm font-black text-slate-100 sm:block max-w-[80px] lg:max-w-[120px] truncate leading-none">
                             {displayName.split(" ")[0]}
@@ -424,6 +458,7 @@ export function Header({
                         displayName={displayName}
                         email={email}
                         role={role}
+                        user={user}
                         onProfile={() => {
                             router.push("/dashboard/profile")
                             setShowProfileDropdown(false)

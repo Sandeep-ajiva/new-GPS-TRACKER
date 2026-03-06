@@ -2,6 +2,8 @@
 import React, { useState } from "react";
 import { Building2, Image, Lock, Mail, MapPin, Phone, X } from "lucide-react";
 import { toast } from "sonner";
+import LocationSelects from "@/components/common/LocationSelects";
+import PhoneInputField from "@/components/common/PhoneInputField";
 
 type OrganizationCreateModalProps = {
   isOpen: boolean;
@@ -11,7 +13,13 @@ type OrganizationCreateModalProps = {
     organizationType: string;
     email: string;
     phone: string;
-    address: string;
+    address: {
+      addressLine: string;
+      city: string;
+      state: string;
+      country: string;
+      pincode?: string;
+    };
     firstName: string;
     lastName: string;
     password: string;
@@ -31,13 +39,18 @@ export default function OrganizationCreateModal({
   isOpen,
   onClose,
   onCreate,
+  variant = "light",
 }: OrganizationCreateModalProps) {
   const [formData, setFormData] = useState({
     name: "",
     organizationType: "logistics",
     email: "",
     phone: "",
-    address: "",
+    addressLine: "",
+    country: "",
+    state: "",
+    city: "",
+    pincode: "",
     password: "",
     logoUrl: "",
   });
@@ -57,7 +70,13 @@ export default function OrganizationCreateModal({
           organizationType: formData.organizationType,
           email: formData.email,
           phone: formData.phone,
-          address: formData.address,
+          address: {
+            addressLine: formData.addressLine,
+            city: formData.city,
+            state: formData.state,
+            country: formData.country,
+            pincode: formData.pincode || undefined,
+          },
           firstName,
           lastName,
           password: formData.password,
@@ -70,7 +89,11 @@ export default function OrganizationCreateModal({
         organizationType: "logistics",
         email: "",
         phone: "",
-        address: "",
+        addressLine: "",
+        country: "",
+        state: "",
+        city: "",
+        pincode: "",
         password: "",
         logoUrl: "",
       });
@@ -163,15 +186,12 @@ export default function OrganizationCreateModal({
                   <Phone size={14} className="text-blue-500" />
                   Phone Number
                 </label>
-                <input
-                  required
-                  type="tel"
-                  className="w-full rounded-xl px-4 py-3 text-sm font-bold outline-none transition-all bg-slate-50 border border-slate-200 text-slate-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                  placeholder="+1 (234) 567-8900"
+                <PhoneInputField
                   value={formData.phone}
-                  onChange={(e) =>
-                    setFormData({ ...formData, phone: e.target.value })
-                  }
+                  onChange={(val) => setFormData({ ...formData, phone: val })}
+                  placeholder="Enter phone number"
+                  required
+                  variant={variant}
                 />
               </div>
             </div>
@@ -180,16 +200,45 @@ export default function OrganizationCreateModal({
               <div>
                 <label className="block text-xs font-black uppercase tracking-widest mb-1.5 flex items-center gap-2 text-slate-400">
                   <MapPin size={14} className="text-blue-500" />
-                  Address
+                  Address Line
                 </label>
-                <textarea
+                <input
                   required
-                  rows={4}
-                  className="w-full rounded-xl px-4 py-3 text-sm font-bold outline-none transition-all resize-none bg-slate-50 border border-slate-200 text-slate-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                  placeholder="123 Business Way, City, Country"
-                  value={formData.address}
+                  type="text"
+                  className="w-full rounded-xl px-4 py-3 text-sm font-bold outline-none transition-all bg-slate-50 border border-slate-200 text-slate-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                  placeholder="123 Business Way"
+                  value={formData.addressLine}
                   onChange={(e) =>
-                    setFormData({ ...formData, address: e.target.value })
+                    setFormData({ ...formData, addressLine: e.target.value })
+                  }
+                />
+              </div>
+
+              <LocationSelects
+                variant={variant}
+                country={formData.country}
+                state={formData.state}
+                city={formData.city}
+                onChange={(next) =>
+                  setFormData({
+                    ...formData,
+                    ...next,
+                  })
+                }
+              />
+
+              <div>
+                <label className="block text-xs font-black uppercase tracking-widest mb-1.5 flex items-center gap-2 text-slate-400">
+                  <MapPin size={14} className="text-blue-500" />
+                  Pincode
+                </label>
+                <input
+                  type="text"
+                  className="w-full rounded-xl px-4 py-3 text-sm font-bold outline-none transition-all bg-slate-50 border border-slate-200 text-slate-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                  placeholder="e.g. 110001"
+                  value={formData.pincode}
+                  onChange={(e) =>
+                    setFormData({ ...formData, pincode: e.target.value })
                   }
                 />
               </div>
