@@ -208,7 +208,7 @@ exports.getAll = async (req, res) => {
       // ✅ populate
       [
         { path: "organizationId", select: "name" },
-        { path: "driverId", select: "firstName lastName" },
+        { path: "driverId", select: "firstName lastName phone email licenseNumber address" },
       ],
 
       // ✅ searchable fields
@@ -241,8 +241,8 @@ exports.getById = async (req, res) => {
     // 🔐 ORG SCOPE FIX
     const orgFilter = req.orgScope === "ALL" ? {} : { organizationId: { $in: req.orgScope } };
     const vehicle = await VehicleModel.findOne({ _id: req.params.id, ...orgFilter }).populate([
-      'organizationId',
-      'driverId'
+      { path: "organizationId", select: "name" },
+      { path: "driverId", select: "firstName lastName phone email licenseNumber address" }
     ]);
 
     if (!vehicle) {

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { MapContainer, Marker, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { RUNNING_SPEED_THRESHOLD } from "@/lib/vehicleStatusUtils";
 import "leaflet-defaulticon-compatibility/dist/leaflet-defaulticon-compatibility.css";
 import "leaflet-defaulticon-compatibility";
 import MapTileLayer from "./MapTileLayer";
@@ -108,10 +109,10 @@ function SmoothMarker({
           </p>
           <div className="flex items-center gap-2 mb-1">
             <span
-              className={`h-2 w-2 rounded-full ${vehicle.speed > 0 ? "bg-emerald-500" : "bg-amber-500"}`}
+              className={`h-2 w-2 rounded-full ${vehicle.speed >= RUNNING_SPEED_THRESHOLD ? "bg-emerald-500" : "bg-amber-500"}`}
             ></span>
             <span className="text-xs text-slate-600 font-medium">
-              {vehicle.speed > 0
+              {vehicle.speed >= RUNNING_SPEED_THRESHOLD
                 ? `Running - ${vehicle.speed} km/h`
                 : "Stopped"}
             </span>
@@ -135,7 +136,7 @@ export default function LeafletLiveMap({
   // Custom marker function
   const getMarkerIcon = (vehicle: LiveVehicle, isActive: boolean) => {
     const { speed, heading = 0 } = vehicle;
-    const color = speed > 0 ? "#10b981" : "#f59e0b"; // emerald-500 : amber-500
+    const color = speed >= RUNNING_SPEED_THRESHOLD ? "#10b981" : "#f59e0b"; // emerald-500 : amber-500
     const size = isActive ? 24 : 18;
 
     return L.divIcon({
@@ -159,7 +160,7 @@ export default function LeafletLiveMap({
             border-left: 6px solid transparent;
             border-right: 6px solid transparent;
             border-bottom: 10px solid ${color};
-            display: ${speed > 0 ? "block" : "none"};
+            display: ${speed >= RUNNING_SPEED_THRESHOLD ? "block" : "none"};
           "></div>
           
           <!-- Main Circle -->
@@ -170,7 +171,7 @@ export default function LeafletLiveMap({
             border: 2px solid white;
             border-radius: 50%;
             box-shadow: 0 0 15px rgba(0,0,0,0.4);
-            ${speed > 0 ? "animation: pulse 2s infinite;" : ""}
+            ${speed >= RUNNING_SPEED_THRESHOLD ? "animation: pulse 2s infinite;" : ""}
           "></div>
         </div>
       `,

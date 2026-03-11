@@ -12,6 +12,7 @@ import { VehicleDetails } from "@/components/dashboard/vehicle-details"
 import { useVehiclePositions } from "@/lib/use-vehicle-positions"
 import { type Vehicle } from "@/lib/vehicles"
 import { useGetVehiclesQuery } from "@/redux/api/vehicleApi"
+import { useGetDriversQuery } from "@/redux/api/driversApi"
 import { useGetNotificationsQuery } from "@/redux/api/notificationsApi"
 import { useGetMeQuery } from "@/redux/api/usersApi"
 import { useGetOrganizationsQuery } from "@/redux/api/organizationApi"
@@ -23,6 +24,7 @@ import { useSocket } from "@/hooks/useSocket"
 import { useAppDispatch, useAppSelector } from "@/redux/hooks"
 import { setActiveTab, setSelectedVehicle as setReduxSelectedVehicle } from "@/redux/features/vehicleSlice"
 import { useDashboardContext } from "@/components/dashboard/DashboardContext"
+import { getVehicleStatus, RUNNING_SPEED_THRESHOLD } from "@/lib/vehicleStatusUtils"
 import { ReportView } from "@/components/dashboard/modules/ReportView"
 import { GeofenceView } from "@/components/dashboard/modules/GeofenceView"
 import { LicensingView } from "@/components/dashboard/modules/LicensingView"
@@ -44,7 +46,16 @@ type LiveGpsItem = {
   movementStatus?: "running" | "idle" | "stopped" | "inactive"
   updatedAt?: string
   gpsTimestamp?: string
-  currentLocation?: string
+  currentLocation?:
+  | string
+  | {
+    address?: string
+    addressLine?: string
+    city?: string
+    state?: string
+    country?: string
+    pincode?: string | number
+  }
   organizationId?: string | { _id?: string }
   mainPowerStatus?: boolean
   acStatus?: boolean
@@ -59,6 +70,36 @@ type LiveGpsItem = {
 
 const LIVE_STALE_TIMEOUT_MS = 60 * 1000
 
+const pickFirstString = (...values: unknown[]): string => {
+  for (const value of values) {
+    if (typeof value === "string") {
+      const trimmed = value.trim()
+      if (trimmed) return trimmed
+    }
+  }
+  return ""
+}
+
+const toLocationText = (value: unknown): string => {
+  if (!value) return ""
+  if (typeof value === "string") return value.trim()
+  if (typeof value === "object") {
+    const loc = value as {
+      address?: string
+      addressLine?: string
+      city?: string
+      state?: string
+      country?: string
+      pincode?: string | number
+    }
+    const direct = pickFirstString(loc.address, loc.addressLine)
+    if (direct) return direct
+    const parts = [loc.city, loc.state, loc.country, loc.pincode ? String(loc.pincode) : ""].filter(Boolean)
+    return parts.join(", ")
+  }
+  return ""
+}
+
 export default function DashboardPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -70,6 +111,9 @@ export default function DashboardPage() {
   })
   const { data: notifData } = useGetNotificationsQuery(undefined, {
     pollingInterval: 60000,
+    refetchOnMountOrArgChange: true,
+  })
+  const { data: driversData } = useGetDriversQuery({ page: 0, limit: 1000 }, {
     refetchOnMountOrArgChange: true,
   })
   const { data: meData } = useGetMeQuery(undefined)
@@ -96,6 +140,28 @@ export default function DashboardPage() {
   const allVehicles = useMemo(() => vehData?.vehicles || vehData?.data || [], [vehData])
   const liveVehicles = useMemo(() => liveData?.vehicles || liveData?.data || [], [liveData])
   const alerts = useMemo(() => notifData?.data || [], [notifData])
+  const drivers = useMemo(() => driversData?.drivers || driversData?.data || [], [driversData])
+  const toRefId = useCallback((value: any) => {
+    if (!value) return ""
+    if (typeof value === "string") return value
+    return value?._id || ""
+  }, [])
+  const driverById = useMemo(() => {
+    const map = new Map<string, any>()
+    drivers.forEach((driver: any) => {
+      const id = toRefId(driver?._id)
+      if (id) map.set(id, driver)
+    })
+    return map
+  }, [drivers, toRefId])
+  const driverByVehicleId = useMemo(() => {
+    const map = new Map<string, any>()
+    drivers.forEach((driver: any) => {
+      const vehicleId = toRefId(driver?.assignedVehicleId)
+      if (vehicleId) map.set(vehicleId, driver)
+    })
+    return map
+  }, [drivers, toRefId])
   const notificationCount = useMemo(
     () => alerts.filter((item: any) => item?.acknowledged === false).length,
     [alerts],
@@ -243,6 +309,7 @@ export default function DashboardPage() {
   useEffect(() => {
     setUiVehicles((previous) => {
       const prevRouteMap = new Map(previous.map((item) => [item.id, item.route]))
+      const prevLocationMap = new Map(previous.map((item) => [item.id, item.location || ""]))
       const seenIds = new Set<string>()
 
       const nextVehicles = (allVehicles as any[]).map((vehicle: any) => {
@@ -280,48 +347,124 @@ export default function DashboardPage() {
 
         const runningStatus = String(live?.movementStatus || vehicle.runningStatus || "").toLowerCase()
         const lifecycleStatus = String(vehicle.status || "").toLowerCase()
-        let status =
-          lifecycleStatus === "inactive"
-            ? "inactive"
-            : runningStatus === "running"
-              ? "running"
-              : runningStatus === "idle"
-                ? "idle"
-                : runningStatus === "stopped"
-                  ? "stopped"
-                  : runningStatus === "inactive"
-                    ? "inactive"
-                    : vehicle.deviceId
-                      ? "stopped"
-                      : "nodata"
+        
+        // Prioritize live ignition data, fallback to runningStatus logic only if no live data
+        const ignition = Boolean(
+          live?.ignitionStatus ??
+          live?.ignition ??
+          (live && (live.speed || live.currentSpeed || 0) > 0) ??
+          (runningStatus === "running" || runningStatus === "idle")
+        )
+        const rawSpeed = Number(live?.currentSpeed ?? live?.speed ?? vehicle.currentSpeed ?? 0)
+        const speed = isStale || !ignition ? 0 : Number.isFinite(rawSpeed) ? rawSpeed : 0
 
-        if (isStale && status === "running") {
+        let status: Vehicle["status"] = "nodata"
+        // Only mark as inactive if we have no recent live data
+        if (lifecycleStatus === "inactive" && isStale && !hasLivePosition) {
+          status = "inactive"
+        } else if (isStale && !hasLivePosition && !hasVehiclePosition) {
+          status = "nodata"
+        } else if (!ignition) {
           status = "stopped"
+        } else if (speed >= RUNNING_SPEED_THRESHOLD) {
+          status = "running"
+        } else {
+          status = "idle"
         }
 
-        const speed = isStale ? 0 : Number(live?.currentSpeed ?? live?.speed ?? vehicle.currentSpeed ?? 0)
-        const ignition = Boolean(live?.ignitionStatus ?? live?.ignition ?? false)
-        const power = Boolean(live?.mainPowerStatus ?? false)
-        const ac = Boolean(live?.acStatus ?? false)
-        const location = live?.currentLocation || vehicle?.currentLocation?.address || "Unknown"
+        const power = Boolean(live?.mainPowerStatus ?? ignition)
+        const ac = Boolean(live?.acStatus && ignition) // AC can only be ON when ignition is ON
+        const location =
+          toLocationText(live?.currentLocation) ||
+          toLocationText(vehicle?.currentLocation?.address) ||
+          prevLocationMap.get(vehicle._id) ||
+          "Unknown"
         const dateSource = live?.updatedAt || live?.gpsTimestamp || vehicle.updatedAt
         const date = dateSource
           ? new Date(dateSource).toLocaleString("en-GB").replace(",", "")
           : "N/A"
+        const vehicleDriverId = toRefId(vehicle.driverId)
+        const driverFromVehicleId = vehicleDriverId ? driverById.get(vehicleDriverId) : null
+        const driverFromAssignedVehicle = driverByVehicleId.get(vehicle._id) || null
+        const driverData =
+          (vehicle.driverId && typeof vehicle.driverId === "object" ? vehicle.driverId : null) ||
+          driverFromVehicleId ||
+          driverFromAssignedVehicle
+        const driverFirstName = pickFirstString(driverData?.firstName)
+        const driverLastName = pickFirstString(driverData?.lastName)
+        const driverName = pickFirstString(
+          `${driverFirstName} ${driverLastName}`.trim(),
+          driverData?.name,
+          driverData?.fullName,
+          vehicle?.driverName,
+        )
+        const driverPhone = pickFirstString(
+          driverData?.phone,
+          driverData?.mobile,
+          driverData?.phoneNumber,
+          driverData?.contactNumber,
+          driverData?.telephone,
+          driverData?.cellNumber,
+          vehicle?.driverPhone,
+          vehicle?.phone,
+          vehicle?.contactNumber,
+        )
+        const driverEmail = pickFirstString(
+          driverData?.email,
+          driverData?.mail,
+          driverData?.emailAddress,
+          driverData?.emailId,
+          vehicle?.driverEmail,
+          vehicle?.email,
+          vehicle?.emailAddress,
+        )
+        const driverLicense = pickFirstString(
+          driverData?.licenseNumber,
+          driverData?.licenseNo,
+          driverData?.drivingLicenseNumber,
+          driverData?.dlNumber,
+          driverData?.drivingLicense,
+          driverData?.license,
+          vehicle?.licenseNumber,
+          vehicle?.driverLicenseNumber,
+          vehicle?.drivingLicense,
+        )
+        const driverAddress = pickFirstString(
+          driverData?.address,
+          driverData?.fullAddress,
+          driverData?.residentialAddress,
+          driverData?.homeAddress,
+          driverData?.currentAddress,
+          vehicle?.driverAddress,
+          vehicle?.address,
+          vehicle?.fullAddress
+        ) || "N/A"
+        const hasDriverDetails = Boolean(
+          driverData || 
+          vehicle?.driverName || 
+          vehicle?.driverPhone || 
+          vehicle?.driverEmail || 
+          vehicle?.licenseNumber ||
+          driverPhone !== "N/A" ||
+          driverEmail !== "N/A" ||
+          driverLicense !== "N/A" ||
+          driverAddress !== "N/A"
+        )
 
         const row = {
           id: vehicle._id,
           vehicleNumber: vehicle.vehicleNumber || vehicle.registrationNumber || vehicle._id,
           organizationId: vehicle.organizationId?._id || vehicle.organizationId,
-          driver: vehicle.driverId ? `${vehicle.driverId.firstName} ${vehicle.driverId.lastName}` : "Unassigned",
-          driverDetails: vehicle.driverId ? {
-            firstName: vehicle.driverId.firstName,
-            lastName: vehicle.driverId.lastName,
-            phone: vehicle.driverId.phone,
-            email: vehicle.driverId.email,
-            licenseNumber: vehicle.driverId.licenseNumber,
-            address: vehicle.driverId.address
-          } : undefined,
+          driver: driverName || "Unassigned",
+          driverDetails: {
+            firstName: driverFirstName || "N/A",
+            lastName: driverLastName || "N/A",
+            phone: driverPhone || "N/A",
+            email: driverEmail || "N/A",
+            licenseNumber: driverLicense || "N/A",
+            address: driverAddress || "N/A",
+            hasData: hasDriverDetails
+          },
           date,
           speed,
           status,
@@ -377,17 +520,32 @@ export default function DashboardPage() {
               : oldRoute
             : [latestPoint]
 
-        const movement = String(live.movementStatus || "running").toLowerCase()
+        const movement = String(live.movementStatus || "").toLowerCase()
         const liveTs = live.updatedAt || live.gpsTimestamp || null
         const liveMs = liveTs ? new Date(liveTs).getTime() : NaN
         const isStale = Number.isFinite(liveMs) ? clockMs - liveMs > LIVE_STALE_TIMEOUT_MS : true
-
-        let status: Vehicle["status"] =
-          movement === "running" || movement === "idle" || movement === "stopped" || movement === "inactive"
-            ? movement
-            : "running"
-        if (isStale && status === "running") {
+        
+        // Prioritize live ignition data, fallback to movement status only if no live data
+        const ignition = Boolean(
+          live.ignitionStatus ??
+          live.ignition ??
+          (live && (live.speed || live.currentSpeed || 0) > 0) ??
+          (movement === "running" || movement === "idle")
+        )
+        const rawSpeed = Number(live.currentSpeed ?? live.speed ?? 0)
+        const speed = isStale || !ignition ? 0 : Number.isFinite(rawSpeed) ? rawSpeed : 0
+        let status: Vehicle["status"] = "nodata"
+        // Only mark as inactive if we have no recent live data
+        if (movement === "inactive" && isStale && !hasPoint) {
+          status = "inactive"
+        } else if (isStale && !hasPoint) {
+          status = "nodata"
+        } else if (!ignition) {
           status = "stopped"
+        } else if (speed >= RUNNING_SPEED_THRESHOLD) {
+          status = "running"
+        } else {
+          status = "idle"
         }
 
         nextVehicles.push({
@@ -395,17 +553,26 @@ export default function DashboardPage() {
           vehicleNumber: live.imei || rowId,
           organizationId: toOrganizationId(live) || undefined,
           driver: "Unassigned",
+          driverDetails: {
+            firstName: "N/A",
+            lastName: "N/A",
+            phone: "N/A",
+            email: "N/A",
+            licenseNumber: "N/A",
+            address: "N/A",
+            hasData: false
+          },
           date:
             live.updatedAt || live.gpsTimestamp
               ? new Date((live.updatedAt || live.gpsTimestamp) as string).toLocaleString("en-GB").replace(",", "")
               : "N/A",
-          speed: isStale ? 0 : Number(live.currentSpeed ?? live.speed ?? 0),
+          speed,
           status,
-          ign: Boolean(live.ignitionStatus ?? live.ignition ?? false),
-          ac: Boolean(live.acStatus ?? false),
-          pw: Boolean(live.mainPowerStatus ?? false),
+          ign: ignition,
+          ac: Boolean(live.acStatus && ignition), // AC can only be ON when ignition is ON
+          pw: Boolean(live.mainPowerStatus ?? ignition),
           gps: true,
-          location: live.currentLocation || "Live device",
+          location: toLocationText(live.currentLocation) || prevLocationMap.get(rowId) || "Unknown",
           poi: "-",
           route,
           batteryVoltage: live?.internalBatteryVoltage ?? null,
@@ -445,7 +612,7 @@ export default function DashboardPage() {
 
       return same ? previous : filtered
     })
-  }, [allVehicles, liveByVehicleId, userRole, assignedVehicleId, selectedOrgId, clockMs])
+  }, [allVehicles, liveByVehicleId, userRole, assignedVehicleId, selectedOrgId, clockMs, driverById, driverByVehicleId, toRefId])
 
   const currentVehicleSelection = selectedVehicle || uiVehicles.find((vehicle) => vehicle.id === reduxSelectedVehicleId) || uiVehicles[0] || null
   const currentVehicleId = currentVehicleSelection?.id || null

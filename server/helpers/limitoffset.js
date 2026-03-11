@@ -6,7 +6,8 @@ const paginate = async (
   limit = 10,
   populateFields = [],
   searchFields = [],
-  searchTerm = ""
+  searchTerm = "",
+  sort = null
 ) => {
   page = parseInt(page) || 0;
   limit = parseInt(limit) || 10;
@@ -47,6 +48,10 @@ const paginate = async (
     console.log("🔍 Final MongoDB Query:", JSON.stringify(searchQuery, null, 2));
 
     let queryExec = model.find(searchQuery).skip(skip).limit(limit);
+
+    if (sort && typeof sort === "object") {
+      queryExec = queryExec.sort(sort);
+    }
 
     if (populateFields.length) {
       populateFields.forEach((field) => {

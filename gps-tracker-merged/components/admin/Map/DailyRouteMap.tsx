@@ -48,9 +48,9 @@ const makeIcon = (color: string) =>
 
 const carIcon = (heading: number) =>
   new DivIcon({
-    html: `<div style="width:30px;height:18px;border-radius:6px;background:#0ea5e9;border:2px solid #0b2540;display:flex;align-items:center;justify-content:center;color:white;font-size:13px;transform:rotate(${heading}deg);box-shadow:0 4px 10px rgba(0,0,0,0.35);">🚗</div>`,
-    iconSize: [30, 18],
-    iconAnchor: [15, 9],
+    html: `<div style="width:32px;height:20px;border-radius:6px;background:#0ea5e9;border:2px solid #0b2540;display:flex;align-items:center;justify-content:center;color:white;font-size:14px;font-weight:bold;transform:rotate(${heading}deg);box-shadow:0 4px 12px rgba(0,0,0,0.4);">🚗</div>`,
+    iconSize: [32, 20],
+    iconAnchor: [16, 10],
   });
 
 const computeSmartZoom = (pts: Point[]) => {
@@ -76,7 +76,29 @@ function FitBounds({ pts }: { pts: Point[] }) {
 export default function DailyRouteMap({ points, satellite = true }: { points: Point[]; satellite?: boolean }) {
   const path = useMemo(() => {
     const filtered = points.filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng));
-    return filtered.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+    const sorted = filtered.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+    
+    // Debug: log path data once
+    if (sorted.length > 0) {
+      console.log('DailyRouteMap - Path data:', {
+        totalPoints: sorted.length,
+        firstPoint: {
+          lat: sorted[0].lat,
+          lng: sorted[0].lng,
+          heading: sorted[0].heading,
+          speed: sorted[0].speed
+        },
+        lastPoint: {
+          lat: sorted[sorted.length - 1].lat,
+          lng: sorted[sorted.length - 1].lng,
+          heading: sorted[sorted.length - 1].heading,
+          speed: sorted[sorted.length - 1].speed
+        },
+        sampleHeadings: sorted.slice(0, 5).map(p => ({ heading: p.heading, speed: p.speed }))
+      });
+    }
+    
+    return sorted;
   }, [points]);
   const [map, setMap] = useState<LeafletMap | null>(null);
   const [mapTheme, setMapTheme] = useState<"satellite" | "street">(satellite ? "satellite" : "street");
@@ -84,7 +106,14 @@ export default function DailyRouteMap({ points, satellite = true }: { points: Po
   const [isPlaying, setIsPlaying] = useState(false);
   const [playSpeed, setPlaySpeed] = useState(1);
   const [stopFilter, setStopFilter] = useState<"all" | "normal" | "idle" | "hide">("all");
-  const [renderPoint, setRenderPoint] = useState<Point | null>(path[0] || null);
+  const [renderPoint, setRenderPoint] = useState<Point | null>(null);
+  
+  // Initialize renderPoint when path is available
+  useEffect(() => {
+    if (path.length > 0) {
+      setRenderPoint(path[0]);
+    }
+  }, [path]);
   const [isStopMenuOpen, setIsStopMenuOpen] = useState(false);
   const holdUntilRef = useRef<number>(0);
   const animRef = useRef<number>();
@@ -97,7 +126,7 @@ export default function DailyRouteMap({ points, satellite = true }: { points: Po
     setIsPlaying(false);
     setRenderPoint(path[0] || null);
     holdUntilRef.current = 0;
-  }, [path.length]);
+  }, [path]);
 
   useEffect(() => {
     if (!isPlaying || path.length < 2) return;
@@ -120,6 +149,17 @@ export default function DailyRouteMap({ points, satellite = true }: { points: Po
       const next = path[Math.min(localIdx + 1, path.length - 1)];
       const t = Math.min(progress, 1);
       const heading = lerpHeading(current.heading ?? 0, next.heading ?? current.heading ?? 0, t);
+      
+      // Debug: log animation progress
+      if (localIdx % 10 === 0) {
+        console.log('Animation:', {
+          localIdx,
+          progress: t.toFixed(2),
+          heading: heading.toFixed(1),
+          speed: lerp(current.speed, next.speed, t).toFixed(1)
+        });
+      }
+      
       setRenderPoint({
         ...current,
         lat: lerp(current.lat, next.lat, t),
@@ -265,7 +305,7 @@ export default function DailyRouteMap({ points, satellite = true }: { points: Po
         zoom={14}
         className="h-full w-full"
         attributionControl={false}
-        whenCreated={setMap}
+        ref={setMap}
       >
         <MapTileLayer satellite={mapTheme === "satellite"} />
         <FitBounds pts={path} />
@@ -328,7 +368,15 @@ export default function DailyRouteMap({ points, satellite = true }: { points: Po
           <Marker
             position={[renderPoint.lat, renderPoint.lng]}
             icon={carIcon(renderPoint.heading || 0)}
-          />
+          >
+            <Popup className="text-xs space-y-1">
+              <div>🚗 Live Vehicle</div>
+              <div>Speed: {renderPoint.speed.toFixed(1)} km/h</div>
+              <div>Heading: {renderPoint.heading?.toFixed(1) || 0}°</div>
+              <div>Ignition: {renderPoint.ignition ? "ON" : "OFF"}</div>
+              <div>Time: {new Date(renderPoint.timestamp).toLocaleTimeString()}</div>
+            </Popup>
+          </Marker>
         )}
       </MapContainer>
 
@@ -403,8 +451,10 @@ export default function DailyRouteMap({ points, satellite = true }: { points: Po
             <button
               className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500 text-emerald-950 shadow-lg"
               onClick={() => {
+                console.log('Play button clicked, current state:', { isPlaying, playheadIdx, pathLength: path.length });
                 setIsPlaying((p) => {
                   const next = !p;
+                  console.log('Setting isPlaying to:', next);
                   if (!p && activePoint) centerOnActive({ forceZoom: true });
                   return next;
                 });
@@ -415,7 +465,12 @@ export default function DailyRouteMap({ points, satellite = true }: { points: Po
             </button>
             <button
               className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-slate-800 hover:bg-slate-700"
-              onClick={() => { setPlayheadIdx(0); setIsPlaying(false); centerOnActive({ forceZoom: true }); }}
+              onClick={() => { 
+                console.log('Restart button clicked');
+                setPlayheadIdx(0); 
+                setIsPlaying(false); 
+                centerOnActive({ forceZoom: true, point: path[0] }); 
+              }}
               aria-label="Restart"
             >
               <RotateCcw size={18} />

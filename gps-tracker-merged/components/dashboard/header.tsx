@@ -23,6 +23,7 @@ import { useGetNotificationsQuery } from "@/redux/api/notificationsApi"
 import { useMarkAsReadMutation } from "@/redux/api/notificationsApi"
 import { baseApi } from "@/redux/api/baseApi"
 import { useDispatch } from "react-redux"
+import { NotificationCenter } from "@/components/common/NotificationCenter"
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -226,13 +227,18 @@ export function Header({
     const [showNotifDropdown, setShowNotifDropdown] = useState(false)
     const [showProfileDropdown, setShowProfileDropdown] = useState(false)
     const [now, setNow] = useState(() => new Date())
+    const [userRole, setUserRole] = useState<string | null>(null)
     const router = useRouter()
     const dispatch = useDispatch()
 
     const notifRef = useRef<HTMLDivElement>(null)
     const profileRef = useRef<HTMLDivElement>(null)
 
-    const userRole = getSecureItem("userRole")
+    // Set user role on client-side only to prevent hydration mismatch
+    useEffect(() => {
+        setUserRole(getSecureItem("userRole"))
+    }, [])
+
     const canCreateVehicle = userRole === "admin"
 
     const { data: meData } = useGetMeQuery(undefined, { refetchOnMountOrArgChange: true })
@@ -397,31 +403,8 @@ export function Header({
                     </button>
                 )}
 
-                {/* ── Notification Bell ── */}
-                <div ref={notifRef} className="relative">
-                    <button
-                        onClick={() => {
-                            setShowNotifDropdown((prev) => !prev)
-                            setShowProfileDropdown(false)
-                        }}
-                        className={`relative flex h-9 w-9 items-center justify-center rounded-full transition-all active:scale-90 ${showNotifDropdown ? 'bg-emerald-500/20 text-emerald-400' : 'text-slate-300 hover:bg-white/10 hover:text-white'}`}
-                        title="Notifications"
-                    >
-                        <Bell className="h-5 w-5" />
-                        {unreadCount > 0 && (
-                            <span className="absolute top-1 right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-black border-2 border-slate-950">
-                                {unreadCount > 99 ? "99+" : unreadCount}
-                            </span>
-                        )}
-                    </button>
-                    <NotificationDropdown
-                        isOpen={showNotifDropdown}
-                        onClose={() => setShowNotifDropdown(false)}
-                        notifications={notifications}
-                        unreadCount={unreadCount}
-                        onMarkRead={handleMarkRead}
-                    />
-                </div>
+                {/* ── Enhanced Notification Bell ── */}
+                <NotificationCenter />
 
                 {/* ── Profile Avatar + Dropdown ── */}
                 <div ref={profileRef} className="relative ml-1 sm:ml-2 border-l border-white/10 pl-1 sm:pl-2">

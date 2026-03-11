@@ -5,6 +5,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import OrganizationMap from "@/components/admin/Map/OrganizationMap";
 import { VehicleSidebar } from "@/components/dashboard/vehicle-sidebar";
+import { useSocket } from "@/hooks/useSocket";
+import { RUNNING_SPEED_THRESHOLD } from "@/lib/vehicleStatusUtils";
 import { MapWrapper } from "@/components/dashboard/map-wrapper";
 import { DashboardProvider } from "@/components/dashboard/DashboardContext";
 import { useVehiclePositions } from "@/lib/use-vehicle-positions";
@@ -173,7 +175,7 @@ export default function DashboardPage() {
 
       let status: DashboardVehicle["status"] = "stopped";
       if (live) {
-        if (live.speed > 0) status = "running";
+        if (live.speed >= RUNNING_SPEED_THRESHOLD) status = "running";
         else if (live.ignition) status = "idle";
       }
 

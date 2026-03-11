@@ -6,6 +6,16 @@ import type { Vehicle } from "@/lib/vehicles";
 
 export function TelemetryGrid({ vehicle, compact = false }: { vehicle: Vehicle; compact?: boolean }) {
     const [isDriverModalOpen, setIsDriverModalOpen] = useState(false);
+    const fullDriverName = [vehicle.driverDetails?.firstName, vehicle.driverDetails?.lastName]
+    .filter(Boolean)
+    .filter(name => name !== "N/A")
+    .join(" ")
+    .trim() || vehicle.driver || "Unassigned";
+    const driverPhone = vehicle.driverDetails?.phone || "N/A";
+    const driverEmail = vehicle.driverDetails?.email || "N/A";
+    const driverLicense = vehicle.driverDetails?.licenseNumber || "N/A";
+    const driverAddress = vehicle.driverDetails?.address || "N/A";
+    const hasDriverData = vehicle.driverDetails?.hasData || false;
 
     const fields = [
         { label: "IGN", value: vehicle.ign, icon: Power },
@@ -28,12 +38,12 @@ export function TelemetryGrid({ vehicle, compact = false }: { vehicle: Vehicle; 
                 </div>
 
                 <button
-                    onClick={() => vehicle.driverDetails && setIsDriverModalOpen(true)}
-                    className={`rounded-md bg-[#111827] p-2 text-center transition-all duration-200 hover:bg-[#374151] ${!vehicle.driverDetails ? "cursor-default" : ""}`}
+                    onClick={() => setIsDriverModalOpen(true)}
+                    className="rounded-md bg-[#111827] p-2 text-center transition-all duration-200 hover:bg-[#374151]"
                 >
                     <span className="block text-xs text-gray-400">Driver</span>
                     <div className="mt-1 flex items-center justify-center gap-1 text-white">
-                        <User size={14} className="text-green-500" />
+                        <User size={14} className={hasDriverData ? "text-green-500" : "text-gray-500"} />
                         <span className="truncate text-xs">{vehicle.driver || "Unassigned"}</span>
                     </div>
                 </button>
@@ -75,7 +85,7 @@ export function TelemetryGrid({ vehicle, compact = false }: { vehicle: Vehicle; 
                     <div className="mt-1 flex items-center justify-center gap-1 text-white">
                         <MapPin size={14} className="text-red-400" />
                         <span className="truncate text-xs" title={vehicle.location || "Unknown"}>
-                            {vehicle.location ? vehicle.location.split(',')[0] : "Unknown"}
+                            {vehicle.location || "Unknown"}
                         </span>
                     </div>
                 </div>
@@ -85,13 +95,13 @@ export function TelemetryGrid({ vehicle, compact = false }: { vehicle: Vehicle; 
                     <div className="mt-1 flex items-center justify-center gap-1 text-white">
                         <Navigation size={14} className="text-blue-400" />
                         <span className="truncate text-xs" title={vehicle.poi || "No POI"}>
-                            {vehicle.poi ? vehicle.poi.split(',')[0] : "No POI"}
+                            {vehicle.poi || "No POI"}
                         </span>
                     </div>
                 </div>
             </div>
 
-            {isDriverModalOpen && vehicle.driverDetails && (
+            {isDriverModalOpen && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setIsDriverModalOpen(false)}>
                     <div className="relative w-full max-w-sm bg-slate-900 border border-white/10 rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-between px-5 py-4 border-b border-white/5 bg-slate-800/60">
@@ -110,9 +120,18 @@ export function TelemetryGrid({ vehicle, compact = false }: { vehicle: Vehicle; 
                         </div>
 
                         <div className="p-5 space-y-4">
+                            {!hasDriverData && (
+                                <div className="rounded-xl bg-amber-500/10 border border-amber-500/20 p-3">
+                                    <div className="flex items-center gap-2 text-amber-400 text-xs">
+                                        <User size={14} />
+                                        <span>Driver details not available. Contact admin to assign driver to this vehicle.</span>
+                                    </div>
+                                </div>
+                            )}
+                            
                             <div className="flex flex-col gap-1">
                                 <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Full Name</span>
-                                <div className="text-base font-black text-slate-100">{vehicle.driverDetails.firstName} {vehicle.driverDetails.lastName}</div>
+                                <div className="text-base font-black text-slate-100">{fullDriverName}</div>
                             </div>
 
                             <div className="grid grid-cols-1 gap-3">
@@ -120,7 +139,7 @@ export function TelemetryGrid({ vehicle, compact = false }: { vehicle: Vehicle; 
                                     <Phone size={16} className="text-emerald-400" />
                                     <div>
                                         <div className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Phone Number</div>
-                                        <div className="text-xs font-bold text-slate-200">{vehicle.driverDetails.phone}</div>
+                                        <div className="text-xs font-bold text-slate-200">{driverPhone}</div>
                                     </div>
                                 </div>
 
@@ -128,7 +147,7 @@ export function TelemetryGrid({ vehicle, compact = false }: { vehicle: Vehicle; 
                                     <Mail size={16} className="text-blue-400" />
                                     <div>
                                         <div className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Email Address</div>
-                                        <div className="text-xs font-bold text-slate-200">{vehicle.driverDetails.email}</div>
+                                        <div className="text-xs font-bold text-slate-200">{driverEmail}</div>
                                     </div>
                                 </div>
 
@@ -136,7 +155,7 @@ export function TelemetryGrid({ vehicle, compact = false }: { vehicle: Vehicle; 
                                     <FileText size={16} className="text-amber-400" />
                                     <div>
                                         <div className="text-[9px] font-black text-slate-500 uppercase tracking-widest">License Number</div>
-                                        <div className="text-xs font-bold text-slate-200">{vehicle.driverDetails.licenseNumber}</div>
+                                        <div className="text-xs font-bold text-slate-200">{driverLicense}</div>
                                     </div>
                                 </div>
 
@@ -145,9 +164,8 @@ export function TelemetryGrid({ vehicle, compact = false }: { vehicle: Vehicle; 
                                     <div>
                                         <div className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Address</div>
                                         <div className="text-xs font-bold text-slate-200 leading-tight">
-    {vehicle.driverDetails.address || 
-     `${vehicle.driverDetails.firstName || "Driver"} ${vehicle.driverDetails.lastName || ""}'s Address, Sector 15, Delhi - 110001`}
-</div>
+                                            {driverAddress}
+                                        </div>
                                     </div>
                                 </div>
                             </div>

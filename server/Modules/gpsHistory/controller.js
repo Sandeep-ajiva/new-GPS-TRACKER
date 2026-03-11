@@ -39,6 +39,7 @@ exports.getAll = async (req, res) => {
       ["organizationId", "vehicleId", "gpsDeviceId", "driverId", "tripId"],
       ["imei", "vehicleRegistrationNumber"],
       search,
+      { gpsTimestamp: 1 },
     );
 
     return res.status(200).json(result);
@@ -82,6 +83,7 @@ exports.getByVehicle = async (req, res) => {
       ["organizationId", "vehicleId", "gpsDeviceId"],
       [],
       search,
+      { gpsTimestamp: 1 },
     );
 
     return res.status(200).json(result);
@@ -125,6 +127,7 @@ exports.getByDevice = async (req, res) => {
       ["organizationId", "vehicleId", "gpsDeviceId"],
       [],
       search,
+      { gpsTimestamp: 1 },
     );
 
     return res.status(200).json(result);

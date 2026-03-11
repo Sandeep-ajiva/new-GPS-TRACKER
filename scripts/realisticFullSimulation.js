@@ -1,22 +1,86 @@
 /**
- * Realistic 3-minute TCP simulation for a single vehicle.
- * Run with: node scripts/realisticFullSimulation.js
- * Uses only built-in modules.
+ * Realistic TCP simulation for one vehicle with rich telemetry.
+ * Usage:
+ *   node scripts/realisticFullSimulation.js --imei=123456789012345 --vehicle=TS09ER1234
+ * Optional:
+ *   --host=127.0.0.1 --port=6000 --duration=180 --interval=5 --seed=42
  */
 
 const net = require("net");
 
-// Editable identifiers
-const IMEI = "124536587451265"; // 15-digit IMEI
-const VEHICLE_NO = "239";
+const DEFAULTS = {
+  imei: "123456789012345",
+  vehicle: "TS09ER1234",
+  host: "127.0.0.1",
+  port: 6000,
+  durationSec: 180,
+  intervalSec: 5,
 
-// TCP target
-const HOST = "127.0.0.1";
-const PORT = 6000;
+  // Chandigarh India Real Location
+  startLat: 30.741482,
+  startLng: 76.768066,
 
-// Helpers --------------------------------------------------------------
-const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+  startMileageKm: 15000,
+  seed: null,
+};
+
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const pad2 = (v) => String(v).padStart(2, "0");
+
+function parseArgs(argv) {
+  const args = {};
+  argv.forEach((arg) => {
+    if (!arg.startsWith("--")) return;
+    const [k, ...rest] = arg.slice(2).split("=");
+    args[k] = rest.length ? rest.join("=") : true;
+  });
+  return args;
+}
+
+function numberArg(raw, fallback) {
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function buildConfig(argv) {
+  const args = parseArgs(argv);
+  const cfg = {
+    imei: String(args.imei || DEFAULTS.imei),
+    vehicle: String(args.vehicle || DEFAULTS.vehicle),
+    host: String(args.host || DEFAULTS.host),
+    port: numberArg(args.port, DEFAULTS.port),
+    durationSec: numberArg(args.duration, DEFAULTS.durationSec),
+    intervalSec: numberArg(args.interval, DEFAULTS.intervalSec),
+    startLat: numberArg(args.lat, DEFAULTS.startLat),
+    startLng: numberArg(args.lng, DEFAULTS.startLng),
+    startMileageKm: numberArg(args.mileage, DEFAULTS.startMileageKm),
+    seed: args.seed === undefined ? DEFAULTS.seed : numberArg(args.seed, DEFAULTS.seed),
+  };
+
+  if (!/^\d{15}$/.test(cfg.imei)) {
+    throw new Error("IMEI must be 15 digits");
+  }
+  if (cfg.durationSec < 30) {
+    throw new Error("duration must be >= 30 seconds");
+  }
+  if (cfg.intervalSec < 2) {
+    throw new Error("interval must be >= 2 seconds");
+  }
+  if (cfg.port <= 0 || cfg.port > 65535) {
+    throw new Error("port must be 1..65535");
+  }
+  return cfg;
+}
+
+function createRandom(seed) {
+  if (!Number.isFinite(seed)) return Math.random;
+  let state = Math.floor(seed) % 2147483647;
+  if (state <= 0) state += 2147483646;
+  return () => {
+    state = (state * 16807) % 2147483647;
+    return (state - 1) / 2147483646;
+  };
+}
 
 function buildGpsDateTimeParts(date = new Date()) {
   const d = new Date(date);
@@ -27,13 +91,14 @@ function buildGpsDateTimeParts(date = new Date()) {
 }
 
 function toNmeaCoordinate(decimal, isLat) {
-  const abs = Math.abs(Number(decimal));
+  const value = Number(decimal);
+  const abs = Math.abs(value);
   const degrees = Math.floor(abs);
   const minutes = (abs - degrees) * 60;
   const ddmm = degrees * 100 + minutes;
   return {
     value: ddmm.toFixed(4),
-    dir: isLat ? (decimal >= 0 ? "N" : "S") : decimal >= 0 ? "E" : "W",
+    dir: isLat ? (value >= 0 ? "N" : "S") : value >= 0 ? "E" : "W",
   };
 }
 
@@ -44,7 +109,6 @@ function checksum(body) {
 }
 
 const withChecksum = (body) => `$${body}*${checksum(body)}\n`;
-
 const buildLogin = ({ imei, vehicleNo }) => `$LGN,${vehicleNo},${imei},2.5AIS\n`;
 
 function buildNrm({
@@ -54,15 +118,20 @@ function buildNrm({
   speed,
   heading,
   ignition = true,
-  sats = 9,
+  sats = 10,
   mileage = 15000,
   mainInputVoltage = 12.6,
+  internalBatteryVoltage = 4.08,
+  batteryLevel = 88,
+  gsmSignalStrength = 24,
+  fuelPercentage = 64,
+  temperature = 31,
   at = new Date(),
 }) {
   const { gpsDate, gpsTime } = buildGpsDateTimeParts(at);
   const latN = toNmeaCoordinate(lat, true);
   const lngN = toNmeaCoordinate(lng, false);
-  const status = ignition ? "000100" : "000000"; // charAt(3) ignition flag for parser
+  const status = ignition ? "000100" : "000000";
   const body = [
     "NRM",
     imei,
@@ -72,199 +141,276 @@ function buildNrm({
     latN.dir,
     lngN.value,
     lngN.dir,
-    speed.toFixed(1),
-    heading.toFixed(1),
-    String(sats),
-    "250", // altitude
-    "1.2", // pdop
-    "0.9", // hdop
-    "Simulator",
+    Number(speed).toFixed(1),
+    Number(heading).toFixed(1),
+    String(Math.max(4, Math.round(sats))),
+    "250",
+    "1.2",
+    "0.9",
+    "Airtel",
     "404",
     status,
-    mileage.toFixed(1),
-    mainInputVoltage.toFixed(2),
+    Number(mileage).toFixed(2),
+    Number(mainInputVoltage).toFixed(2),
+    Number(internalBatteryVoltage).toFixed(2),
+    String(Math.max(1, Math.min(100, Math.round(batteryLevel)))),
+    String(Math.max(1, Math.min(31, Math.round(gsmSignalStrength)))),
+    String(Math.max(1, Math.min(100, Math.round(fuelPercentage)))),
+    String(Math.round(temperature)),
   ].join(",");
   return withChecksum(body);
 }
 
-function buildAlt({ imei, type, lat, lng, speed, heading }) {
+function buildAlt({ imei, type, lat, lng, speed, heading, message }) {
   const latN = toNmeaCoordinate(lat, true);
   const lngN = toNmeaCoordinate(lng, false);
-  return `$ALT,${imei},${type},${latN.value},${latN.dir},${lngN.value},${lngN.dir},${speed.toFixed(
-    1,
-  )},${heading.toFixed(1)},warning,\n`;
+  return `$ALT,${imei},${type},${latN.value},${latN.dir},${lngN.value},${lngN.dir},${Number(
+    speed,
+  ).toFixed(1)},${Number(heading).toFixed(1)},warning,${message || ""}\n`;
 }
 
-function buildEmergency({ imei, lat, lng, speed, heading }) {
+function buildEmergency({ imei, state = "ON", lat, lng, speed, heading }) {
   const latN = toNmeaCoordinate(lat, true);
   const lngN = toNmeaCoordinate(lng, false);
-  return `$EPB,${imei},ON,${latN.value},${latN.dir},${lngN.value},${lngN.dir},${speed.toFixed(
-    1,
-  )},${heading.toFixed(1)}\n`;
+  return `$EPB,${imei},${state},${latN.value},${latN.dir},${lngN.value},${lngN.dir},${Number(
+    speed,
+  ).toFixed(1)},${Number(heading).toFixed(1)}\n`;
 }
 
-function buildHealth({ imei, battery = 88, signal = 23 }) {
+function buildHealth({ imei, battery = 88, signal = 24 }) {
   return `$HLM,ROADRPA,2.5AIS,${imei},${battery},20,35,60,60,0000,${signal}\n`;
 }
 
-function logPacket(label, { speed, ignition, lat, lng }) {
-  const t = new Date().toISOString().substring(11, 19);
-  console.log(`[${t}] ${label.padEnd(10)} | spd:${speed?.toFixed?.(1) ?? "NA"} | ign:${ignition ? "ON " : "OFF"} | ${lat?.toFixed?.(5)},${lng?.toFixed?.(5)}`);
+function stepDistance(lat, lng, headingDeg, meters) {
+  const rad = (headingDeg * Math.PI) / 180;
+  const dLat = (meters * Math.cos(rad)) / 111320;
+  const dLng = (meters * Math.sin(rad)) / (111320 * Math.cos((lat * Math.PI) / 180));
+  return { lat: lat + dLat, lng: lng + dLng };
 }
 
-// Simulation -----------------------------------------------------------
+function routeHeading(index) {
+  const loop = [
+    35, 42, 50, 58, 66, 74, 88, 102, 118, 132, 150, 172, 198, 218, 236, 252, 270, 296, 318, 340,
+  ];
+  return loop[index % loop.length];
+}
+
+function logPacket(label, meta) {
+  const now = new Date();
+  const time = now.toISOString().substring(11, 19);
+  const p = [
+    `[${time}]`,
+    label.padEnd(10),
+    `spd:${Number(meta.speed || 0).toFixed(1)}km/h`,
+    `ign:${meta.ignition ? "ON " : "OFF"}`,
+    `${meta.lat.toFixed(5)},${meta.lng.toFixed(5)}`,
+  ];
+  if (meta.note) p.push(`| ${meta.note}`);
+  console.log(p.join(" | "));
+}
+
 async function main() {
+  const cfg = buildConfig(process.argv.slice(2));
+  const rnd = createRandom(cfg.seed);
+
   const socket = new net.Socket();
   socket.setNoDelay(true);
   socket.setKeepAlive(true, 60000);
 
   await new Promise((resolve, reject) => {
-    socket.connect(PORT, HOST, resolve);
-    socket.on("error", reject);
+    socket.connect(cfg.port, cfg.host, resolve);
+    socket.once("error", reject);
   });
 
-  socket.on("data", (d) => console.log(`ACK: ${d.toString().trim()}`));
+  socket.on("data", (d) => {
+    const lines = d
+      .toString("utf8")
+      .split(/\r?\n/)
+      .map((v) => v.trim())
+      .filter(Boolean);
+    lines.forEach((line) => console.log(`ACK: ${line}`));
+  });
   socket.on("close", () => console.log("Socket closed."));
 
-  let lat = 30.7333;
-  let lng = 76.7794;
-  let heading = 45;
-  let mileage = 15000;
-
-  const send = (label, raw, meta = {}) => {
+  const send = (label, raw, meta) => {
     socket.write(raw);
-    logPacket(label, { ...meta, lat, lng });
+    logPacket(label, meta);
   };
 
-  // PHASE 1 – Login ----------------------------------------------------
-  console.log("Phase 1: Login");
-  send("LOGIN", buildLogin({ imei: IMEI, vehicleNo: VEHICLE_NO }));
-  await delay(5000);
+  let lat = cfg.startLat;
+  let lng = cfg.startLng;
+  let mileage = cfg.startMileageKm;
+  let battery = 89;
+  let fuel = 66;
+  let signal = 24;
+  let heading = 45;
+  let ignition = true;
 
-  // Helper to update movement smoothly
-  const moveStep = (dLat = 0.0001, dLng = 0.0001) => {
-    lat += dLat;
-    lng += dLng;
-    heading = (heading + 7) % 360;
-  };
+  const totalSteps = Math.floor(cfg.durationSec / cfg.intervalSec);
+  const smoothEnd = Math.floor(totalSteps * 0.45);
+  const overspeedEnd = Math.floor(totalSteps * 0.62);
+  const brakeEnd = Math.floor(totalSteps * 0.7);
+  const idleEnd = Math.floor(totalSteps * 0.8);
+  const ignitionOffEnd = Math.floor(totalSteps * 0.88);
 
-  // PHASE 2 – Smooth Driving (60s) ------------------------------------
-  console.log("Phase 2: Smooth driving");
-  for (let t = 0; t < 60; t += 5) {
-    moveStep(0.00012, 0.00010);
-    const speed = 35 + Math.random() * 10;
-    mileage += speed / 3600 * 5;
-    send("NRM", buildNrm({ imei: IMEI, lat, lng, speed, heading, ignition: true, mileage }), {
-      speed,
-      ignition: true,
-    });
-    await delay(5000);
-  }
-
-  // PHASE 3 – Overspeed (20s) -----------------------------------------
-  console.log("Phase 3: Overspeed");
-  moveStep();
-  let speed = 85;
-  send("ALT-OS", buildAlt({ imei: IMEI, type: "overspeed", lat, lng, speed, heading }), {
-    speed,
-    ignition: true,
+  console.log("Simulation config:", cfg);
+  console.log("Phase 1: Login + Health");
+  send("LOGIN", buildLogin({ imei: cfg.imei, vehicleNo: cfg.vehicle }), {
+    speed: 0,
+    ignition,
+    lat,
+    lng,
+    note: cfg.vehicle,
   });
-  await delay(1000);
-  for (let t = 0; t < 20; t += 5) {
-    moveStep(0.00013, 0.00011);
-    speed = 82 + Math.random() * 6;
-    mileage += speed / 3600 * 5;
-    send("NRM", buildNrm({ imei: IMEI, lat, lng, speed, heading, ignition: true, mileage }), {
-      speed,
-      ignition: true,
-    });
-    await delay(5000);
-  }
-
-  // PHASE 4 – Harsh Braking (10s) -------------------------------------
-  console.log("Phase 4: Harsh braking");
-  moveStep(0.00005, 0.00005);
-  speed = 12;
-  send("ALT-HB", buildAlt({ imei: IMEI, type: "harsh_braking", lat, lng, speed, heading }), {
-    speed,
-    ignition: true,
+  await delay(1200);
+  send("HEALTH", buildHealth({ imei: cfg.imei, battery, signal }), {
+    speed: 0,
+    ignition,
+    lat,
+    lng,
+    note: "startup health",
   });
-  await delay(1000);
-  for (let t = 0; t < 10; t += 2) {
-    speed = Math.max(10, speed - 18);
-    moveStep(0.00004, 0.00004);
-    mileage += speed / 3600 * 2;
-    send("NRM", buildNrm({ imei: IMEI, lat, lng, speed, heading, ignition: true, mileage }), {
+  await delay(1200);
+
+  let pointsSent = 0;
+  let maxSpeed = 0;
+  let totalSpeed = 0;
+  let alertsSent = 0;
+
+  for (let i = 0; i < totalSteps; i += 1) {
+    heading = (routeHeading(i) + (rnd() * 8 - 4) + 360) % 360;
+
+    let speed;
+    let phase = "cruise";
+    ignition = true;
+
+    if (i < smoothEnd) {
+      speed = 34 + rnd() * 10;
+      phase = "smooth";
+    } else if (i < overspeedEnd) {
+      speed = 84 + rnd() * 9;
+      phase = "overspeed";
+    } else if (i < brakeEnd) {
+      const ratio = (i - overspeedEnd) / Math.max(1, brakeEnd - overspeedEnd);
+      speed = 86 - ratio * 68 + rnd() * 2;
+      phase = "braking";
+    } else if (i < idleEnd) {
+      speed = rnd() * 2;
+      phase = "idle";
+    } else if (i < ignitionOffEnd) {
+      speed = 0;
+      ignition = false;
+      phase = "ign_off";
+    } else {
+      speed = 28 + rnd() * 10;
+      phase = "resume";
+    }
+
+    speed = Math.max(0, speed);
+
+    const meters = (speed * 1000 * cfg.intervalSec) / 3600;
+    const next = stepDistance(lat, lng, heading, meters);
+    lat = next.lat;
+    lng = next.lng;
+    mileage += meters / 1000;
+
+    battery = Math.max(40, battery - 0.02 - rnd() * 0.03);
+    fuel = Math.max(15, fuel - 0.03 - rnd() * 0.05);
+    signal = Math.max(12, Math.min(31, signal + (rnd() > 0.5 ? 1 : -1)));
+    const temperature = 28 + rnd() * 9;
+
+    const nrm = buildNrm({
+      imei: cfg.imei,
+      lat,
+      lng,
       speed,
-      ignition: true,
+      heading,
+      ignition,
+      sats: 9 + rnd() * 3,
+      mileage,
+      mainInputVoltage: ignition ? 12.4 + rnd() * 0.5 : 0,
+      internalBatteryVoltage: 3.95 + rnd() * 0.2,
+      batteryLevel: battery,
+      gsmSignalStrength: signal,
+      fuelPercentage: fuel,
+      temperature,
+      at: new Date(),
     });
-    await delay(2000);
+
+    send("NRM", nrm, { speed, ignition, lat, lng, note: phase });
+    pointsSent += 1;
+    maxSpeed = Math.max(maxSpeed, speed);
+    totalSpeed += speed;
+
+    if (phase === "overspeed" && i % 2 === 0) {
+      const alt = buildAlt({
+        imei: cfg.imei,
+        type: "overspeed",
+        lat,
+        lng,
+        speed,
+        heading,
+        message: "Speed > 80 km/h",
+      });
+      send("ALT", alt, { speed, ignition, lat, lng, note: "overspeed alert" });
+      alertsSent += 1;
+    }
+
+    if (i === Math.floor(totalSteps * 0.72)) {
+      const epbOn = buildEmergency({
+        imei: cfg.imei,
+        state: "ON",
+        lat,
+        lng,
+        speed: Math.max(5, speed),
+        heading,
+      });
+      send("EPB", epbOn, { speed, ignition: true, lat, lng, note: "panic on" });
+      alertsSent += 1;
+    }
+
+    if (i === Math.floor(totalSteps * 0.8)) {
+      const epbOff = buildEmergency({
+        imei: cfg.imei,
+        state: "OFF",
+        lat,
+        lng,
+        speed: Math.max(0, speed),
+        heading,
+      });
+      send("EPB", epbOff, { speed, ignition, lat, lng, note: "panic off" });
+      alertsSent += 1;
+    }
+
+    if (i > 0 && i % Math.max(1, Math.floor(60 / cfg.intervalSec)) === 0) {
+      send("HEALTH", buildHealth({ imei: cfg.imei, battery: Math.round(battery), signal }), {
+        speed,
+        ignition,
+        lat,
+        lng,
+        note: "periodic health",
+      });
+    }
+
+    await delay(cfg.intervalSec * 1000);
   }
 
-  // PHASE 5 – Idle Stop (30s) -----------------------------------------
-  console.log("Phase 5: Idle stop");
-  for (let t = 0; t < 30; t += 5) {
-    moveStep(0.00001, 0.00001);
-    send("NRM", buildNrm({ imei: IMEI, lat, lng, speed: 0, heading, ignition: true, mileage }), {
-      speed: 0,
-      ignition: true,
-    });
-    await delay(5000);
-  }
-
-  // PHASE 6 – Ignition OFF (15s) --------------------------------------
-  console.log("Phase 6: Ignition OFF");
-  for (let t = 0; t < 15; t += 5) {
-    moveStep(0.000005, 0.000005);
-    send("NRM", buildNrm({ imei: IMEI, lat, lng, speed: 0, heading, ignition: false, mileage }), {
-      speed: 0,
-      ignition: false,
-    });
-    await delay(5000);
-  }
-
-  // PHASE 7 – Resume 25–35 km/h (30s) ---------------------------------
-  console.log("Phase 7: Resume cruise");
-  for (let t = 0; t < 30; t += 5) {
-    moveStep(0.0001, 0.0001);
-    speed = 25 + Math.random() * 10;
-    mileage += speed / 3600 * 5;
-    send("NRM", buildNrm({ imei: IMEI, lat, lng, speed, heading, ignition: true, mileage }), {
-      speed,
-      ignition: true,
-    });
-    await delay(5000);
-  }
-
-  // PHASE 8 – Emergency (10s) -----------------------------------------
-  console.log("Phase 8: Emergency trigger");
-  moveStep(0.00008, 0.00008);
-  speed = 32;
-  send("EPB", buildEmergency({ imei: IMEI, lat, lng, speed, heading }), {
-    speed,
-    ignition: true,
-  });
-  await delay(1000);
-  for (let t = 0; t < 10; t += 2) {
-    moveStep(0.00008, 0.00008);
-    speed = 28 + Math.random() * 6;
-    mileage += speed / 3600 * 2;
-    send("NRM", buildNrm({ imei: IMEI, lat, lng, speed, heading, ignition: true, mileage }), {
-      speed,
-      ignition: true,
-    });
-    await delay(2000);
-  }
-
-  // PHASE 9 – Health Packet -------------------------------------------
-  console.log("Phase 9: Health packet");
-  send("HEALTH", buildHealth({ imei: IMEI, battery: 86, signal: 24 }), { ignition: true });
-
-  await delay(1000);
+  await delay(800);
   socket.end();
+
+  const avgSpeed = pointsSent ? totalSpeed / pointsSent : 0;
+  console.log("\nSimulation summary");
+  console.log(`IMEI            : ${cfg.imei}`);
+  console.log(`Vehicle         : ${cfg.vehicle}`);
+  console.log(`NRM points sent : ${pointsSent}`);
+  console.log(`Max speed       : ${maxSpeed.toFixed(1)} km/h`);
+  console.log(`Avg speed       : ${avgSpeed.toFixed(1)} km/h`);
+  console.log(`ALT/EPB sent    : ${alertsSent}`);
+  console.log(`Last location   : ${lat.toFixed(6)}, ${lng.toFixed(6)}`);
+  console.log(`Last mileage    : ${mileage.toFixed(2)} km`);
 }
 
 main().catch((err) => {
-  console.error("Simulation error:", err);
+  console.error("Simulation error:", err.message || err);
   process.exit(1);
 });

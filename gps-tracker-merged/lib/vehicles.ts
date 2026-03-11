@@ -17,6 +17,7 @@ export type Vehicle = {
     email: string
     licenseNumber: string
     address?: string
+    hasData?: boolean
   }
   date: string
   speed: number

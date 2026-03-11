@@ -13,14 +13,12 @@ const vehicleDriverMappingSchema = {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Vehicle",
     required: true,
-    index: true
   },
 
   driverId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Driver",
     required: true,
-    index: true
   },
 
   assignedAt: {
@@ -41,38 +39,25 @@ const vehicleDriverMappingSchema = {
   }
 };
 
-const VehicleDriverMapping = new ajModel(
-  "VehicleDriverMapping",
-  vehicleDriverMappingSchema
-).getModel();
-
-/**
- * ✅ Partial unique index
- * ✔ One active driver per vehicle
- * ✔ Active = unassignedAt === null
- */
-VehicleDriverMapping.collection.createIndex(
+const instance = new ajModel("VehicleDriverMapping", vehicleDriverMappingSchema);
+instance.index(
   { vehicleId: 1 },
   {
     unique: true,
     partialFilterExpression: {
-      unassignedAt: null
-    }
-  }
+      unassignedAt: null,
+    },
+  },
 );
 
-/**
- * ✅ (Optional but recommended)
- * ✔ One active vehicle per driver
- */
-VehicleDriverMapping.collection.createIndex(
+instance.index(
   { driverId: 1 },
   {
     unique: true,
     partialFilterExpression: {
-      unassignedAt: null
-    }
-  }
+      unassignedAt: null,
+    },
+  },
 );
 
-module.exports = VehicleDriverMapping;
+module.exports = instance.getModel();

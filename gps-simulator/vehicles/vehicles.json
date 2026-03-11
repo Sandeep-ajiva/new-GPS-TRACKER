@@ -1,0 +1,42 @@
+[
+  {
+    "imei": "123456789012345",
+    "vehicleNumber": "TS09ER1234",
+    "driver": "Ramesh Kumar",
+    "route": "delhi-gurgaon-route",
+    "vehicleRegNo": "TS09ER1234",
+    "softwareVersion": "2.5AIS"
+  },
+  {
+    "imei": "987654321098765",
+    "vehicleNumber": "TS09ER1235",
+    "driver": "Suresh Sharma",
+    "route": "delhi-noida-route",
+    "vehicleRegNo": "TS09ER1235",
+    "softwareVersion": "2.5AIS"
+  },
+  {
+    "imei": "111122223333444",
+    "vehicleNumber": "TS09ER1236",
+    "driver": "Amit Singh",
+    "route": "delhi-faridabad-route",
+    "vehicleRegNo": "TS09ER1236",
+    "softwareVersion": "2.5AIS"
+  },
+  {
+    "imei": "555566667777888",
+    "vehicleNumber": "TS09ER1237",
+    "driver": "Vikram Mehta",
+    "route": "delhi-jaipur-route",
+    "vehicleRegNo": "TS09ER1237",
+    "softwareVersion": "2.5AIS"
+  },
+  {
+    "imei": "999900001111222",
+    "vehicleNumber": "TS09ER1238",
+    "driver": "Rahul Patel",
+    "route": "delhi-ahmedabad-route",
+    "vehicleRegNo": "TS09ER1238",
+    "softwareVersion": "2.5AIS"
+  }
+]

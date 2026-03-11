@@ -16,8 +16,8 @@ try {
 }
 
 // EDITABLE: IMEI & Vehicle No
-const IMEI = process.env.SIM_IMEI || "123456789099111"; // set to mapped device IMEI
-const VEHICLE_NO = process.env.SIM_VEHICLE || "DL20E4750"; // set to mapped vehicle number
+const IMEI = process.env.SIM_IMEI || "123456789012345"; // set to mapped device IMEI
+const VEHICLE_NO = process.env.SIM_VEHICLE || "TS09ER1234"; // set to mapped vehicle number
 
 // TCP target (matches backend listener)
 const HOST = process.env.TCP_HOST || "127.0.0.1";

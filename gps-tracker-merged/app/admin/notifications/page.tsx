@@ -444,8 +444,6 @@ export default function NotificationsPage() {
           </div>
         </div>
       </div>
-                  </div>
-                </div>
 
                 {/* Notifications List */}
                 <div className="divide-y divide-gray-100">
