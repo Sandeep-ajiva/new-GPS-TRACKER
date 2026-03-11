@@ -122,7 +122,7 @@ export function MapView() {
 
   return (
     <div className="relative h-full w-full bg-slate-950">
-      <MapContainer center={center} zoom={13} className="h-full w-full" style={{ zIndex: 1 }}>
+      <MapContainer center={center} zoom={13} className="h-full w-full relative z-0">
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"

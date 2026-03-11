@@ -617,7 +617,7 @@ export default function ProfessionalHistoryPage() {
   return (
     <ApiErrorBoundary hasError={hasError}>
       <div className="min-h-screen bg-gray-50">
-        <div className="sticky top-0 z-40 border-b border-gray-200 bg-white/95 backdrop-blur-sm">
+        <div className="sticky top-0 z-30 border-b border-gray-200 bg-white/95 backdrop-blur-sm">
           <div className="px-4 py-4">
             <div className="mb-3 flex items-center justify-between">
               <div>
@@ -704,12 +704,12 @@ export default function ProfessionalHistoryPage() {
                 </Button>
               </div>
 
-              <div className="flex items-end gap-2">
+              <div className="flex items-end gap-2 text-gray-900">
                 <Button type="button" variant="outline" size="sm" onClick={() => handleQuickDate("yesterday")}>Yesterday</Button>
                 <Button type="button" variant="outline" size="sm" onClick={() => handleQuickDate("lastweek")}>Last Week</Button>
               </div>
 
-              <div className="flex items-end gap-2">
+              <div className="flex items-end gap-2 text-gray-900">
                 <Button type="button" variant="outline" size="sm" onClick={() => handleQuickDate("lastmonth")}>Last Month</Button>
               </div>
             </form>
@@ -718,7 +718,7 @@ export default function ProfessionalHistoryPage() {
 
         <div className="grid min-h-[calc(100vh-180px)] grid-cols-1 lg:grid-cols-[1fr_340px]">
           <div className="border-r border-gray-200 bg-white">
-            <div className="flex flex-wrap items-center gap-2 border-b border-gray-200 px-4 py-3">
+            <div className="flex flex-wrap items-center gap-2 border-b border-gray-200 px-4 py-3 text-gray-900">
               <Button size="sm" onClick={handlePrevious} disabled={currentIndex <= 0 || points.length === 0}>
                 <SkipBack size={14} />
               </Button>
@@ -733,7 +733,7 @@ export default function ProfessionalHistoryPage() {
               </Button>
 
               <select
-                className="rounded border border-gray-300 px-2 py-1 text-sm"
+                className="rounded border border-gray-300 px-2 py-1 text-sm text-gray-900"
                 value={playbackSpeed}
                 onChange={(event) => setPlaybackSpeed(Number(event.target.value))}
               >

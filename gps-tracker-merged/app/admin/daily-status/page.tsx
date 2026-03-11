@@ -6,7 +6,7 @@ import { useMemo, useState } from "react";
 
 import { Loader2, AlertTriangle, Calendar, Car, Filter, TrendingUp, Clock3, Zap, Activity, Gauge, AlertOctagon, ShieldOff, History, Copy, MapPin, Search, RefreshCw } from "lucide-react";
 
-import { toast } from "sonner";
+import { toast, Toaster } from "sonner";
 
 import { useGetVehiclesQuery } from "@/redux/api/vehicleApi";
 
@@ -509,8 +509,24 @@ export default function DailyStatusPage() {
 
 
   return (
-
-    <div className="min-h-screen bg-gray-50">
+    <>
+      <Toaster 
+        position="top-center"
+        richColors
+        closeButton
+        expand={false}
+        className="z-[9999999]"
+        toastOptions={{
+          style: {
+            zIndex: 9999999,
+            position: 'fixed',
+            top: '10px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+          }
+        }}
+      />
+      <div className="min-h-screen bg-gray-50">
 
       {/* STICKY HEADER + FILTERS */}
 
@@ -1075,7 +1091,7 @@ export default function DailyStatusPage() {
       </div>
 
     </div>
-
+    </>
   );
 
 }

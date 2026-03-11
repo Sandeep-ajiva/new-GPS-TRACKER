@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Loader2, Upload, Download, X } from "lucide-react";
+import { Loader2, Upload, Download, X, FileText, FileSpreadsheet } from "lucide-react";
 import { toast } from "sonner";
 import MappingTable from "./MappingTable";
 import ValidationSummary from "./ValidationSummary";
@@ -9,6 +9,10 @@ import { runExport } from "./ExportHandler";
 import { useImportExport } from "@/hooks/useImportExport";
 import { FilePond } from "react-filepond";
 import "filepond/dist/filepond.min.css";
+import { generateSampleFile } from "@/utils/sampleFileGenerator";
+import { generateCSVExport } from "@/utils/csvExportGenerator";
+import { generateExcelExport } from "@/utils/excelExportGenerator";
+import { getSecureItem } from "@/app/admin/Helpers/encryptionHelper";
 
 type ImportModalProps = {
   isOpen: boolean;
@@ -47,6 +51,8 @@ export default function ImportModal({
 }: ImportModalProps) {
   const { uploadFile, exportFile, loading, progress, error, reset } = useImportExport();
   const [tab, setTab] = useState<"import" | "export">("import");
+  const [selectedFormat, setSelectedFormat] = useState<"csv" | "excel">("csv");
+  const [exportFormat, setExportFormat] = useState<"csv" | "excel">("csv");
   const [file, setFile] = useState<File | null>(null);
   const [previewTotalRows, setPreviewTotalRows] = useState(0);
   const [csvColumns, setCsvColumns] = useState<string[]>([]);
@@ -77,6 +83,8 @@ export default function ImportModal({
 
   const closeAll = () => {
     setTab("import");
+    setSelectedFormat("csv");
+    setExportFormat("csv");
     setFile(null);
     setPreviewTotalRows(0);
     setCsvColumns([]);
@@ -86,6 +94,36 @@ export default function ImportModal({
     setExportToDate("");
     reset();
     onClose();
+  };
+
+  const downloadSampleCSV = async () => {
+    try {
+      await generateSampleFile({
+        moduleName,
+        allowedFields,
+        requiredFields,
+        format: "csv"
+      });
+      toast.success("Sample CSV file downloaded");
+    } catch (error) {
+      toast.error("Failed to download sample CSV");
+      console.error("Sample CSV download error:", error);
+    }
+  };
+
+  const downloadSampleExcel = async () => {
+    try {
+      await generateSampleFile({
+        moduleName,
+        allowedFields,
+        requiredFields,
+        format: "excel"
+      });
+      toast.success("Sample Excel file downloaded");
+    } catch (error) {
+      toast.error("Failed to download sample Excel");
+      console.error("Sample Excel download error:", error);
+    }
   };
 
   const initMappingFromColumns = (columns: string[]) => {
@@ -140,10 +178,13 @@ export default function ImportModal({
     if (!selected) return;
 
     const ext = fileExt(selected.name);
-    if (!ALLOWED_EXT.includes(ext)) {
-      toast.error("Only .csv and .xlsx files are allowed");
+    const expectedExt = selectedFormat === "csv" ? ".csv" : ".xlsx";
+    
+    if (ext !== expectedExt) {
+      toast.error(`Please select a ${selectedFormat.toUpperCase()} file`);
       return;
     }
+    
     if (selected.size > MAX_FILE_SIZE) {
       toast.error("File too large. Max allowed is 25MB");
       return;
@@ -185,15 +226,38 @@ export default function ImportModal({
       if (data) {
         setResult(data);
       }
+      
+      // Check if import was successful
       const hasErrors = !!data && data.failedCount > 0;
+      const totalRows = data?.totalRows || 0;
+      const successCount = data?.successCount || 0;
+      
+      console.log("Import response:", response);
+      console.log("Import data:", data);
+      console.log("Has errors:", hasErrors);
+      console.log("Total rows:", totalRows);
+      console.log("Success count:", successCount);
+      
       if (hasErrors) {
         toast.error("Import completed with errors. Please review the failed rows.");
         onCompleted?.();
         return;
       }
-      toast.success(response?.message || "Import completed");
-      onCompleted?.();
-      closeAll();
+      
+      // Always close popup on import completion (success or no data)
+      if (totalRows >= 0) {
+        if (successCount > 0) {
+          toast.success(response?.message || "Import completed successfully");
+        } else {
+          toast.warning("No data was imported. Please check your file format.");
+        }
+        onCompleted?.();
+        
+        // Force close popup immediately
+        setTimeout(() => {
+          closeAll();
+        }, 1);
+      }
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : "Import failed";
       toast.error(message);
@@ -206,13 +270,62 @@ export default function ImportModal({
       if (exportFromDate) finalFilters.from = exportFromDate;
       if (exportToDate) finalFilters.to = exportToDate;
 
-      await runExport({
-        exportFile,
-        exportUrl,
-        moduleName,
-        filters: finalFilters,
-      });
-      toast.success("Export completed");
+      if (exportFormat === "csv") {
+        // Use existing CSV export logic
+        await runExport({
+          exportFile,
+          exportUrl,
+          moduleName,
+          filters: finalFilters,
+        });
+      } else {
+        // For Excel export, use existing exportFile to get CSV data, then convert to Excel
+        const query = new URLSearchParams();
+        Object.entries(finalFilters).forEach(([key, value]) => {
+          if (value === undefined || value === null || value === "") return;
+          query.set(key, String(value));
+        });
+
+        const token = getSecureItem("token");
+        const url = `http://localhost:5000/api${exportUrl}${query.toString() ? `?${query.toString()}` : ""}`;
+        const res = await fetch(url, {
+          method: "GET",
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+
+        if (!res.ok) {
+          throw new Error(`Export failed: ${res.status}`);
+        }
+
+        // Get CSV data from response
+        const csvText = await res.text();
+        
+        // Parse CSV to get data for Excel export
+        const lines = csvText.split('\n').filter(line => line.trim());
+        if (lines.length < 2) {
+          throw new Error("No data available for export");
+        }
+
+        const headers = lines[0].split(',').map(h => h.replace(/^"|"$/g, '').trim());
+        const data = lines.slice(1).map(line => {
+          const values = line.split(',').map(v => v.replace(/^"|"$/g, '').trim());
+          const row: any = {};
+          headers.forEach((header, index) => {
+            row[header] = values[index] || '';
+          });
+          return row;
+        });
+
+        // Generate Excel export
+        await generateExcelExport({
+          data: data,
+          allowedFields,
+          fileName: `${moduleName}-export.xlsx`,
+          sheetName: moduleName
+        });
+      }
+      
+      toast.success(`${exportFormat.toUpperCase()} export completed`);
       closeAll();
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : "Export failed";
@@ -259,9 +372,67 @@ export default function ImportModal({
         <div className="relative max-h-[70vh] overflow-auto p-4 space-y-4">
           {tab === "import" && (
             <>
+              {/* Format Selector */}
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <label className="mb-3 block text-[10px] font-black uppercase tracking-widest text-slate-500">
+                  Select File Format
+                </label>
+                <div className="flex gap-4">
+                  <label className="flex items-center space-x-2 cursor-pointer text-slate-500">
+                    <input
+                      type="radio"
+                      name="importFormat"
+                      value="csv"
+                      checked={selectedFormat === "csv"}
+                      onChange={(e) => setSelectedFormat(e.target.value as "csv" | "excel")}
+                      className="mr-2"
+                    />
+                    <FileText size={16} />
+                    <span className="text-sm">CSV</span>
+                  </label>
+                  <label className="flex items-center space-x-2 cursor-pointer text-slate-500">
+                    <input
+                      type="radio"
+                      name="importFormat"
+                      value="excel"
+                      checked={selectedFormat === "excel"}
+                      onChange={(e) => setSelectedFormat(e.target.value as "csv" | "excel")}
+                      className="mr-2"
+                    />
+                    <FileSpreadsheet size={16} />
+                    <span className="text-sm">Excel (.xlsx)</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Sample Download Buttons */}
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <label className="mb-3 block text-[10px] font-black uppercase tracking-widest text-slate-500">
+                  Download Sample Files
+                </label>
+                <div className="flex gap-3">
+                  <button
+                    onClick={downloadSampleCSV}
+                    disabled={loading}
+                    className="flex items-center gap-2 px-3 py-2 text-sm bg-white border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-50 text-slate-500"
+                  >
+                    <FileText size={14} />
+                    Download Sample CSV
+                  </button>
+                  <button
+                    onClick={downloadSampleExcel}
+                    disabled={loading}
+                    className="flex items-center gap-2 px-3 py-2 text-sm bg-white border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-50 text-slate-500"
+                  >
+                    <FileSpreadsheet size={14} />
+                    Download Sample Excel
+                  </button>
+                </div>
+              </div>
+
               <div className="rounded-xl border border-dashed border-slate-300 p-4">
                 <label className="mb-2 block text-[10px] font-black uppercase tracking-widest text-slate-500">
-                  Upload CSV / Excel
+                  Upload {selectedFormat.toUpperCase()}
                 </label>
                 <FilePond
                   files={file ? [file] : []}
@@ -271,7 +442,7 @@ export default function ImportModal({
                   }}
                   allowMultiple={false}
                   maxFiles={1}
-                  acceptedFileTypes={["text/csv", ".csv", ".xlsx"]}
+                  acceptedFileTypes={selectedFormat === "csv" ? ["text/csv", ".csv"] : [".xlsx"]}
                   labelIdle='Drag & Drop your file or <span class="filepond--label-action">Browse</span>'
                   disabled={loading}
                   credits={false}
@@ -342,6 +513,40 @@ export default function ImportModal({
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
                 Export will include currently applied filters from this table view. If you wish to export data for a specific date range, please select the dates below.
               </div>
+
+              {/* Export Format Selector */}
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <label className="mb-3 block text-[10px] font-black uppercase tracking-widest text-slate-500">
+                  Export Format
+                </label>
+                <div className="flex gap-4 text-slate-500">
+                  <label className="flex items-center space-x-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="exportFormat"
+                      value="csv"
+                      checked={exportFormat === "csv"}
+                      onChange={(e) => setExportFormat(e.target.value as "csv" | "excel")}
+                      className="mr-2"
+                    />
+                    <FileText size={16} />
+                    <span className="text-sm">Download CSV</span>
+                  </label>
+                  <label className="flex items-center space-x-2 cursor-pointer ">
+                    <input
+                      type="radio"
+                      name="exportFormat"
+                      value="excel"
+                      checked={exportFormat === "excel"}
+                      onChange={(e) => setExportFormat(e.target.value as "csv" | "excel")}
+                      className="mr-2"
+                    />
+                    <FileSpreadsheet size={16} />
+                    <span className="text-sm">Download Excel</span>
+                  </label>
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
