@@ -31,6 +31,12 @@ import { LicensingView } from "@/components/dashboard/modules/LicensingView"
 import { AlertView } from "@/components/dashboard/modules/AlertView"
 import { FuelView } from "@/components/dashboard/modules/FuelView"
 import { TemperatureView } from "@/components/dashboard/modules/TemperatureView"
+import { StatisticsView } from "@/components/dashboard/modules/analytics/StatisticsView"
+import { TravelSummaryPage } from "@/components/dashboard/modules/analytics/TravelSummaryPage"
+import { TripSummaryPage } from "@/components/dashboard/modules/analytics/TripSummaryPage"
+import { VehicleStatusPage } from "@/components/dashboard/modules/analytics/VehicleStatusPage"
+import { AlertSummaryPage } from "@/components/dashboard/modules/analytics/AlertSummaryPage"
+import { DaywiseDistancePage } from "@/components/dashboard/modules/analytics/DaywiseDistancePage"
 import { X } from "lucide-react"
 
 type LiveGpsItem = {
@@ -134,8 +140,10 @@ export default function DashboardPage() {
   const [isOrgOpen, setIsOrgOpen] = useState(false)
   const [clockMs, setClockMs] = useState(() => Date.now())
   const user = meData?.data
-  const assignedVehicleId = user?.assignedVehicleId?._id || user?.assignedVehicleId || ""
+  const rawOrgId = user?.organizationId?._id || user?.organizationId || ""
   const organizationIdParam = searchParams.get("organizationId")
+  const assignedVehicleId = user?.assignedVehicleId?._id || user?.assignedVehicleId || ""
+  const userOrgId = rawOrgId || organizationIdParam || null
   const organizations = useMemo(() => orgData?.organizations || orgData?.data || [], [orgData])
   const allVehicles = useMemo(() => vehData?.vehicles || vehData?.data || [], [vehData])
   const liveVehicles = useMemo(() => liveData?.vehicles || liveData?.data || [], [liveData])
@@ -347,7 +355,7 @@ export default function DashboardPage() {
 
         const runningStatus = String(live?.movementStatus || vehicle.runningStatus || "").toLowerCase()
         const lifecycleStatus = String(vehicle.status || "").toLowerCase()
-        
+
         // Prioritize live ignition data, fallback to runningStatus logic only if no live data
         const ignition = Boolean(
           live?.ignitionStatus ??
@@ -440,10 +448,10 @@ export default function DashboardPage() {
           vehicle?.fullAddress
         ) || "N/A"
         const hasDriverDetails = Boolean(
-          driverData || 
-          vehicle?.driverName || 
-          vehicle?.driverPhone || 
-          vehicle?.driverEmail || 
+          driverData ||
+          vehicle?.driverName ||
+          vehicle?.driverPhone ||
+          vehicle?.driverEmail ||
           vehicle?.licenseNumber ||
           driverPhone !== "N/A" ||
           driverEmail !== "N/A" ||
@@ -524,7 +532,7 @@ export default function DashboardPage() {
         const liveTs = live.updatedAt || live.gpsTimestamp || null
         const liveMs = liveTs ? new Date(liveTs).getTime() : NaN
         const isStale = Number.isFinite(liveMs) ? clockMs - liveMs > LIVE_STALE_TIMEOUT_MS : true
-        
+
         // Prioritize live ignition data, fallback to movement status only if no live data
         const ignition = Boolean(
           live.ignitionStatus ??
@@ -655,7 +663,7 @@ export default function DashboardPage() {
 
   if (!isAuthed) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-100 text-slate-500">
+      <div className="flex min-h-screen items-center justify-center bg-[#f3f7f1] text-slate-500">
         Checking session...
       </div>
     )
@@ -696,7 +704,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col overflow-x-hidden bg-slate-950 font-sans text-slate-100">
+    <div className="flex min-h-screen flex-col overflow-x-hidden bg-[#f3f7f1] font-sans text-slate-900">
       <Header
         vehicleSummary={{
           label: currentVehicleSelection?.vehicleNumber || "Vehicle",
@@ -705,43 +713,43 @@ export default function DashboardPage() {
       />
 
       {userRole === "admin" && (
-        <div className="border-b border-white/10 bg-slate-950/80 px-4 py-3">
+        <div className="border-b border-[#d8e6d2] bg-[#f7fbf5] px-4 py-3">
           <div className="flex flex-wrap items-center gap-3">
-            <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold text-slate-100">
-              Organizations: <span className="text-emerald-200">{organizations.length}</span>
+            <div className="rounded-2xl border border-[#d8e6d2] bg-white px-4 py-2 text-xs font-semibold text-slate-700">
+              Organizations: <span className="text-[#2f8d35]">{organizations.length}</span>
             </div>
-            <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold text-slate-100">
-              Vehicles: <span className="text-emerald-200">{allVehicles.length}</span>
+            <div className="rounded-2xl border border-[#d8e6d2] bg-white px-4 py-2 text-xs font-semibold text-slate-700">
+              Vehicles: <span className="text-[#2f8d35]">{allVehicles.length}</span>
             </div>
             <div className="ml-auto flex-1 max-w-xs relative" onClick={(e) => e.stopPropagation()}>
-              <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 mb-1.5 ml-1">Select Organization</label>
+              <label className="mb-1.5 ml-1 block text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Select Organization</label>
               <div className="relative">
                 <button
                   onClick={() => setIsOrgOpen(!isOrgOpen)}
-                  className="flex w-full items-center gap-3 rounded-xl border border-white/10 bg-slate-900/90 px-4 py-2.5 text-xs font-bold text-slate-100 transition-all hover:bg-slate-800 hover:border-white/20 active:scale-[0.98]"
+                  className="flex w-full items-center gap-3 rounded-2xl border border-[#d8e6d2] bg-white px-4 py-3 text-xs font-bold text-slate-700 transition-all hover:border-[#38a63c]/30 hover:bg-[#f7fbf5] active:scale-[0.98]"
                 >
-                  <LayoutDashboard size={14} className={isOrgOpen ? "text-emerald-400" : "text-slate-400"} />
+                  <LayoutDashboard size={14} className={isOrgOpen ? "text-[#38a63c]" : "text-slate-400"} />
                   <span className="flex-1 text-left truncate">
                     {selectedOrgId === "all" ? "All Organizations" : organizations.find((o: any) => o._id === selectedOrgId)?.name || "Organization"}
                   </span>
-                  <ChevronDown size={14} className={`text-slate-500 transition-transform duration-200 ${isOrgOpen ? "rotate-180 text-emerald-400" : ""}`} />
+                  <ChevronDown size={14} className={`text-slate-500 transition-transform duration-200 ${isOrgOpen ? "rotate-180 text-[#38a63c]" : ""}`} />
                 </button>
 
                 {isOrgOpen && (
-                  <div className="absolute top-full right-0 mt-2 w-full min-w-[200px] max-h-60 overflow-y-auto rounded-2xl bg-slate-800 border border-white/10 shadow-2xl ring-1 ring-black/40 z-50 animate-in fade-in slide-in-from-top-2 duration-150 backdrop-blur-xl">
+                  <div className="absolute top-full right-0 z-50 mt-2 max-h-60 w-full min-w-[200px] overflow-y-auto rounded-2xl border border-[#d8e6d2] bg-white shadow-xl animate-in fade-in slide-in-from-top-2 duration-150">
                     <div className="p-1.5">
                       <button
                         onClick={() => { setSelectedOrgId("all"); setIsOrgOpen(false); }}
-                        className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs font-bold transition-colors ${selectedOrgId === "all" ? "bg-emerald-500/20 text-emerald-300" : "text-slate-300 hover:bg-white/5"}`}
+                        className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold transition-colors ${selectedOrgId === "all" ? "bg-[#ecf8ea] text-[#2f8d35]" : "text-slate-600 hover:bg-[#f5faf3]"}`}
                       >
                         All Organizations
                       </button>
-                      <div className="my-1 h-px bg-white/5" />
+                      <div className="my-1 h-px bg-[#edf3e8]" />
                       {organizations.map((org: any) => (
                         <button
                           key={org._id}
                           onClick={() => { setSelectedOrgId(org._id); setIsOrgOpen(false); }}
-                          className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs font-bold transition-colors ${selectedOrgId === org._id ? "bg-emerald-500/20 text-emerald-300" : "text-slate-300 hover:bg-white/5"}`}
+                          className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold transition-colors ${selectedOrgId === org._id ? "bg-[#ecf8ea] text-[#2f8d35]" : "text-slate-600 hover:bg-[#f5faf3]"}`}
                         >
                           {org.name || "Organization"}
                         </button>
@@ -756,127 +764,136 @@ export default function DashboardPage() {
       )}
 
       {userRole === "driver" && (
-        <div className="border-b border-white/10 bg-slate-950/80 px-4 py-3">
-          <div className="flex flex-wrap items-center gap-4 text-xs text-slate-200">
-            <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1 font-semibold">
+        <div className="border-b border-[#d8e6d2] bg-[#f7fbf5] px-4 py-3">
+          <div className="flex flex-wrap items-center gap-4 text-xs text-slate-700">
+            <div className="rounded-full border border-[#d8e6d2] bg-white px-3 py-1 font-semibold">
               Driver: {user?.firstName || "Driver"} {user?.lastName || ""}
             </div>
-            <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
+            <div className="rounded-full border border-[#d8e6d2] bg-white px-3 py-1">
               {user?.email || "no-email"}
             </div>
-            <div className="rounded-full border border-emerald-400/40 bg-emerald-400/10 px-3 py-1 text-emerald-200">
+            <div className="rounded-full border border-[#38a63c]/30 bg-[#ecf8ea] px-3 py-1 text-[#2f8d35]">
               Vehicle: {user?.assignedVehicleId?.vehicleNumber || uiVehicles[0]?.vehicleNumber || "Unassigned"}
             </div>
           </div>
         </div>
       )}
 
-      <div className="shrink-0 border-b border-white/10 bg-slate-950/80">
-        <StatusCards
-          vehicles={uiVehicles}
-          activeFilter={statusFilter}
-          onFilterChange={(filter) => {
-            setStatusFilter(filter)
-            dispatch(setReduxSelectedVehicle(null))
-            setSelectedVehicle(null)
-          }}
-        />
-        {/* Mobile View Switcher */}
-        <div className="flex border-t border-white/5 lg:hidden">
-          <button
-            onClick={() => setMobileView("list")}
-            className={`flex-1 py-3 text-xs font-bold transition-colors ${mobileView === "list" ? "bg-emerald-500/20 text-emerald-400 border-b-2 border-emerald-400" : "text-slate-400 hover:bg-white/5"}`}
-          >
-            LIST VIEW
-          </button>
-          <button
-            onClick={() => setMobileView("map")}
-            className={`flex-1 py-3 text-xs font-bold transition-colors ${mobileView === "map" ? "bg-emerald-500/20 text-emerald-400 border-b-2 border-emerald-400" : "text-slate-400 hover:bg-white/5"}`}
-          >
-            MAP VIEW
-          </button>
+      {activeTab === "Tracking" && (
+        <div className="shrink-0 border-b border-[#d8e6d2] bg-[#f3f7f1]">
+          <StatusCards
+            vehicles={uiVehicles}
+            activeFilter={statusFilter}
+            onFilterChange={(filter) => {
+              setStatusFilter(filter)
+              dispatch(setReduxSelectedVehicle(null))
+              setSelectedVehicle(null)
+            }}
+          />
+          {/* Mobile View Switcher */}
+          <div className="flex border-t border-[#dbe7d4] lg:hidden">
+            <button
+              onClick={() => setMobileView("list")}
+              className={`flex-1 py-3 text-xs font-bold transition-colors ${mobileView === "list" ? "border-b-2 border-[#38a63c] bg-[#ecf8ea] text-[#2f8d35]" : "text-slate-500 hover:bg-[#f7fbf5]"}`}
+            >
+              LIST VIEW
+            </button>
+            <button
+              onClick={() => setMobileView("map")}
+              className={`flex-1 py-3 text-xs font-bold transition-colors ${mobileView === "map" ? "border-b-2 border-[#38a63c] bg-[#ecf8ea] text-[#2f8d35]" : "text-slate-500 hover:bg-[#f7fbf5]"}`}
+            >
+              MAP VIEW
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="flex flex-1 flex-col overflow-hidden">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 p-3 flex-1 min-h-[650px] overflow-y-auto lg:overflow-hidden">
-          {/* Sidebar Area (Left ~40%) */}
-          <div className={`${mobileView === "list" ? "flex" : "hidden"} lg:flex lg:col-span-5 xl:col-span-4 flex-col min-h-[460px] lg:h-full overflow-hidden border border-white/10 bg-slate-950/50 rounded-2xl shadow-2xl`}>
-            <VehicleSidebar
-              vehicles={uiVehicles}
-              selectedId={reduxSelectedVehicleId || currentVehicleId}
-              onSelect={(id) => {
-                const nextId = id
-                dispatch(setReduxSelectedVehicle(nextId))
-                const found = uiVehicles.find((v) => v.id === nextId) || null
-                setSelectedVehicle(found)
-                bumpFocusKey()
-                if (window.innerWidth < 1024) setMobileView("map")
-              }}
-              isFullWidth={true}
-              statusFilter={statusFilter}
-            />
-          </div>
-
-          {/* Map Area (Right ~60%) */}
-          <div className={`${mobileView === "map" ? "flex" : "hidden md:flex"} lg:flex lg:col-span-7 xl:col-span-8 flex-col min-h-[620px] lg:min-h-[700px] lg:h-full overflow-hidden border border-white/10 bg-slate-950 rounded-2xl shadow-2xl`}>
-            <ActionToolbar compact className="bg-slate-950/80 backdrop-blur-md border-b border-white/10" />
-            <div className="flex-1 min-h-0">
-              <MapWrapper />
-            </div>
-          </div>
-        </div>
-
-        {currentVehicleSelection && (
-          <div className="border-t border-white/10 bg-slate-950/95 backdrop-blur-xl p-2 shadow-2xl z-40">
-            <div className="grid grid-cols-1 gap-2">
-              <div className="min-h-0 overflow-x-auto">
-                <VehicleDetails 
-                  vehicleId={currentVehicleId} 
-                  positions={positions} 
-                  vehicles={uiVehicles} 
-                  selectedVehicleObj={currentVehicleSelection}
-                  dailyStats={dailyStats}
-                  alerts={alerts}
+        {activeTab === "Tracking" ? (
+          <>
+            <div className="grid flex-1 min-h-[650px] grid-cols-1 gap-4 p-4 lg:grid-cols-12 lg:overflow-hidden">
+              {/* Sidebar Area (Left ~40%) */}
+              <div className={`${mobileView === "list" ? "flex" : "hidden"} lg:flex lg:col-span-5 xl:col-span-4 flex-col min-h-[460px] overflow-hidden rounded-[28px] border border-[#d8e6d2] bg-white shadow-sm lg:h-full`}>
+                <VehicleSidebar
+                  vehicles={uiVehicles}
+                  selectedId={reduxSelectedVehicleId || currentVehicleId}
+                  onSelect={(id) => {
+                    const nextId = id
+                    dispatch(setReduxSelectedVehicle(nextId))
+                    const found = uiVehicles.find((v) => v.id === nextId) || null
+                    setSelectedVehicle(found)
+                    bumpFocusKey()
+                    if (window.innerWidth < 1024) setMobileView("map")
+                  }}
+                  isFullWidth={true}
+                  statusFilter={statusFilter}
                 />
+              </div>
+
+              {/* Map Area (Right ~60%) */}
+              <div className={`${mobileView === "map" ? "flex" : "hidden md:flex"} lg:flex lg:col-span-7 xl:col-span-8 flex-col min-h-[620px] overflow-hidden rounded-[28px] border border-[#d8e6d2] bg-white shadow-sm lg:h-full lg:min-h-[700px]`}>
+                <ActionToolbar compact />
+                <div className="flex-1 min-h-0">
+                  <MapWrapper />
+                </div>
+              </div>
+            </div>
+
+            {currentVehicleSelection && (
+              <div className="border-t border-[#d8e6d2] bg-[#f3f7f1] p-4 z-40">
+                <div className="grid grid-cols-1 gap-2">
+                  <div className="min-h-0 overflow-x-auto">
+                    <VehicleDetails
+                      vehicleId={currentVehicleId}
+                      positions={positions}
+                      vehicles={uiVehicles}
+                      selectedVehicleObj={currentVehicleSelection}
+                      dailyStats={dailyStats}
+                      alerts={alerts}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="flex-1 overflow-auto bg-white">
+            <div className="relative h-full flex flex-col">
+              {/* Report Header (matching Figma Image 2 but integrated) */}
+              <div className="flex items-center justify-between border-b border-[#d8e6d2] px-6 py-2 bg-[#fcfdfc]">
+                <p className="text-[11px] font-black uppercase tracking-[0.22em] text-[#2f8d35]">{activeTab}</p>
+                <button
+                  onClick={() => dispatch(setActiveTab("Tracking"))}
+                  className="rounded-full bg-white border border-[#d8e6d2] p-1.5 text-slate-400 shadow-sm transition-colors hover:bg-[#edf3e8] hover:text-slate-800"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-auto">
+                {activeTab === "Reports" && <ReportView />}
+                {activeTab === "Geofences" && <GeofenceView />}
+                {activeTab === "Licensing" && <LicensingView />}
+                {activeTab === "Alerts" && <AlertView />}
+                {activeTab === "Fuel" && <FuelView />}
+                {activeTab === "Temperature" && <TemperatureView />}
+                {activeTab === "Statistics" && <StatisticsView />}
+                {activeTab === "Daywise Distance" && <DaywiseDistancePage organizations={organizations} vehicles={allVehicles} userRole={userRole} userOrgId={userOrgId} />}
+                {activeTab === "Travel Summary" && <TravelSummaryPage organizations={organizations} vehicles={allVehicles} userRole={userRole} userOrgId={userOrgId} />}
+                {activeTab === "Trip Summary" && <TripSummaryPage organizations={organizations} vehicles={allVehicles} userRole={userRole} userOrgId={userOrgId} />}
+                {activeTab === "Vehicle Status" && <VehicleStatusPage organizations={organizations} vehicles={allVehicles} userRole={userRole} userOrgId={userOrgId} />}
+                {activeTab === "Alert Summary" && <AlertSummaryPage organizations={organizations} vehicles={allVehicles} userRole={userRole} userOrgId={userOrgId} />}
+                {["Tour", "App Config", "Sys Config", "User Rights"].includes(activeTab) && (
+                  <div className="flex h-64 flex-col items-center justify-center italic text-slate-500">
+                    <LayoutDashboard className="mb-4 h-12 w-12 opacity-20" />
+                    {activeTab} module is coming soon...
+                  </div>
+                )}
               </div>
             </div>
           </div>
         )}
       </div>
-
-      {/* Module Modal Overlay */}
-      {activeTab !== "Tracking" && typeof document !== "undefined" && createPortal(
-        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-950/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-          <div className="relative w-full max-w-6xl max-h-[90vh] bg-slate-900 rounded-3xl border border-white/10 shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-white/5 bg-slate-900/50">
-              <h3 className="text-xl font-black uppercase tracking-widest text-emerald-400">{activeTab}</h3>
-              <button
-                onClick={() => dispatch(setActiveTab("Tracking"))}
-                className="p-2 rounded-full hover:bg-white/5 text-slate-400 hover:text-white transition-colors"
-              >
-                <X size={24} />
-              </button>
-            </div>
-            <div className="flex-1 overflow-auto p-6 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
-              {activeTab === "Reports" && <ReportView />}
-              {activeTab === "Geofences" && <GeofenceView />}
-              {activeTab === "Licensing" && <LicensingView />}
-              {activeTab === "Alerts" && <AlertView />}
-              {activeTab === "Fuel" && <FuelView />}
-              {activeTab === "Temperature" && <TemperatureView />}
-              {/* Add other modules as they are developed */}
-              {["Tour", "App Config", "Sys Config", "User Rights"].includes(activeTab) && (
-                <div className="flex flex-col items-center justify-center h-64 text-slate-500 italic">
-                  <LayoutDashboard className="h-12 w-12 mb-4 opacity-20" />
-                  {activeTab} module is coming soon...
-                </div>
-              )}
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
     </div>
   )
 }

@@ -1,4 +1,4 @@
-import { Car, Clock, AlertOctagon, PowerOff, Database } from "lucide-react"
+import { Activity, Car, Clock3, Database, Power, Signal } from "lucide-react"
 import type { Vehicle } from "@/lib/vehicles"
 
 export type VehicleStatusFilter = "running" | "idle" | "stopped" | "inactive" | "nodata" | "total" | "active"
@@ -26,31 +26,73 @@ export function StatusCards({
     )
 
     const stats = [
-        { label: "Running", count: totals.running, color: "bg-emerald-400", textColor: "text-slate-950", icon: Car, filter: "running" as const },
-        { label: "Idle", count: totals.idle, color: "bg-amber-300", textColor: "text-slate-950", icon: Clock, filter: "idle" as const },
-        { label: "Stopped", count: totals.stopped, color: "bg-red-500", textColor: "text-white", icon: AlertOctagon, filter: "stopped" as const },
-        { label: "Inactive", count: totals.inactive, color: "bg-cyan-500", textColor: "text-slate-950", icon: PowerOff, filter: "inactive" as const },
-        { label: "No Data", count: totals.nodata, color: "bg-slate-500", textColor: "text-white", icon: Database, filter: "nodata" as const },
-        { label: "Total", count: totals.total, color: "bg-white/90", textColor: "text-slate-900", filter: "total" as const },
+        {
+            label: "Running",
+            count: totals.running,
+            filter: "running" as const,
+            icon: Activity,
+            cardClass: "bg-gradient-to-br from-[#46b24b] to-[#2f8d35] text-white border-[#2f8d35]/30",
+        },
+        {
+            label: "Idle",
+            count: totals.idle,
+            filter: "idle" as const,
+            icon: Clock3,
+            cardClass: "bg-gradient-to-br from-[#f3a338] to-[#dd7d16] text-white border-[#dd7d16]/30",
+        },
+        {
+            label: "Stopped",
+            count: totals.stopped,
+            filter: "stopped" as const,
+            icon: Power,
+            cardClass: "bg-gradient-to-br from-[#ef5b4d] to-[#d83a2d] text-white border-[#d83a2d]/30",
+        },
+        {
+            label: "Inactive",
+            count: totals.inactive,
+            filter: "inactive" as const,
+            icon: Signal,
+            cardClass: "bg-gradient-to-br from-[#53a8e9] to-[#2d7bc1] text-white border-[#2d7bc1]/30",
+        },
+        {
+            label: "No Data",
+            count: totals.nodata,
+            filter: "nodata" as const,
+            icon: Database,
+            cardClass: "bg-gradient-to-br from-[#a8adb7] to-[#7e8794] text-white border-[#7e8794]/30",
+        },
+        {
+            label: "Total",
+            count: totals.total,
+            filter: "total" as const,
+            icon: Car,
+            cardClass: "bg-white text-[#1f2937] border-[#d7e4d0]",
+        },
     ]
 
     return (
-        <div className="grid grid-cols-2 gap-1.5 p-2 sm:grid-cols-3 lg:grid-cols-6 xl:gap-2">
+        <div className="grid grid-cols-2 gap-3 p-4 md:grid-cols-3 xl:grid-cols-6">
             {stats.map((stat) => (
-                <div
+                <button
                     key={stat.label}
+                    type="button"
                     onClick={() => onFilterChange?.(stat.filter)}
-                    className={`${stat.color} ${stat.textColor || 'text-white'} flex flex-col items-center justify-center rounded-xl border border-white/5 py-1.5 shadow-lg relative overflow-hidden group h-16 sm:h-18 transition-all hover:scale-[1.02] active:scale-95 cursor-pointer ring-offset-2 ring-offset-slate-950 ${activeFilter === stat.filter ? "ring-2 ring-emerald-400 shadow-emerald-400/20" : "hover:shadow-xl"}`}
+                    className={`group relative overflow-hidden rounded-2xl border px-4 py-4 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${stat.cardClass} ${activeFilter === stat.filter ? "ring-2 ring-[#2f8d35]/35 ring-offset-2 ring-offset-[#f3f7f1]" : ""}`}
                 >
-                    <div className="flex items-center gap-1.5 mb-0.5">
-                        {stat.icon && <stat.icon className="h-3.5 w-3.5 opacity-70 group-hover:opacity-100" />}
-                        <span className="text-base sm:text-lg font-black leading-none">{stat.count}</span>
+                    <div className="flex items-start justify-between">
+                        <div>
+                            <p className="text-[11px] font-black uppercase tracking-[0.24em] opacity-85">{stat.label}</p>
+                            <p className="mt-3 text-3xl font-black leading-none">{stat.count}</p>
+                        </div>
+                        <div className="rounded-xl bg-white/20 p-2 text-current backdrop-blur-sm">
+                            <stat.icon className="h-5 w-5" />
+                        </div>
                     </div>
-                    <span className="text-[8px] sm:text-[9px] font-black uppercase tracking-widest opacity-80 group-hover:opacity-100">{stat.label}</span>
-
-                    {/* Subtle highlight effect */}
-                    <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
-                </div>
+                    <div className="mt-4 text-[11px] font-semibold opacity-85">
+                        {activeFilter === stat.filter ? "Active filter" : "Tap to filter"}
+                    </div>
+                    <div className="pointer-events-none absolute inset-x-0 bottom-0 h-1 bg-black/10 opacity-40" />
+                </button>
             ))}
         </div>
     )

@@ -1,146 +1,33 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
+import { Calendar, Car, ChevronDown, ChevronRight, Clock, Clock3, History, LayoutDashboard, LogOut, Menu, MessageSquare, Settings, AlertTriangle, User, Settings2 } from "lucide-react"
 import { useRouter } from "next/navigation"
-import {
-    Settings,
-    Bell,
-    Calendar,
-    Clock,
-    Car,
-    LogOut,
-    Plus,
-    User,
-    ChevronDown,
-    Check,
-    AlertCircle,
-    LayoutDashboard,
-} from "lucide-react"
-import type { Vehicle } from "@/types"
 import { getSecureItem } from "@/app/admin/Helpers/encryptionHelper"
 import { useGetMeQuery } from "@/redux/api/usersApi"
-import { useGetNotificationsQuery } from "@/redux/api/notificationsApi"
-import { useMarkAsReadMutation } from "@/redux/api/notificationsApi"
 import { baseApi } from "@/redux/api/baseApi"
 import { useDispatch } from "react-redux"
 import { NotificationCenter } from "@/components/common/NotificationCenter"
+import { setActiveTab } from "@/redux/features/vehicleSlice"
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function toRelativeTime(value?: string): string {
-    if (!value) return "just now"
-    const ts = new Date(value).getTime()
-    if (Number.isNaN(ts)) return "just now"
-    const diff = Math.floor((Date.now() - ts) / 60000)
-    if (diff < 1) return "just now"
-    if (diff < 60) return `${diff}m ago`
-    const h = Math.floor(diff / 60)
-    if (h < 24) return `${h}h ago`
-    return `${Math.floor(h / 24)}d ago`
-}
-
-function severityColor(sev?: string): string {
-    switch ((sev || "").toLowerCase()) {
-        case "critical":
-        case "high":
-            return "text-red-400"
-        case "medium":
-            return "text-amber-400"
-        default:
-            return "text-blue-400"
+type HeaderUser = {
+    organizationId?: {
+        logo?: string
     }
 }
 
-// ── Notification Dropdown ─────────────────────────────────────────────────────
-
-interface NotifItem {
-    _id: string
-    alertName?: string
-    message?: string
-    severity?: string
-    acknowledged?: boolean
-    createdAt?: string
-    gpsTimestamp?: string
-    receivedAt?: string
+type HeaderMenuItem = {
+    label: string
+    href?: string
+    tabName?: string
+    icon: typeof LayoutDashboard
 }
 
-function NotificationDropdown({
-    isOpen,
-    onClose,
-    notifications,
-    unreadCount,
-    onMarkRead,
-}: {
-    isOpen: boolean
-    onClose: () => void
-    notifications: NotifItem[]
-    unreadCount: number
-    onMarkRead: (id: string) => void
-}) {
-    if (!isOpen) return null
-
-    return (
-        <div className="absolute right-0 top-full mt-2 w-80 rounded-2xl bg-slate-800 border border-white/10 shadow-2xl ring-1 ring-black/40 z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 bg-slate-800/80">
-                <span className="text-sm font-bold text-slate-100">Notifications</span>
-                {unreadCount > 0 && (
-                    <span className="rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-bold text-white">
-                        {unreadCount} new
-                    </span>
-                )}
-            </div>
-
-            <div className="max-h-80 overflow-y-auto divide-y divide-white/5">
-                {notifications.length === 0 ? (
-                    <div className="flex flex-col items-center gap-2 py-10 text-slate-400">
-                        <Bell className="h-7 w-7 opacity-40" />
-                        <p className="text-xs font-semibold">No notifications</p>
-                    </div>
-                ) : (
-                    notifications.slice(0, 10).map((n) => (
-                        <div
-                            key={n._id}
-                            className={`flex items-start gap-3 px-4 py-3 hover:bg-white/5 transition-colors ${!n.acknowledged ? "bg-white/[0.03]" : ""
-                                }`}
-                        >
-                            <AlertCircle className={`h-4 w-4 mt-0.5 shrink-0 ${severityColor(n.severity)}`} />
-                            <div className="flex-1 min-w-0">
-                                <p className="text-xs font-semibold text-slate-100 truncate">
-                                    {n.alertName || n.message || "Alert"}
-                                </p>
-                                <p className="text-[10px] text-slate-400 mt-0.5">
-                                    {toRelativeTime(n.gpsTimestamp || n.receivedAt || n.createdAt)}
-                                </p>
-                            </div>
-                            {!n.acknowledged && (
-                                <button
-                                    onClick={() => onMarkRead(n._id)}
-                                    className="shrink-0 rounded p-1 hover:bg-emerald-500/20 text-slate-500 hover:text-emerald-400 transition-colors"
-                                    title="Mark as read"
-                                >
-                                    <Check className="h-3.5 w-3.5" />
-                                </button>
-                            )}
-                        </div>
-                    ))
-                )}
-            </div>
-
-            {notifications.length > 0 && (
-                <div className="border-t border-white/10 px-4 py-2">
-                    <button
-                        onClick={onClose}
-                        className="w-full text-center text-[10px] font-semibold text-slate-400 hover:text-emerald-300 transition-colors py-1"
-                    >
-                        View all notifications
-                    </button>
-                </div>
-            )}
-        </div>
-    )
+type HeaderMenuSection = {
+    id: string
+    label: string
+    items: HeaderMenuItem[]
 }
-
-// ── Profile Dropdown ──────────────────────────────────────────────────────────
 
 function ProfileDropdown({
     isOpen,
@@ -156,7 +43,7 @@ function ProfileDropdown({
     displayName: string
     email: string
     role: string
-    user: any
+    user?: HeaderUser
     onProfile: () => void
     onSettings: () => void
     onLogout: () => void
@@ -164,10 +51,9 @@ function ProfileDropdown({
     if (!isOpen) return null
 
     return (
-        <div className="absolute right-0 top-full mt-2 w-64 rounded-2xl bg-slate-800 border border-white/10 shadow-2xl ring-1 ring-black/40 z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
-            {/* Avatar header */}
-            <div className="flex items-center gap-3 px-4 py-4 border-b border-white/10 bg-gradient-to-r from-emerald-900/30 to-slate-800">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full border-2 border-emerald-400 bg-white overflow-hidden shrink-0">
+        <div className="absolute right-0 top-full z-50 mt-3 w-72 overflow-hidden rounded-[24px] border border-[#d8e6d2] bg-white shadow-2xl">
+            <div className="flex items-center gap-3 border-b border-[#e8f1e3] bg-[#f6fbf4] px-4 py-4">
+                <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full border border-[#cfe3c9] bg-white">
                     {user?.organizationId?.logo ? (
                         <img
                             src={`http://localhost:5000${user.organizationId.logo}`}
@@ -175,40 +61,28 @@ function ProfileDropdown({
                             className="h-full w-full object-contain p-1"
                         />
                     ) : (
-                        <span className="text-lg font-bold text-slate-900">
-                            {displayName.charAt(0).toUpperCase()}
-                        </span>
+                        <span className="text-base font-black text-[#225c28]">{displayName.charAt(0).toUpperCase()}</span>
                     )}
                 </div>
                 <div className="min-w-0">
-                    <p className="text-sm font-bold text-slate-100 truncate">{displayName}</p>
-                    <p className="text-[10px] text-slate-400 truncate">{email}</p>
-                    <span className="mt-1 inline-block rounded-full bg-emerald-500/20 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-emerald-300">
+                    <p className="truncate text-sm font-black text-slate-900">{displayName}</p>
+                    <p className="truncate text-xs text-slate-500">{email}</p>
+                    <span className="mt-1 inline-flex rounded-full bg-[#ecf8ea] px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-[#2f8d35]">
                         {role}
                     </span>
                 </div>
             </div>
 
-            {/* Links */}
-            <div className="divide-y divide-white/5 py-1">
-                <button
-                    onClick={onProfile}
-                    className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-slate-200 hover:bg-white/5 hover:text-white transition-colors"
-                >
-                    <User className="h-4 w-4 text-slate-400" />
+            <div className="p-2">
+                <button onClick={onProfile} className="flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-sm font-semibold text-slate-700 transition hover:bg-[#f5faf3]">
+                    <User className="h-4 w-4 text-[#38a63c]" />
                     My Profile
                 </button>
-                <button
-                    onClick={onSettings}
-                    className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-slate-200 hover:bg-white/5 hover:text-white transition-colors"
-                >
-                    <Settings className="h-4 w-4 text-slate-400" />
+                <button onClick={onSettings} className="flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-sm font-semibold text-slate-700 transition hover:bg-[#f5faf3]">
+                    <Settings className="h-4 w-4 text-[#38a63c]" />
                     Settings
                 </button>
-                <button
-                    onClick={onLogout}
-                    className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-red-300 hover:bg-red-500/10 hover:text-red-200 transition-colors"
-                >
+                <button onClick={onLogout} className="flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-sm font-semibold text-red-600 transition hover:bg-red-50">
                     <LogOut className="h-4 w-4" />
                     Logout
                 </button>
@@ -217,37 +91,26 @@ function ProfileDropdown({
     )
 }
 
-// ── Header (Main Export) ──────────────────────────────────────────────────────
-
 export function Header({
     vehicleSummary,
 }: {
     vehicleSummary?: { label: string; speed: number }
 }) {
-    const [showNotifDropdown, setShowNotifDropdown] = useState(false)
     const [showProfileDropdown, setShowProfileDropdown] = useState(false)
+    const [showStaticsDropdown, setShowStaticsDropdown] = useState(false)
+    const [activeMenuSection, setActiveMenuSection] = useState("statistics")
     const [now, setNow] = useState(() => new Date())
     const [userRole, setUserRole] = useState<string | null>(null)
     const router = useRouter()
     const dispatch = useDispatch()
-
-    const notifRef = useRef<HTMLDivElement>(null)
     const profileRef = useRef<HTMLDivElement>(null)
+    const staticsRef = useRef<HTMLDivElement>(null)
 
-    // Set user role on client-side only to prevent hydration mismatch
     useEffect(() => {
         setUserRole(getSecureItem("userRole"))
     }, [])
 
-    const canCreateVehicle = userRole === "admin"
-
     const { data: meData } = useGetMeQuery(undefined, { refetchOnMountOrArgChange: true })
-    const { data: notifData, refetch: refetchNotifs } = useGetNotificationsQuery(undefined, {
-        pollingInterval: 60000,
-        refetchOnMountOrArgChange: true,
-    })
-    const [markAsRead] = useMarkAsReadMutation()
-
     const user = meData?.data
     const displayName = useMemo(() => {
         if (!user) return "User"
@@ -255,30 +118,79 @@ export function Header({
     }, [user])
     const email = user?.email || ""
     const role = user?.role || userRole || "user"
+    const normalizedRole = String(role).toLowerCase()
+    const canOpenStatics = normalizedRole === "admin" || normalizedRole === "manager" || normalizedRole === "subadmin"
+    const headerMenuSections = useMemo<HeaderMenuSection[]>(() => {
+        const sections: HeaderMenuSection[] = []
 
-    const notifications: NotifItem[] = useMemo(
-        () => (notifData as { data?: NotifItem[] } | null)?.data || [],
-        [notifData]
-    )
-    const unreadCount = useMemo(
-        () => notifications.filter((n) => !n.acknowledged).length,
-        [notifications]
-    )
+        const monitorItems: HeaderMenuItem[] = []
+        if (normalizedRole === "admin") {
+            monitorItems.push(
+                { label: "Dashboard Overview", href: "/admin", icon: LayoutDashboard },
+                { label: "Live Tracking", href: "/dashboard", icon: Car }
+            )
+        }
+        monitorItems.push(
+            { label: "History Playback", href: "/admin/history", icon: History },
+            { label: "Daily Status", href: "/admin/daily-status", icon: Clock3 }
+        )
 
-    // Clock
+        sections.push({
+            id: "monitor",
+            label: "Monitor",
+            items: monitorItems,
+        })
+
+        sections.push({
+            id: "statistics",
+            label: "Statistics",
+            items: [
+                { label: "Travel Summary", tabName: "Travel Summary", icon: LayoutDashboard },
+                { label: "Trip Summary", tabName: "Trip Summary", icon: LayoutDashboard },
+                { label: "Vehicle Status", tabName: "Vehicle Status", icon: LayoutDashboard },
+                { label: "Alert Summary", tabName: "Alert Summary", icon: LayoutDashboard },
+                { label: "Daywise Distance", tabName: "Daywise Distance", icon: LayoutDashboard },
+            ],
+        })
+
+        sections.push({
+            id: "configuration",
+            label: "Configuration",
+            items: [
+                { label: "Dashboard Settings", href: "/dashboard/settings", icon: Settings },
+            ],
+        })
+
+        sections.push({
+            id: "user-rights",
+            label: "User Rights",
+            items: [
+                { label: "My Profile", href: "/dashboard/profile", icon: User },
+            ],
+        })
+
+        return sections
+    }, [normalizedRole])
+    const activeSection = headerMenuSections.find((section) => section.id === activeMenuSection) || headerMenuSections[0]
+
     useEffect(() => {
         const interval = setInterval(() => setNow(new Date()), 1000)
         return () => clearInterval(interval)
     }, [])
 
-    // Close dropdowns on outside click
+    useEffect(() => {
+        if (!headerMenuSections.some((section) => section.id === activeMenuSection) && headerMenuSections[0]) {
+            setActiveMenuSection(headerMenuSections[0].id)
+        }
+    }, [activeMenuSection, headerMenuSections])
+
     useEffect(() => {
         function handler(e: MouseEvent) {
-            if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
-                setShowNotifDropdown(false)
-            }
             if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
                 setShowProfileDropdown(false)
+            }
+            if (staticsRef.current && !staticsRef.current.contains(e.target as Node)) {
+                setShowStaticsDropdown(false)
             }
         }
         document.addEventListener("mousedown", handler)
@@ -306,15 +218,6 @@ export function Header({
         [now]
     )
 
-    const handleMarkRead = async (id: string) => {
-        try {
-            await markAsRead(id).unwrap()
-            refetchNotifs()
-        } catch {
-            // silently fail
-        }
-    }
-
     const handleLogout = async () => {
         try {
             await fetch("http://localhost:5000/api/users/logout", {
@@ -324,12 +227,10 @@ export function Header({
                 },
             })
         } catch {
-            // fail silently
         } finally {
             if (typeof window !== "undefined") {
                 localStorage.clear()
                 sessionStorage.clear()
-                // Clear Redux cache
                 dispatch(baseApi.util.resetApiState())
             }
             router.replace("/")
@@ -337,104 +238,158 @@ export function Header({
     }
 
     return (
-        <header className="relative flex h-16 items-center justify-between border-b border-white/10 bg-slate-950/90 backdrop-blur-md px-4 text-white shadow-xl z-30 sticky top-0">
-            {/* Background decorative elements - hidden on small mobile for cleaner look */}
-            <div className="absolute inset-y-0 left-0 w-32 bg-emerald-500/5 hidden sm:block" />
-            <div className="absolute inset-y-0 left-28 w-8 bg-emerald-500/5 -skew-x-12 hidden md:block" />
-
-            {/* Left: Logo */}
-            <div className="relative z-10 flex items-center gap-2 group cursor-pointer" onClick={() => router.push("/dashboard")}>
-                <div className="relative h-9 w-9 shrink-0 flex items-center justify-center">
-                    {user?.organizationId?.logo ? (
-                        <div className="relative h-full w-full rounded-full border-2 border-emerald-400/40 group-hover:border-emerald-400/80 transition-all overflow-hidden bg-white/5 p-1">
-                            <img
-                                src={`http://localhost:5000${user.organizationId.logo}`}
-                                alt="Logo"
-                                className="h-full w-full object-contain"
-                            />
-                        </div>
-                    ) : (
-                        <>
-                            <div className="absolute inset-0 rounded-full border-2 border-emerald-400/40 group-hover:border-emerald-400/80 transition-colors" />
-                            <div className="relative flex h-full w-full items-center justify-center rounded-full bg-emerald-400 text-xs font-black text-slate-900 shadow-lg shadow-emerald-400/20">
-                                AT
-                            </div>
-                        </>
-                    )}
-                </div>
-                <span className="hidden leading-tight font-black text-lg tracking-tighter sm:block">
-                    Ajiva<span className="text-emerald-400">Tracker</span>
-                </span>
-            </div>
-
-            {/* Center: Date/Time/Speed pill - Optimized for different screens */}
-            <div className="relative z-10 hidden md:flex items-center gap-3 rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-[11px] font-bold shadow-inner backdrop-blur-sm lg:px-6 lg:text-xs">
-                <div className="hidden lg:flex items-center gap-2 text-slate-300">
-                    <Calendar className="h-3.5 w-3.5" />
-                    <span className="truncate max-w-[120px]">{dateLabel}</span>
-                </div>
-                <span className="hidden lg:block h-3 w-px bg-white/20" />
-                <div className="flex items-center gap-2 text-slate-300">
-                    <Clock className="h-3.5 w-3.5" />
-                    <span>{timeLabel}</span>
-                </div>
-                <span className="h-3 w-px bg-white/20" />
-                <div className="flex items-center gap-2">
-                    <Car className="h-3.5 w-3.5 text-emerald-400" />
-                    <span className="text-emerald-50 text-xs shadow-emerald-400/10">
-                        {vehicleSummary?.label
-                            ? `${vehicleSummary.label} · ${vehicleSummary.speed} km/h`
-                            : "Vehicle · 0 km/h"}
-                    </span>
-                </div>
-            </div>
-
-            {/* Right: Notifications + Settings + Profile */}
-            <div className="relative z-10 flex items-center gap-0.5 sm:gap-1">
-                {/* Admin Overview Button - Compact on mobile */}
-                {userRole === "admin" && (
+        <header className="sticky top-0 z-30 border-b border-[#2f8d35]/15 bg-[#38a63c] text-white shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-4 px-4 py-3">
+                <div className="flex items-center gap-3">
                     <button
-                        onClick={() => router.push("/admin")}
-                        className="flex h-9 w-9 sm:w-auto items-center justify-center sm:gap-2 rounded-lg sm:px-3 text-xs font-bold text-slate-300 hover:bg-white/10 hover:text-emerald-300 transition-all active:scale-95"
-                        title="Admin Overview"
+                        type="button"
+                        onClick={() => router.push("/dashboard")}
+                        className="flex items-center gap-3"
                     >
-                        <LayoutDashboard className="h-5 w-5 sm:h-4 sm:w-4" />
-                        <span className="hidden lg:inline">Overview</span>
-                    </button>
-                )}
-
-                {/* ── Enhanced Notification Bell ── */}
-                <NotificationCenter />
-
-                {/* ── Profile Avatar + Dropdown ── */}
-                <div ref={profileRef} className="relative ml-1 sm:ml-2 border-l border-white/10 pl-1 sm:pl-2">
-                    <button
-                        onClick={() => {
-                            setShowProfileDropdown((prev) => !prev)
-                            setShowNotifDropdown(false)
-                        }}
-                        className={`flex items-center gap-1.5 sm:gap-2 rounded-full p-0.5 sm:pr-3 transition-all active:scale-95 ${showProfileDropdown ? 'bg-emerald-500/20 shadow-lg shadow-emerald-500/10' : 'hover:bg-white/5'}`}
-                    >
-                        <div className="flex h-8 w-8 items-center justify-center rounded-full border border-emerald-400/50 bg-white overflow-hidden shrink-0 shadow-md">
+                        <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full border border-white/60 bg-white shadow-sm">
                             {user?.organizationId?.logo ? (
                                 <img
                                     src={`http://localhost:5000${user.organizationId.logo}`}
-                                    alt="Org Logo"
-                                    className="h-full w-full object-contain p-0.5"
+                                    alt="Logo"
+                                    className="h-full w-full object-contain p-1"
                                 />
                             ) : (
-                                <span className="text-sm font-black text-slate-900">
-                                    {displayName.charAt(0).toUpperCase()}
-                                </span>
+                                <span className="text-lg font-black text-[#225c28]">AT</span>
                             )}
                         </div>
-                        <span className="hidden text-sm font-black text-slate-100 sm:block max-w-[80px] lg:max-w-[120px] truncate leading-none">
-                            {displayName.split(" ")[0]}
-                        </span>
-                        <ChevronDown
-                            className={`hidden sm:block h-3.5 w-3.5 text-slate-400 transition-transform duration-200 ${showProfileDropdown ? "rotate-180 text-emerald-400" : ""}`}
-                        />
+                        <div className="text-left">
+                            <p className="text-2xl font-black tracking-tight">AjivaTracker</p>
+                            <p className="text-xs font-semibold text-white/80">Fleet Intelligence</p>
+                        </div>
                     </button>
+
+                    {canOpenStatics && (
+                        <div className="flex items-center gap-4 ml-4">
+                            {/* <div className="relative cursor-pointer transition-transform hover:scale-110">
+                                <MessageSquare className="h-6 w-6 text-white" />
+                                <span className="absolute -right-2 -top-2 flex h-4 w-4 items-center justify-center rounded-full bg-[#ea4335] text-[10px] font-bold text-white shadow-sm">15</span>
+                            </div>
+                            <div className="relative cursor-pointer transition-transform hover:scale-110">
+                                <ShieldAlert className="h-6 w-6 text-white" />
+                                <span className="absolute -right-2 -top-2 flex h-4 w-4 items-center justify-center rounded-full bg-[#ea4335] text-[10px] font-bold text-white shadow-sm">3</span>
+                            </div>
+                            <div className="cursor-pointer transition-transform hover:scale-110">
+                                <Wrench className="h-6 w-6 text-white" />
+                            </div> */}
+
+                            <div ref={staticsRef} className="relative">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowStaticsDropdown((prev) => !prev)}
+                                    className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-white/25 bg-white/10 text-white transition hover:bg-white/15"
+                                    aria-label="Open quick menu"
+                                >
+                                    <Menu className="h-5 w-5" />
+                                </button>
+                                {/* ... dropdown logic remains same ... */}
+                                {showStaticsDropdown && (
+                                    <div className="absolute left-0 top-full z-50 mt-3 flex overflow-hidden rounded-md border border-[#d9d9d9] bg-white shadow-2xl">
+                                        <div className="w-[156px] border-r border-[#d9d9d9] bg-[#f7f7f7] py-1">
+                                            {headerMenuSections.map((section) => {
+                                                const isActive = activeSection?.id === section.id
+                                                return (
+                                                    <button
+                                                        key={section.id}
+                                                        type="button"
+                                                        onMouseEnter={() => setActiveMenuSection(section.id)}
+                                                        onFocus={() => setActiveMenuSection(section.id)}
+                                                        onClick={() => setActiveMenuSection(section.id)}
+                                                        className={`flex w-full items-center justify-between px-3 py-2 text-left text-xs ${isActive
+                                                            ? "bg-white text-[#2f8d35]"
+                                                            : "text-slate-600 hover:bg-white hover:text-[#2f8d35]"
+                                                            }`}
+                                                    >
+                                                        <span>{section.label}</span>
+                                                        <ChevronRight className="h-3.5 w-3.5" />
+                                                    </button>
+                                                )
+                                            })}
+                                        </div>
+
+                                        <div className="w-[220px] bg-white py-1">
+                                            {activeSection?.items.map((item) => (
+                                                <button
+                                                    key={item.href || item.tabName}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setShowStaticsDropdown(false)
+                                                        if (item.tabName) {
+                                                            dispatch(setActiveTab(item.tabName))
+                                                        } else if (item.href) {
+                                                            router.push(item.href)
+                                                        }
+                                                    }}
+                                                    className="flex w-full items-center gap-2 border-b border-[#ececec] px-3 py-2 text-left text-xs text-slate-600 transition last:border-b-0 hover:bg-[#f5faf3] hover:text-[#2f8d35]"
+                                                >
+                                                    <item.icon className="h-3.5 w-3.5 text-[#38a63c]" />
+                                                    <span>{item.label}</span>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                <div className="hidden flex-1 items-center justify-center gap-3 xl:flex">
+                    <div className="flex h-[48px] items-center gap-1 px-5 rounded-full border border-white/30 bg-[#2f8d35] text-[11px] font-black uppercase tracking-tight shadow-[inset_0_2px_4px_rgba(0,0,0,0.1)]">
+                        <div className="flex items-center gap-2">
+                            <Calendar className="h-4 w-4 opacity-80" />
+                            <span className="whitespace-nowrap">{dateLabel}</span>
+                        </div>
+                        <span className="mx-3 opacity-20">|</span>
+                        <div className="flex items-center gap-2">
+                            <Clock className="h-4 w-4 opacity-80" />
+                            <span className="whitespace-nowrap">{timeLabel}</span>
+                        </div>
+                        <span className="mx-3 opacity-20">|</span>
+                        <div className="flex items-center gap-2">
+                            <Car className="h-4 w-4 opacity-80" />
+                            <span className="whitespace-nowrap">{vehicleSummary?.label || "Vehicle"} ; {vehicleSummary?.speed || 0} km/h</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                    <div ref={profileRef} className="relative flex items-center gap-2">
+                        <div className="flex items-center gap-2 rounded-full border border-white/25 bg-white/10 px-2 py-1 transition hover:bg-white/15">
+                            <div className="h-9 w-9 rounded-full bg-[#0076bb] border-2 border-white shadow-sm overflow-hidden flex items-center justify-center">
+                                {user?.organizationId?.logo ? (
+                                    <img
+                                        src={`http://localhost:5000${user.organizationId.logo}`}
+                                        alt="Avatar"
+                                        className="h-full w-full object-cover"
+                                    />
+                                ) : (
+                                    <span className="font-bold text-white uppercase">{displayName.charAt(0)}</span>
+                                )}
+                            </div>
+                            <div className="hidden lg:block text-left text-xs">
+                                <span className="font-bold">Hi, {displayName}</span>
+                                <ChevronDown className="inline-block h-4 w-4 ml-1" />
+                            </div>
+                        </div>
+
+                        <button className="flex items-center gap-1.5 rounded-lg border border-white/25 bg-white/10 px-3 py-1.5 text-[10px] font-bold transition hover:bg-white/15">
+                            <Settings className="h-3.5 w-3.5" />
+                            Setting
+                        </button>
+
+                        <button
+                            onClick={handleLogout}
+                            className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/25 bg-white/10 transition hover:bg-[#ea4335]"
+                        >
+                            <LogOut className="h-5 w-5" />
+                        </button>
+                    </div>
+
 
                     <ProfileDropdown
                         isOpen={showProfileDropdown}

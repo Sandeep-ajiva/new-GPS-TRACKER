@@ -2,6 +2,19 @@ const GpsDevice = require("./model");
 const Validator = require("../../helpers/validators");
 const mongoose = require("mongoose");
 const paginate = require("../../helpers/limitoffset");
+const {
+  attachInventorySnapshot,
+  buildInventoryFilter,
+  buildOrgScopeFilter,
+  createInventoryHistoryEntry,
+  extractInventoryPatchPayload,
+  getInventoryHistoryForDevice,
+  resolveInventoryHistoryReason,
+  resolveInventoryStatus,
+  sanitizeInventoryCreatePayload,
+  sanitizeInventoryPayload,
+  toInventorySetOperations,
+} = require("./service");
 
 const normalizeGpsDevicePayload = (data = {}) => {
   const payload = { ...data };
@@ -28,6 +41,11 @@ const normalizeGpsDevicePayload = (data = {}) => {
 
   return payload;
 };
+
+const inventoryPopulate = [
+  { path: "vehicleId", select: "vehicleNumber vehicleType make model status" },
+  { path: "organizationId", select: "name" },
+];
 
 /* -------------------------------------------------------------------------- */
 /*                               VALIDATIONS                                  */
@@ -88,6 +106,8 @@ const validateUpdateGpsDevice = async (data, user) => {
 exports.create = async (req, res) => {
   try {
     const payload = normalizeGpsDevicePayload(req.body);
+    const inventoryPayload = sanitizeInventoryCreatePayload(payload.inventory, req.user?._id);
+    delete payload.inventory;
     delete payload.isOnline;
     delete payload.connectionStatus;
     await validateCreateGpsDevice(payload, req.user);
@@ -126,6 +146,7 @@ exports.create = async (req, res) => {
 
     const device = await GpsDevice.create({
       ...payload,
+      inventory: inventoryPayload,
       isOnline: false,
       connectionStatus: "offline",
       organizationId,
@@ -305,6 +326,170 @@ exports.updateConnectionStatus = async (req, res) => {
     status: false,
     message: "Connection status is managed by TCP server only",
   });
+};
+
+/* -------------------------------------------------------------------------- */
+/*                              INVENTORY LIST                                */
+/* -------------------------------------------------------------------------- */
+
+exports.getInventory = async (req, res) => {
+  try {
+    const { page, limit, search } = req.query;
+    const filter = buildInventoryFilter(req.query, req.orgScope);
+
+    const result = await paginate(
+      GpsDevice,
+      filter,
+      page,
+      limit,
+      inventoryPopulate,
+      ["imei", "vehicleRegistrationNumber", "softwareVersion", "deviceModel", "manufacturer", "serialNumber"],
+      search,
+      { createdAt: -1 },
+    );
+
+    result.data = result.data.map((device) => attachInventorySnapshot(device));
+
+    return res.status(200).json(result);
+  } catch (error) {
+    console.error("Get GPS Device Inventory Error:", error);
+    return res.status(error.status || 500).json({
+      status: false,
+      message: error.message || "Internal server error",
+    });
+  }
+};
+
+/* -------------------------------------------------------------------------- */
+/*                           INVENTORY GET BY ID                              */
+/* -------------------------------------------------------------------------- */
+
+exports.getInventoryById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.isValidObjectId(id)) {
+      return res.status(400).json({
+        status: false,
+        message: "Invalid ID",
+      });
+    }
+
+    const orgFilter = buildOrgScopeFilter(req.orgScope);
+    const device = await GpsDevice.findOne({ _id: id, ...orgFilter }).populate([
+      ...inventoryPopulate,
+      { path: "inventory.updatedBy", select: "firstName lastName email" },
+    ]);
+
+    if (!device) {
+      return res.status(404).json({
+        status: false,
+        message: "GPS Device not found or access denied",
+      });
+    }
+
+    const history = await getInventoryHistoryForDevice(device._id);
+
+    return res.status(200).json({
+      status: true,
+      data: attachInventorySnapshot(device),
+      history,
+    });
+  } catch (error) {
+    console.error("Get GPS Device Inventory By ID Error:", error);
+    return res.status(error.status || 500).json({
+      status: false,
+      message: error.message || "Internal server error",
+    });
+  }
+};
+
+/* -------------------------------------------------------------------------- */
+/*                             INVENTORY UPDATE                               */
+/* -------------------------------------------------------------------------- */
+
+exports.updateInventory = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.isValidObjectId(id)) {
+      return res.status(400).json({
+        status: false,
+        message: "Invalid ID",
+      });
+    }
+
+    const inventoryPayload = extractInventoryPatchPayload(req.body);
+    const inventoryUpdates = sanitizeInventoryPayload(inventoryPayload);
+    if (Object.keys(inventoryUpdates).length === 0) {
+      return res.status(400).json({
+        status: false,
+        message: "No inventory fields provided",
+      });
+    }
+
+    const orgFilter = buildOrgScopeFilter(req.orgScope);
+    const existingDevice = await GpsDevice.findOne({ _id: id, ...orgFilter });
+
+    if (!existingDevice) {
+      return res.status(404).json({
+        status: false,
+        message: "GPS Device not found or access denied",
+      });
+    }
+
+    const previousStatus = resolveInventoryStatus(existingDevice);
+    const nextStatus = inventoryUpdates.status || previousStatus;
+    const changedAt = new Date();
+    const reason = resolveInventoryHistoryReason(inventoryUpdates, req.body?.reason);
+
+    const device = await GpsDevice.findOneAndUpdate(
+      { _id: id, ...orgFilter },
+      {
+        $set: {
+          ...toInventorySetOperations(inventoryUpdates),
+          "inventory.updatedAt": changedAt,
+          "inventory.updatedBy": req.user?._id || null,
+        },
+      },
+      { new: true, runValidators: true },
+    ).populate([
+      ...inventoryPopulate,
+      { path: "inventory.updatedBy", select: "firstName lastName email" },
+    ]);
+
+    if (!device) {
+      return res.status(404).json({
+        status: false,
+        message: "GPS Device not found or access denied",
+      });
+    }
+
+    await createInventoryHistoryEntry({
+      deviceId: device._id,
+      organizationId: device.organizationId?._id || device.organizationId,
+      previousStatus,
+      newStatus: nextStatus,
+      reason,
+      changedBy: req.user?._id || null,
+      changedAt,
+    });
+
+    const history = await getInventoryHistoryForDevice(device._id);
+
+    return res.status(200).json({
+      status: true,
+      message: "GPS Device inventory updated successfully",
+      data: attachInventorySnapshot(device),
+      history,
+    });
+  } catch (error) {
+    console.error("Update GPS Device Inventory Error:", error);
+    return res.status(error.status || 500).json({
+      status: false,
+      message: error.message || "Internal server error",
+    });
+  }
 };
 
 /* -------------------------------------------------------------------------- */

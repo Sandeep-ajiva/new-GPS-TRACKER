@@ -6,6 +6,7 @@ const DeviceModel = require("../gpsDevice/model");
 const DriverModel = require("../drivers/model");
 const VehicleDriverMapping = require("../vehicleDriverMapping/model");
 const paginate = require("../../helpers/limitoffset");
+const { syncInventoryStatus } = require("../gpsDevice/service");
 
 const validateVehicleMappingData = async (data) => {
   const rules = {
@@ -135,6 +136,7 @@ exports.assign = async (req, res) => {
 
     await vehicle.save({ session });
     await device.save({ session });
+    await syncInventoryStatus(device._id, "assigned", { session });
 
     await session.commitTransaction();
 
@@ -225,6 +227,7 @@ exports.unassignById = async (req, res) => {
       { vehicleId: null },
       { session },
     );
+    await syncInventoryStatus(gpsDeviceId, "in_stock", { session });
 
     mapping.unassignedAt = new Date();
     await mapping.save({ session });
@@ -313,6 +316,7 @@ exports.unassign = async (req, res) => {
       { vehicleId: null },
       { session },
     );
+    await syncInventoryStatus(gpsDeviceId, "in_stock", { session });
 
     // ── CASCADE: also unassign driver from this vehicle ──
     const activeDriverMapping = await VehicleDriverMapping.findOne({

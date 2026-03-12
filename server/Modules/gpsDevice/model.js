@@ -229,10 +229,75 @@ const gpsDeviceSchema = {
     default: "active",
   },
 
+  inventory: {
+    status: {
+      type: String,
+      enum: ["in_stock", "assigned", "installed", "faulty", "repair", "retired"],
+      default: "in_stock",
+    },
+    purchaseDate: {
+      type: Date,
+      default: null,
+    },
+    purchasePrice: {
+      type: Number,
+      default: null,
+      min: 0,
+    },
+    supplierName: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    invoiceNumber: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    stockLocation: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    rackNumber: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    faultReason: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    repairStatus: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    lastAuditAt: {
+      type: Date,
+      default: null,
+    },
+    updatedAt: {
+      type: Date,
+      default: null,
+    },
+    updatedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+  },
+
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "User",
   },
 };
 
-module.exports = new ajModel("GpsDevice", gpsDeviceSchema).getModel();
+const instance = new ajModel("GpsDevice", gpsDeviceSchema);
+instance.index({ "inventory.status": 1 });
+instance.index({ warrantyExpiry: 1 });
+instance.index({ manufacturer: 1 });
+
+module.exports = instance.getModel();

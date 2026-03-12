@@ -9,7 +9,6 @@ import {
     LayoutDashboard,
     Users,
     Map,
-    History,
     Car,
     Radio,
     Link as LinkIcon,
@@ -17,7 +16,6 @@ import {
     Settings,
     LogOut,
     X,
-    Clock3,
 } from "lucide-react";
 
 const menuGroups = [
@@ -43,8 +41,6 @@ const menuGroups = [
         items: [
             { name: "Device Mapping", icon: LinkIcon, href: "/admin/device-mapping", roles: ["admin", "manager"] },
             { name: "Driver Mapping", icon: LinkIcon, href: "/admin/driver-mapping", roles: ["admin", "manager"] },
-            { name: "History Playback", icon: History, href: "/admin/history", roles: ["admin", "manager"] },
-            { name: "Daily Status", icon: Clock3, href: "/admin/daily-status", roles: ["admin", "superadmin"] },
         ]
     },
     {
@@ -55,6 +51,15 @@ const menuGroups = [
         ]
     }
 ];
+
+type MenuItem = {
+    name: string;
+    icon: React.ComponentType<{ size?: number }>;
+    href: string;
+    exact?: boolean;
+    roles?: string[];
+    superOnly?: boolean;
+};
 
 type SidebarProps = {
     className?: string;
@@ -74,7 +79,7 @@ export default function Sidebar({ className, showClose, onClose, onNavigate, rol
     const visibleGroups = menuGroups
         .map((group) => ({
             ...group,
-            items: group.items.filter((item: any) => {
+            items: group.items.filter((item: MenuItem) => {
                 // 🔐 ORG CONTEXT UPDATE
                 if (item.name === "Organizations" || item.name === "Settings" || item.name === "Permissions") {
                     if (!isSuperAdmin) {
@@ -120,7 +125,7 @@ export default function Sidebar({ className, showClose, onClose, onNavigate, rol
                                 {group.title}
                             </h3>
                             <ul className="space-y-1">
-                                {group.items.map((item: any) => {
+                                {group.items.map((item: MenuItem) => {
                                     // Fix active state: exact match for dashboard, prefix match for others
                                     const isActive = item.exact
                                         ? pathname === item.href

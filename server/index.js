@@ -63,6 +63,16 @@ fs.readdirSync(modulesPath).forEach((folder) => {
 
     app.use(`/api/${folder.toLowerCase()}`, route);
     console.log(`✅ Loaded routes for : /api/${folder.toLowerCase()}`);
+
+    if (folder === "gpsDevice") {
+      app.use("/api/gps-device", route);
+      console.log("✅ Loaded routes for : /api/gps-device");
+    }
+
+    if (folder === "gpsHistory") {
+      app.use("/api/gps-history", route);
+      console.log("✅ Loaded routes for : /api/gps-history");
+    }
   }
 });
 

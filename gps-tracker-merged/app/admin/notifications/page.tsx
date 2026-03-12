@@ -1,19 +1,19 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
-import { 
-    AlertTriangle, 
-    ShieldX, 
-    Activity, 
-    AlertCircle, 
-    MapPin, 
-    Bell, 
-    Calendar,
-    Filter,
-    Search,
-    Car,
-    RefreshCw,
-    X
+import {
+  AlertTriangle,
+  ShieldX,
+  Activity,
+  AlertCircle,
+  MapPin,
+  Bell,
+  Calendar,
+  Filter,
+  Search,
+  Car,
+  RefreshCw,
+  X
 } from "lucide-react";
 import { useGetNotificationsQuery, useMarkAsReadMutation, useDeleteNotificationMutation, useClearAllNotificationsMutation } from "@/redux/api/notificationsApi";
 import { useGetVehiclesQuery } from "@/redux/api/vehicleApi";
@@ -23,13 +23,13 @@ import { Button } from "@/components/ui/button";
 // Alert type icons
 const getAlertIcon = (type: string, severity: string) => {
   const iconClass = "w-5 h-5";
-  
+
   if (type?.toLowerCase().includes("overspeed") || type?.toLowerCase().includes("speed")) {
     return <AlertTriangle className={`${iconClass} text-amber-500`} />;
   }
   if (type?.toLowerCase().includes("ignition")) {
-    return severity?.toLowerCase().includes("on") ? 
-      <Activity className={`${iconClass} text-green-500`} /> : 
+    return severity?.toLowerCase().includes("on") ?
+      <Activity className={`${iconClass} text-green-500`} /> :
       <ShieldX className={`${iconClass} text-gray-500`} />;
   }
   if (type?.toLowerCase().includes("offline") || type?.toLowerCase().includes("lost")) {
@@ -41,14 +41,14 @@ const getAlertIcon = (type: string, severity: string) => {
   if (type?.toLowerCase().includes("geofence") || type?.toLowerCase().includes("location")) {
     return <MapPin className={`${iconClass} text-blue-500`} />;
   }
-  
+
   return <AlertCircle className={`${iconClass} text-gray-500`} />;
 };
 
 // Severity badge styles
 const getSeverityBadge = (severity: string) => {
   const severityLower = severity?.toLowerCase();
-  
+
   if (severityLower?.includes("critical") || severityLower?.includes("emergency")) {
     return <Badge variant="destructive" className="text-xs font-bold">CRITICAL</Badge>;
   }
@@ -58,7 +58,7 @@ const getSeverityBadge = (severity: string) => {
   if (severityLower?.includes("info") || severityLower?.includes("low")) {
     return <Badge variant="default" className="text-xs font-bold">INFO</Badge>;
   }
-  
+
   return <Badge variant="secondary" className="text-xs font-bold">NORMAL</Badge>;
 };
 
@@ -68,23 +68,23 @@ const formatRelativeTime = (timestamp: string) => {
   const time = new Date(timestamp);
   const diffMs = now.getTime() - time.getTime();
   const diffMins = Math.floor(diffMs / (1000 * 60));
-  
+
   if (diffMins < 1) return "Just now";
   if (diffMins < 60) return `${diffMins} min ago`;
-  
+
   const diffHours = Math.floor(diffMins / 60);
   if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
-  
+
   const diffDays = Math.floor(diffHours / 24);
   return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
 };
 
 // Format date for display
 const formatDate = (date: string) => {
-  return new Date(date).toLocaleDateString("en-GB", { 
-    day: "2-digit", 
-    month: "short", 
-    year: "numeric" 
+  return new Date(date).toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric"
   });
 };
 
@@ -117,11 +117,11 @@ export default function NotificationsPage() {
       const matchesDate = !selectedDate || notifDate === selectedDate;
       const matchesVehicle = !selectedVehicle || notif.vehicleNumber?.toLowerCase().includes(selectedVehicle.toLowerCase());
       const matchesType = !selectedAlertType || notif.title?.toLowerCase().includes(selectedAlertType.toLowerCase());
-      const matchesSearch = !searchQuery || 
+      const matchesSearch = !searchQuery ||
         notif.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         notif.vehicleNumber?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         notif.message?.toLowerCase().includes(searchQuery.toLowerCase());
-      
+
       return matchesDate && matchesVehicle && matchesType && matchesSearch;
     });
   }, [notifications, selectedDate, selectedVehicle, selectedAlertType, searchQuery]);
@@ -129,7 +129,7 @@ export default function NotificationsPage() {
   // Group notifications by vehicle for visual grouping
   const groupedNotifications = useMemo(() => {
     const groups: { [key: string]: any[] } = {};
-    
+
     filteredNotifications.forEach((notif: any) => {
       const vehicleKey = notif.vehicleNumber || notif.imei || 'Unknown';
       if (!groups[vehicleKey]) {
@@ -137,7 +137,7 @@ export default function NotificationsPage() {
       }
       groups[vehicleKey].push(notif);
     });
-    
+
     return groups;
   }, [filteredNotifications]);
 
@@ -208,7 +208,7 @@ export default function NotificationsPage() {
             <h1 className="text-2xl font-black text-gray-900 mb-2">Notifications</h1>
             <p className="text-gray-600">Loading your notifications...</p>
           </div>
-          
+
           {/* Skeleton table */}
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
@@ -251,7 +251,7 @@ export default function NotificationsPage() {
               <h1 className="text-2xl font-black text-gray-900">Notifications</h1>
               <p className="text-gray-600">View and manage all system alerts</p>
             </div>
-            
+
             <div className="flex items-center gap-3 text-sm text-gray-600">
               <span>Total: {notifications.length}</span>
               <span>•</span>
@@ -397,62 +397,61 @@ export default function NotificationsPage() {
                   <div className="text-xs text-gray-500">
                     Last alert: {formatRelativeTime(vehicleNotifications[0]?.createdAt || vehicleNotifications[0]?.timestamp)}
 
-          {/* Status Filter */}
-          <div className="flex-1 min-w-0">
-            <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-gray-600">
-              <Filter className="inline w-3 h-3 mr-1" />
-              Status
-            </label>
-            <select
-              value={selectedStatus}
-              onChange={(e) => setSelectedStatus(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            >
-              <option value="">All Status</option>
-              <option value="unread">Unread</option>
-              <option value="read">Read</option>
-            </select>
-          </div>
+                    {/* Status Filter */}
+                    <div className="flex-1 min-w-0">
+                      <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-gray-600">
+                        <Filter className="inline w-3 h-3 mr-1" />
+                        Status
+                      </label>
+                      <select
+                        value={selectedStatus}
+                        onChange={(e) => setSelectedStatus(e.target.value)}
+                        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      >
+                        <option value="">All Status</option>
+                        <option value="unread">Unread</option>
+                        <option value="read">Read</option>
+                      </select>
+                    </div>
 
-          {/* Search */}
-          <div className="flex-1 min-w-0">
-            <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-gray-600">
-              <Search className="inline w-3 h-3 mr-1" />
-              Search
-            </label>
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-              placeholder="Search notifications..."
-            />
-          </div>
+                    {/* Search */}
+                    <div className="flex-1 min-w-0">
+                      <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-gray-600">
+                        <Search className="inline w-3 h-3 mr-1" />
+                        Search
+                      </label>
+                      <input
+                        type="text"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        placeholder="Search notifications..."
+                      />
+                    </div>
 
-          {/* Actions */}
-          <div className="flex items-end gap-2">
-            <Button
-              onClick={handleClearAll}
-              variant="outline"
-              size="sm"
-              className="border-red-300 text-red-700 hover:bg-red-50"
-              disabled={notifications.length === 0}
-            >
-              <X size={14} className="mr-2" />
-              Clear All
-            </Button>
-          </div>
-        </div>
-      </div>
+                    {/* Actions */}
+                    <div className="flex items-end gap-2">
+                      <Button
+                        onClick={handleClearAll}
+                        variant="outline"
+                        size="sm"
+                        className="border-red-300 text-red-700 hover:bg-red-50"
+                        disabled={notifications.length === 0}
+                      >
+                        <X size={14} className="mr-2" />
+                        Clear All
+                      </Button>
+                    </div>
+                  </div>
+                </div>
 
                 {/* Notifications List */}
                 <div className="divide-y divide-gray-100">
                   {vehicleNotifications.slice(0, 5).map((notif: any) => (
                     <div
                       key={notif._id}
-                      className={`px-4 py-3 hover:bg-gray-50 transition-colors ${
-                        !notif.read ? 'bg-blue-50' : ''
-                      }`}
+                      className={`px-4 py-3 hover:bg-gray-50 transition-colors ${!notif.read ? 'bg-blue-50' : ''
+                        }`}
                     >
                       <div className="flex items-start gap-3">
                         {/* Alert Icon */}
@@ -473,11 +472,11 @@ export default function NotificationsPage() {
                               )}
                             </div>
                           </div>
-                          
+
                           <p className="text-sm text-gray-600 mb-1">
                             {notif.message || notif.description || 'No description available'}
                           </p>
-                          
+
                           <div className="flex items-center justify-between text-xs text-gray-500">
                             <span className="font-medium">
                               Speed: {notif.speed || 'N/A'} km/h

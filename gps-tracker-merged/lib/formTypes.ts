@@ -26,6 +26,7 @@ export interface FormField {
   name: string;
   label: string;
   type: FieldType;
+  section?: string;
   placeholder?: string;
   required?: boolean;
   options?: FormOption[]; // For select type

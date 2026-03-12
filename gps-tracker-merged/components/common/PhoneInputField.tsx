@@ -1,6 +1,5 @@
 "use client";
 
-import PhoneInput from "react-phone-number-input";
 import { cn } from "@/lib/utils";
 
 type PhoneInputFieldProps = {
@@ -28,27 +27,19 @@ export default function PhoneInputField({
     : value;
 
   return (
-    <PhoneInput
-      defaultCountry="IN"
-      international
-      countryCallingCodeEditable={false}
-      value={normalizedValue || undefined}
-      onChange={(val) => onChange(val || "")}
+    <input
+      type="tel"
+      required={required}
       disabled={disabled}
       placeholder={placeholder}
+      value={normalizedValue}
+      onChange={(e) => onChange(e.target.value)}
       className={cn(
-        "phone-input w-full rounded-xl px-4 py-3 text-sm font-bold outline-none transition-all",
+        "w-full rounded-xl px-4 py-3 text-sm font-bold outline-none transition-all border",
         isDark
-          ? "bg-slate-950/60 border border-slate-800 text-slate-100 focus-within:ring-2 focus-within:ring-emerald-500/30 focus-within:border-emerald-500/50"
-          : "bg-slate-50 border border-slate-200 text-slate-900 focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500",
+          ? "bg-slate-950/60 border-slate-800 text-slate-100 focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500/50"
+          : "bg-slate-50 border-slate-200 text-slate-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500",
       )}
-      numberInputProps={{
-        required,
-        className: cn(
-          "w-full bg-transparent outline-none border-0 text-sm font-bold",
-          isDark ? "text-slate-100 placeholder:text-slate-600" : "text-slate-900 placeholder:text-slate-400",
-        ),
-      }}
     />
   );
 }

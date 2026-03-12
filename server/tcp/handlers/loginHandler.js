@@ -1,5 +1,6 @@
 const GpsDevice = require("../../Modules/gpsDevice/model");
 const VehicleDeviceMapping = require("../../Modules/deviceMapping/model");
+const { syncInventoryStatus } = require("../../Modules/gpsDevice/service");
 
 module.exports = async function loginHandler(socket, packet) {
   try {
@@ -102,6 +103,7 @@ module.exports = async function loginHandler(socket, packet) {
         },
       },
     );
+    await syncInventoryStatus(device._id, "installed");
 
     console.log("✅ DEVICE LOGGED IN SUCCESSFULLY", {
       imei,

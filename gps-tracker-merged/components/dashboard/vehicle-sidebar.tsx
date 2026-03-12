@@ -1,11 +1,17 @@
-import { Search, Info, Power, Zap, Fan, Signal, Plus, Filter } from "lucide-react"
+import { Filter, Fan, Power, Search, Signal, Zap } from "lucide-react"
 import type { Vehicle } from "@/lib/vehicles"
-import { getSecureItem } from "@/app/admin/Helpers/encryptionHelper"
 import { useState } from "react"
-import { toast } from "sonner"
 import { useAppDispatch } from "@/redux/hooks"
 import { setSelectedVehicle as setReduxSelectedVehicle } from "@/redux/features/vehicleSlice"
 import { useDashboardContext } from "./DashboardContext"
+
+const statusTone = {
+    running: "bg-[#38a63c]",
+    idle: "bg-[#f3a338]",
+    stopped: "bg-[#ef5b4d]",
+    inactive: "bg-[#4da2e9]",
+    nodata: "bg-[#a0a7b4]",
+}
 
 export function VehicleSidebar({
     vehicles,
@@ -39,11 +45,17 @@ export function VehicleSidebar({
             return vehicle.status === localStatusFilter
         })()
 
+        const needle = searchTerm.trim().toLowerCase()
         const matchesSearch =
-            !searchTerm.trim() ||
-            (vehicle.vehicleNumber || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-            (vehicle.id || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-            (vehicle.driver || "").toLowerCase().includes(searchTerm.toLowerCase())
+            !needle ||
+            (vehicle.vehicleNumber || "").toLowerCase().includes(needle) ||
+            (vehicle.id || "").toLowerCase().includes(needle) ||
+            (vehicle.driver || "").toLowerCase().includes(needle) ||
+            (vehicle.brand || "").toLowerCase().includes(needle) ||
+            (vehicle.make || "").toLowerCase().includes(needle) ||
+            (vehicle.vehicleBrand || "").toLowerCase().includes(needle) ||
+            (vehicle.model || "").toLowerCase().includes(needle) ||
+            (vehicle.vehicleModel || "").toLowerCase().includes(needle)
 
         return matchesGlobalStatus && matchesLocalStatus && matchesSearch
     })
@@ -57,169 +69,142 @@ export function VehicleSidebar({
     )
 
     return (
-        <div className="flex w-full flex-col border-r border-white/10 bg-slate-950/80 h-full text-slate-100 antialiased">
-            <div className="p-3 border-b border-white/10 space-y-3 bg-slate-950/70">
-                <div className="flex items-center justify-between">
-                    <h2 className="text-lg font-black text-emerald-400 tracking-tighter uppercase italic">Ajiva Tracker</h2>
-                    <div className="relative flex-1 ml-4 flex items-center gap-2">
-                        <div className="relative flex-1">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3 w-3 text-slate-500" />
-                            <input
-                                type="text"
-                                placeholder="Search Registration / Driver"
-                                value={searchTerm}
-                                onChange={(e) => {
-                                    setSearchTerm(e.target.value)
-                                    setCurrentPage(1) // Reset to first page on search
-                                }}
-                                className="w-full bg-white/5 border border-white/10 rounded-lg py-1 pl-8 pr-3 text-[11px] text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-emerald-500/50 transition-all font-medium"
-                            />
-                        </div>
+        <div className={`flex h-full w-full flex-col bg-white ${isFullWidth ? "" : "rounded-[24px]"} text-slate-800`}>
+            <div className="border-b border-[#dbe7d4] bg-[#f7fbf5] p-4">
+                <div className="flex items-center justify-between gap-3">
+                    <div>
+                        <h2 className="text-xl font-black tracking-tight text-[#1f3b1f]">AjivaTracker</h2>
+                        <p className="mt-1 text-xs font-medium text-slate-500">
+                            {filteredVehicles.length} of {vehicles.length} vehicles
+                        </p>
                     </div>
-                </div>
-
-                <div className="flex items-center justify-between text-[13px] text-slate-400 font-bold uppercase tracking-widest">
-                    <div><span className="text-emerald-300">{filteredVehicles.length}</span> / {vehicles.length} Units</div>
                     <button
-                        onClick={() => setShowFilters(!showFilters)}
-                        className={`flex items-center gap-1.5 px-2 py-0.5 rounded border transition-all ${showFilters ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-400' : 'bg-white/5 border-white/10 text-slate-500 hover:text-slate-300'}`}
+                        type="button"
+                        onClick={() => setShowFilters((prev) => !prev)}
+                        className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-bold transition-colors ${showFilters
+                            ? "border-[#38a63c]/30 bg-[#ecf8ea] text-[#2f8d35]"
+                            : "border-[#d6e3d0] bg-white text-slate-500 hover:border-[#38a63c]/20 hover:text-[#2f8d35]"
+                            }`}
                     >
-                        <Filter className="h-3 w-3" /> Filters
+                        <Filter className="h-3.5 w-3.5" />
+                        Filters
                     </button>
                 </div>
 
+                <div className="relative mt-4">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                    <input
+                        type="text"
+                        placeholder="Search registration / driver"
+                        value={searchTerm}
+                        onChange={(e) => {
+                            setSearchTerm(e.target.value)
+                            setCurrentPage(1)
+                        }}
+                        className="w-full rounded-2xl border border-[#d6e3d0] bg-white py-3 pl-10 pr-4 text-sm font-medium text-slate-700 outline-none transition focus:border-[#38a63c]/40 focus:ring-2 focus:ring-[#38a63c]/15"
+                    />
+                </div>
+
                 {showFilters && (
-                    <div className="flex flex-wrap gap-1 animate-in fade-in slide-in-from-top-1 duration-200">
-                        {["total", "running", "idle", "stopped", "inactive", "nodata"].map((f) => (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                        {["total", "running", "idle", "stopped", "inactive", "nodata"].map((filter) => (
                             <button
-                                key={f}
+                                key={filter}
+                                type="button"
                                 onClick={() => {
-                                    setLocalStatusFilter(f as any)
-                                    setCurrentPage(1) // Reset to first page on filter
+                                    setLocalStatusFilter(filter as typeof statusFilter)
+                                    setCurrentPage(1)
                                 }}
-                                className={`px-1.5 py-0.5 rounded text-[12px] font-black uppercase tracking-tighter transition-all border ${localStatusFilter === f
-                                    ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-400'
-                                    : 'bg-white/5 border-white/10 text-slate-500 hover:text-slate-300'
+                                className={`rounded-full border px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors ${localStatusFilter === filter
+                                    ? "border-[#38a63c]/30 bg-[#ecf8ea] text-[#2f8d35]"
+                                    : "border-[#d6e3d0] bg-white text-slate-500 hover:text-[#2f8d35]"
                                     }`}
                             >
-                                {f === "total" ? "All" : f}
+                                {filter === "total" ? "All" : filter}
                             </button>
                         ))}
                     </div>
                 )}
             </div>
 
-            {/* Compact Telemetry Tracker Table */}
-            <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-                <div className="flex-1 flex flex-col overflow-x-auto custom-scrollbar">
-                    <div className="w-full flex flex-col flex-1">
-                        {/* List Header (Sticky) */}
-                        <div className="sticky top-0 z-10 border-b border-white/10 bg-slate-900/95 backdrop-blur-sm shadow-lg">
-                            <div className="grid gap-0 px-1 py-1 text-[11px] font-black text-slate-500 uppercase tracking-tighter grid-cols-[120px_80px_35px_35px_35px_35px]">
-                                <div className="pl-1">Vehicle</div>
-                                <div>Driver</div>
-                                <div className="text-center">IGN</div>
-                                <div className="text-center">AC</div>
-                                <div className="text-center">PW</div>
-                                <div className="text-center">GPS</div>
-                            </div>
-                        </div>
-
-                        {/* Scrollable Vehicle List */}
-                        <div className="flex-1 overflow-y-auto bg-slate-950/5 custom-scrollbar">
-                            {paginatedVehicles.map((v, i) => (
-                                <div
-                                    key={v.id || i}
-                                    onClick={() => {
-                                        if (onSelect) onSelect(v.id)
-                                        dispatch(setReduxSelectedVehicle(v.id))
-                                        setSelectedVehicle(v)
-                                    }}
-                                    className={`group grid gap-0 border-b border-white/5 py-0.5 px-1 text-[13px] hover:bg-emerald-500/10 cursor-pointer items-center transition-all grid-cols-[120px_80px_35px_35px_35px_35px] ${selectedVehicle?.id === v.id || selectedId === v.id ? 'bg-emerald-500/15 border-l-2 border-l-emerald-400' : 'border-l-2 border-l-transparent'}`}
-                                >
-                                    <div className="min-w-0 pl-1">
-                                        <div className="font-black text-slate-100 flex items-center gap-1.5 truncate">
-                                            <span
-                                                className={`h-1.5 w-1.5 rounded-full shrink-0 shadow-[0_0_4px] ${v.status === 'running'
-                                                    ? 'bg-emerald-400 shadow-emerald-500/40'
-                                                    : v.status === 'idle'
-                                                        ? 'bg-amber-400 shadow-amber-500/40'
-                                                        : v.status === 'inactive'
-                                                            ? 'bg-cyan-400 shadow-cyan-500/40'
-                                                            : v.status === 'nodata'
-                                                                ? 'bg-slate-400 shadow-slate-500/20'
-                                                                : 'bg-red-500 shadow-red-500/40'
-                                                    }`}
-                                            />
-                                            <span className="truncate uppercase leading-tight text-[11px]">{v.vehicleNumber || v.id}</span>
-                                        </div>
-                                    </div>
-
-                                    <div className="truncate text-slate-400 font-medium px-0.5 text-[11px]">
-                                        {v.driver || "No Driver"}
-                                    </div>
-
-                                    <div className="flex items-center justify-center">
-                                        <Power className={`h-2.5 w-2.5 ${v.ign ? "text-emerald-400 drop-shadow-[0_0_2px_rgba(52,211,153,0.5)]" : "text-white/10"}`} />
-                                    </div>
-
-                                    <div className="flex items-center justify-center">
-                                        <Fan className={`h-2.5 w-2.5 ${v.ac ? "text-emerald-400 drop-shadow-[0_0_2px_rgba(52,211,153,0.5)]" : "text-white/10"}`} />
-                                    </div>
-
-                                    <div className="flex items-center justify-center">
-                                        <Zap className={`h-2.5 w-2.5 ${v.pw ? "text-emerald-400 drop-shadow-[0_0_2px_rgba(52,211,153,0.5)]" : "text-white/10"}`} />
-                                    </div>
-
-                                    <div className="flex items-center justify-center">
-                                        <Signal className={`h-2.5 w-2.5 ${v.gps ? "text-emerald-400 drop-shadow-[0_0_2px_rgba(52,211,153,0.5)]" : "text-white/10"}`} />
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                </div>
-
-                {/* Numeric Pagination */}
-                {totalPages > 1 && (
-                    <div className="p-2 border-t border-white/10 bg-slate-900/50 flex items-center justify-center gap-1">
-                        <button
-                            disabled={currentPage === 1}
-                            onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                            className="px-2 py-1 text-[10px] font-black uppercase text-slate-500 hover:text-emerald-400 disabled:opacity-30 disabled:hover:text-slate-500 tracking-tighter"
-                        >
-                            Prev
-                        </button>
-
-                        <div className="flex items-center gap-1 overflow-x-auto no-scrollbar max-w-[150px]">
-                            {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => {
-                                // Show only current, first, last, and relative pages if many
-                                if (totalPages > 5 && p !== 1 && p !== totalPages && Math.abs(p - currentPage) > 1) {
-                                    if (p === 2 || p === totalPages - 1) return <span key={p} className="text-slate-600 text-[8px]">.</span>
-                                    return null;
-                                }
-                                return (
-                                    <button
-                                        key={p}
-                                        onClick={() => setCurrentPage(p)}
-                                        className={`w-5 h-5 flex items-center justify-center rounded text-[10px] font-black transition-all ${currentPage === p ? 'bg-emerald-500 text-slate-950 shadow-[0_0_8px_rgba(16,185,129,0.4)]' : 'text-slate-500 hover:text-slate-200'}`}
-                                    >
-                                        {p}
-                                    </button>
-                                )
-                            })}
-                        </div>
-
-                        <button
-                            disabled={currentPage === totalPages}
-                            onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                            className="px-2 py-1 text-[10px] font-black uppercase text-slate-500 hover:text-emerald-400 disabled:opacity-30 disabled:hover:text-slate-500 tracking-tighter"
-                        >
-                            Next
-                        </button>
-                    </div>
-                )}
+            <div className="grid grid-cols-[minmax(140px,1.3fr)_minmax(96px,1fr)_40px_40px_40px_40px] border-b border-[#dbe7d4] bg-white px-4 py-3 text-[10px] font-black uppercase tracking-[0.22em] text-slate-500">
+                <div>Vehicle</div>
+                <div>Driver</div>
+                <div className="text-center">IGN</div>
+                <div className="text-center">AC</div>
+                <div className="text-center">PW</div>
+                <div className="text-center">GPS</div>
             </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto bg-white">
+                {paginatedVehicles.map((vehicle, index) => {
+                    const isActive = selectedVehicle?.id === vehicle.id || selectedId === vehicle.id
+                    return (
+                        <button
+                            key={vehicle.id || index}
+                            type="button"
+                            onClick={() => {
+                                onSelect?.(vehicle.id)
+                                dispatch(setReduxSelectedVehicle(vehicle.id))
+                                setSelectedVehicle(vehicle)
+                            }}
+                            className={`grid w-full grid-cols-[minmax(140px,1.3fr)_minmax(96px,1fr)_40px_40px_40px_40px] items-center border-b border-[#edf3e8] px-4 py-3 text-left transition-colors ${isActive
+                                ? "bg-[#eef8ec] shadow-[inset_3px_0_0_#38a63c]"
+                                : "hover:bg-[#f7fbf5]"
+                                }`}
+                        >
+                            <div className="min-w-0 pr-3">
+                                <div className="flex items-center gap-2">
+                                    <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${statusTone[vehicle.status]}`} />
+                                    <span className="truncate text-sm font-bold uppercase text-slate-800">{vehicle.vehicleNumber || vehicle.id}</span>
+                                </div>
+                                <p className="mt-1 truncate text-xs text-slate-500">{vehicle.location || "Unknown location"}</p>
+                            </div>
+
+                            <div className="truncate pr-3 text-sm font-medium text-slate-600">
+                                {vehicle.driver || "Unassigned"}
+                            </div>
+
+                            <div className="flex justify-center">
+                                <Power className={`h-4 w-4 ${vehicle.ign ? "text-[#38a63c]" : "text-slate-300"}`} />
+                            </div>
+                            <div className="flex justify-center">
+                                <Fan className={`h-4 w-4 ${vehicle.ac ? "text-[#38a63c]" : "text-slate-300"}`} />
+                            </div>
+                            <div className="flex justify-center">
+                                <Zap className={`h-4 w-4 ${vehicle.pw ? "text-[#38a63c]" : "text-slate-300"}`} />
+                            </div>
+                            <div className="flex justify-center">
+                                <Signal className={`h-4 w-4 ${vehicle.gps ? "text-[#38a63c]" : "text-slate-300"}`} />
+                            </div>
+                        </button>
+                    )
+                })}
+            </div>
+
+            {totalPages > 1 && (
+                <div className="flex items-center justify-between border-t border-[#dbe7d4] bg-[#f7fbf5] px-4 py-3">
+                    <button
+                        type="button"
+                        disabled={currentPage === 1}
+                        onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                        className="rounded-lg border border-[#d6e3d0] bg-white px-3 py-1.5 text-xs font-bold text-slate-600 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                        Prev
+                    </button>
+                    <div className="text-xs font-semibold text-slate-500">
+                        Page {currentPage} of {totalPages}
+                    </div>
+                    <button
+                        type="button"
+                        disabled={currentPage === totalPages}
+                        onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                        className="rounded-lg border border-[#d6e3d0] bg-white px-3 py-1.5 text-xs font-bold text-slate-600 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                        Next
+                    </button>
+                </div>
+            )}
         </div>
     )
 }
