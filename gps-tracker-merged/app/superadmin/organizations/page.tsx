@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import Table from "@/components/ui/Table";
 import Pagination from "@/components/ui/Pagination";
 import ApiErrorBoundary from "@/components/admin/ErrorBoundary/ApiErrorBoundary";
-import { ExternalLink, Plus, Edit, Trash2, Eye, Building2, Phone, Mail } from "lucide-react";
+import { ExternalLink, Plus, Edit, Trash2, Eye, Building2, Phone, Mail, Lock } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -118,7 +118,7 @@ export default function OrganizationsPage() {
     const totalPages = Math.ceil(filteredOrgs.length / LIMIT);
     const paginatedOrgs = filteredOrgs.slice((page - 1) * LIMIT, page * LIMIT);
 
-    // Form schema definition
+    // Form field definitions
     const orgFormFields: FormField[] = [
         {
             name: "name",
@@ -127,6 +127,19 @@ export default function OrganizationsPage() {
             placeholder: "Enter organization name",
             required: true,
             icon: <Building2 size={16} />,
+        },
+        {
+            name: "organizationType",
+            label: "Organization Type",
+            type: "select",
+            required: true,
+            options: [
+                { label: "Logistics", value: "logistics" },
+                { label: "Public Transport", value: "transport" },
+                { label: "Taxi / Rental", value: "taxi" },
+                { label: "School / Campus", value: "school" },
+                { label: "Enterprise Fleet", value: "fleet" },
+            ],
         },
         {
             name: "email",
@@ -156,21 +169,21 @@ export default function OrganizationsPage() {
             label: "Country",
             type: "select",
             required: true,
-            options: [], // Will be populated by LocationSelects
+            options: [], 
         },
         {
             name: "state",
             label: "State",
             type: "select",
             required: true,
-            options: [], // Will be populated by LocationSelects
+            options: [], 
         },
         {
             name: "city",
             label: "City",
             type: "select",
             required: true,
-            options: [], // Will be populated by LocationSelects
+            options: [], 
         },
         {
             name: "pincode",
@@ -178,6 +191,14 @@ export default function OrganizationsPage() {
             type: "text",
             placeholder: "Enter pincode",
         },
+        ...(!editingOrg ? [{
+            name: "password",
+            label: "Admin Password",
+            type: "password",
+            placeholder: "Set initial admin password",
+            required: true,
+            icon: <Lock size={16} />,
+        } as FormField] : []),
         {
             name: "status",
             label: "Status",
@@ -193,6 +214,7 @@ export default function OrganizationsPage() {
     // Zod schema for validation
     const orgSchema = z.object({
         name: z.string().min(1, "Organization name is required"),
+        organizationType: z.string().min(1, "Organization type is required"),
         email: z.string().email("Valid email is required"),
         phone: z.string().min(1, "Phone number is required"),
         addressLine: z.string().min(1, "Address line is required"),
@@ -200,6 +222,7 @@ export default function OrganizationsPage() {
         state: z.string().min(1, "State is required"),
         city: z.string().min(1, "City is required"),
         pincode: z.string().optional(),
+        password: editingOrg ? z.string().optional() : z.string().min(6, "Password must be at least 6 characters"),
         status: z.enum(["active", "inactive"]),
     });
 
@@ -224,11 +247,20 @@ export default function OrganizationsPage() {
                 await updateOrg({ id: editingOrg._id, body: payload }).unwrap();
                 toast.success("Organization updated successfully");
             } else {
+                // Split name for admin user
+                const nameParts = data.name.trim().split(/\s+/);
+                const firstName = nameParts[0] || "Admin";
+                const lastName = nameParts.slice(1).join(" ") || "User";
+
                 await createOrg({
                     ...payload,
+                    organizationType: data.organizationType,
+                    firstName,
+                    lastName,
+                    password: data.password,
                     settings: { speedLimit: 80 },
                 }).unwrap();
-                toast.success("Organization created successfully");
+                toast.success("Organization and Admin created successfully");
             }
             
             closePopup("orgModal");

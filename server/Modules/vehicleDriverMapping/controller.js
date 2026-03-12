@@ -63,6 +63,14 @@ exports.assignDriverToVehicle = async (req, res) => {
       };
     }
 
+    /* 🛡️ STATUS CHECK — Issue 4 implemented */
+    if (driver.status !== "active") {
+      throw {
+        status: 400,
+        message: "Only 'active' drivers can be assigned to vehicles",
+      };
+    }
+
     /* 🛑 CORE BUSINESS RULE — SAME ORG ONLY */
     if (
       vehicle.organizationId.toString() !==
@@ -275,7 +283,8 @@ exports.getAll = async (req, res) => {
   try {
     const filter = { unassignedAt: null };
 
-    if (req.user.role !== "superadmin" && req.orgScope !== "ALL") {
+    const isSuperAdminOrFullScope = req.user.role === "superadmin" || req.user.role === "super_admin" || req.orgScope === "ALL";
+    if (!isSuperAdminOrFullScope) {
       filter.organizationId = { $in: req.orgScope };
     }
 

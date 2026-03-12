@@ -1006,12 +1006,12 @@ export default function VehiclesPage() {
                   vehicleType: editingVehicle.vehicleType,
                   vehicleNumber: editingVehicle.vehicleNumber,
                   model: editingVehicle.model || "",
-                  year: editingVehicle.year || "",
+                  year: editingVehicle.year ? String(editingVehicle.year) : "",
                   color: editingVehicle.color || "",
                   status: editingVehicle.status,
                   runningStatus: editingVehicle.runningStatus || "",
-                  driverId: editingVehicle.driverId || "",
-                  deviceId: editingVehicle.deviceId || "",
+                  driverId: editingVehicle.driverId ? String(editingVehicle.driverId) : "",
+                  deviceId: editingVehicle.deviceId ? String(editingVehicle.deviceId) : "",
                 }
                 : undefined
             }

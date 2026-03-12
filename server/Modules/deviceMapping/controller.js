@@ -58,6 +58,14 @@ exports.assign = async (req, res) => {
       };
     }
 
+    /* 🛡️ STATUS CHECK — Issue 5 implemented */
+    if (device.status !== "active") {
+      throw {
+        status: 400,
+        message: "Only 'active' GPS devices can be assigned to vehicles",
+      };
+    }
+
     /* 🛑 CORE BUSINESS RULE — SAME ORG ONLY */
     if (
       vehicle.organizationId.toString() !==

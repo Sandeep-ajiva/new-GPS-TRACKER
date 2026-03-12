@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Loader2, Upload, Download, X, FileText, FileSpreadsheet } from "lucide-react";
+import { useMemo, useState, useRef } from "react";
+import { Loader2, Upload, Download, X, FileText, FileSpreadsheet, ChevronLeft, ChevronRight, Building2 } from "lucide-react";
 import { toast } from "sonner";
 import MappingTable from "./MappingTable";
 import ValidationSummary from "./ValidationSummary";
@@ -13,6 +13,9 @@ import { generateSampleFile } from "@/utils/sampleFileGenerator";
 import { generateCSVExport } from "@/utils/csvExportGenerator";
 import { generateExcelExport } from "@/utils/excelExportGenerator";
 import { getSecureItem } from "@/app/admin/Helpers/encryptionHelper";
+import { parseExcelHeaders, parseExcelRows } from "@/utils/importExport/excelParser";
+import { useOrgContext } from "@/hooks/useOrgContext";
+import { useGetOrganizationsQuery } from "@/redux/api/organizationApi";
 
 type ImportModalProps = {
   isOpen: boolean;
@@ -27,7 +30,7 @@ type ImportModalProps = {
 };
 
 const MAX_FILE_SIZE = 25 * 1024 * 1024;
-const ALLOWED_EXT = [".csv", ".xlsx"];
+const ALLOWED_EXT = [".csv", ".xlsx", ".xls"];
 
 function fileExt(name: string) {
   const idx = name.lastIndexOf(".");
@@ -51,11 +54,21 @@ export default function ImportModal({
 }: ImportModalProps) {
   const { uploadFile, exportFile, loading, progress, error, reset } = useImportExport();
   const [tab, setTab] = useState<"import" | "export">("import");
+  const { role, orgId, orgName, isSuperAdmin, isRootOrgAdmin } = useOrgContext();
+  const { data: orgData } = useGetOrganizationsQuery({ page: 0, limit: 1000 }, { skip: !(isSuperAdmin || isRootOrgAdmin) });
+  
+  const [selectedOrgId, setSelectedOrgId] = useState<string>(orgId || "");
   const [selectedFormat, setSelectedFormat] = useState<"csv" | "excel">("csv");
   const [exportFormat, setExportFormat] = useState<"csv" | "excel">("csv");
   const [file, setFile] = useState<File | null>(null);
   const [previewTotalRows, setPreviewTotalRows] = useState(0);
+  const [previewRows, setPreviewRows] = useState<any[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [excludedIndices, setExcludedIndices] = useState<Set<number>>(new Set());
   const [csvColumns, setCsvColumns] = useState<string[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [showPreview, setShowPreview] = useState(false);
+  const rowsPerPage = 10;
   const [mapping, setMapping] = useState<Record<string, string>>({});
   const [result, setResult] = useState<{
     totalRows: number;
@@ -65,11 +78,30 @@ export default function ImportModal({
   } | null>(null);
   const [exportFromDate, setExportFromDate] = useState("");
   const [exportToDate, setExportToDate] = useState("");
+  const [exportScope, setExportScope] = useState<"all" | "date">("all");
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  const scrollTable = (direction: "left" | "right") => {
+    if (scrollRef.current) {
+      const amount = direction === "left" ? -300 : 300;
+      scrollRef.current.scrollBy({ left: amount, behavior: "smooth" });
+    }
+  };
+
+  const isExportValid = useMemo(() => {
+    if (exportScope === "all") return true;
+    return !!(exportFromDate && exportToDate);
+  }, [exportScope, exportFromDate, exportToDate]);
+
+  // 🚨 Remove organizationId from mapping lists as per requirements
+  const filteredAllowedFields = useMemo(() => allowedFields.filter(f => f !== "organizationId"), [allowedFields]);
+  const filteredRequiredFields = useMemo(() => requiredFields.filter(f => f !== "organizationId"), [requiredFields]);
 
   const missingRequiredFields = useMemo(() => {
+    if (Object.keys(mapping).length === 0) return [];
     const mapped = new Set(Object.values(mapping).filter(Boolean));
-    return requiredFields.filter((f) => !mapped.has(f));
-  }, [mapping, requiredFields]);
+    return filteredRequiredFields.filter((f) => !mapped.has(f));
+  }, [mapping, filteredRequiredFields]);
 
   const duplicateMappedFields = useMemo(() => {
     const count = new Map<string, number>();
@@ -79,6 +111,30 @@ export default function ImportModal({
     return [...count.entries()].filter(([, c]) => c > 1).length;
   }, [mapping]);
 
+  const filteredPreviewRows = useMemo(() => {
+    if (!searchQuery) return previewRows;
+    const low = searchQuery.toLowerCase();
+    return previewRows.filter((row) =>
+      Object.values(row).some((val) => String(val).toLowerCase().includes(low))
+    );
+  }, [previewRows, searchQuery]);
+
+  const paginatedRows = useMemo(() => {
+    const start = (currentPage - 1) * rowsPerPage;
+    return filteredPreviewRows.slice(start, start + rowsPerPage);
+  }, [filteredPreviewRows, currentPage]);
+
+  const totalPages = Math.ceil(filteredPreviewRows.length / rowsPerPage);
+
+  const toggleExclude = (id: number) => {
+    setExcludedIndices((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
   if (!isOpen) return null;
 
   const closeAll = () => {
@@ -87,11 +143,18 @@ export default function ImportModal({
     setExportFormat("csv");
     setFile(null);
     setPreviewTotalRows(0);
+    setPreviewRows([]);
+    setSearchQuery("");
+    setShowPreview(false);
+    setExcludedIndices(new Set());
     setCsvColumns([]);
+    setCurrentPage(1);
     setMapping({});
     setResult(null);
     setExportFromDate("");
     setExportToDate("");
+    setExportScope("all");
+    setSelectedOrgId(orgId || "");
     reset();
     onClose();
   };
@@ -100,8 +163,8 @@ export default function ImportModal({
     try {
       await generateSampleFile({
         moduleName,
-        allowedFields,
-        requiredFields,
+        allowedFields: filteredAllowedFields,
+        requiredFields: filteredRequiredFields,
         format: "csv"
       });
       toast.success("Sample CSV file downloaded");
@@ -115,8 +178,8 @@ export default function ImportModal({
     try {
       await generateSampleFile({
         moduleName,
-        allowedFields,
-        requiredFields,
+        allowedFields: filteredAllowedFields,
+        requiredFields: filteredRequiredFields,
         format: "excel"
       });
       toast.success("Sample Excel file downloaded");
@@ -128,7 +191,7 @@ export default function ImportModal({
 
   const initMappingFromColumns = (columns: string[]) => {
     const next: Record<string, string> = {};
-    const allowedNormMap = new Map(allowedFields.map((f) => [normalizeKey(f), f]));
+    const allowedNormMap = new Map(filteredAllowedFields.map((f) => [normalizeKey(f), f]));
     columns.forEach((col) => {
       const matched = allowedNormMap.get(normalizeKey(col));
       next[col] = matched || "";
@@ -178,13 +241,16 @@ export default function ImportModal({
     if (!selected) return;
 
     const ext = fileExt(selected.name);
-    const expectedExt = selectedFormat === "csv" ? ".csv" : ".xlsx";
-    
-    if (ext !== expectedExt) {
-      toast.error(`Please select a ${selectedFormat.toUpperCase()} file`);
+
+    if (selectedFormat === "csv" && ext !== ".csv") {
+      toast.error("Please select a CSV file");
       return;
     }
-    
+    if (selectedFormat === "excel" && ext !== ".xlsx" && ext !== ".xls") {
+      toast.error("Please select an EXCEL file");
+      return;
+    }
+
     if (selected.size > MAX_FILE_SIZE) {
       toast.error("File too large. Max allowed is 25MB");
       return;
@@ -192,17 +258,88 @@ export default function ImportModal({
 
     setFile(selected);
 
-    if (ext === ".csv") {
-      const totalRows = await countCsvRows(selected);
-      setPreviewTotalRows(totalRows);
-      const cols = await parseFirstLine(selected);
-      setCsvColumns(cols);
-      initMappingFromColumns(cols);
-    } else {
-      // backend currently supports csv; keep mapping blank for xlsx
+    try {
+      let columns: string[] = [];
+      setPreviewRows([]);
+
+      console.log("---- FILE UPLOAD DEBUG ----");
+      console.log("File Name:", selected.name);
+      console.log("File Size:", selected.size);
+      console.log("File Type:", selected.type);
+      console.log("Selected Format UI:", selectedFormat);
+      console.log("Extension matched:", ext);
+
+      if (ext === ".csv") {
+        console.log("Processing as CSV...");
+        const totalRows = await countCsvRows(selected);
+        console.log("CSV Total Rows:", totalRows);
+        setPreviewTotalRows(totalRows);
+        columns = await parseFirstLine(selected);
+        console.log("CSV Columns Found:", columns);
+
+        let count = 0;
+        let pRows: any[] = [];
+        const reader = selected.stream().getReader();
+        const decoder = new TextDecoder();
+        let buffered = "";
+        let isFirst = true;
+
+        outer: while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffered += decoder.decode(value, { stream: true });
+          const parts = buffered.split(/\r?\n/);
+          buffered = parts.pop() || "";
+
+          for (const line of parts) {
+            if (!line.trim()) continue;
+            if (isFirst) {
+              isFirst = false;
+              continue;
+            }
+            // Limit preview to 500 rows for performance
+            if (count < 500) {
+              const rowData = line.split(",").map((c) => c.replace(/^"|"$/g, "").trim());
+              const obj: any = { __id: count };
+              columns.forEach((col, idx) => {
+                obj[col] = rowData[idx] || "";
+              });
+              pRows.push(obj);
+              count++;
+            } else {
+              break outer;
+            }
+          }
+        }
+        setPreviewRows(pRows);
+        setCurrentPage(1);
+      } else if (ext === ".xlsx" || ext === ".xls") {
+        console.log("Routing into EXCEL parser...");
+        const rows = await parseExcelRows(selected);
+        console.log("Parsed Excel Rows Length:", rows?.length);
+        setPreviewTotalRows(rows.length);
+
+        columns = await parseExcelHeaders(selected);
+        console.log("Parsed Excel Columns:", columns);
+        // Load up to 500 rows for Excel preview
+        const rowsWithId = (rows || []).slice(0, 500).map((r: any, i: number) => ({ ...r, __id: i }));
+        setPreviewRows(rowsWithId);
+        setCurrentPage(1);
+      }
+
+      setCsvColumns(columns);
+      initMappingFromColumns(columns);
+    } catch (error: any) {
+      console.error("ON PICK FILE ERROR:", error);
+      toast.error(error.message || "Failed to parse file");
       setPreviewTotalRows(0);
-      setCsvColumns([]);
+      setPreviewRows([]);
+      setCsvColumns([
+        `ERROR: ${error?.message}`.substring(0, 100),
+        `STACK: ${String(error?.stack)}`.substring(0, 100)
+      ]);
       setMapping({});
+      // setFile(null); // DO NOT NULL FILE so we can see error in the mapping table
     }
   };
 
@@ -221,54 +358,102 @@ export default function ImportModal({
     }
 
     try {
-      const response = await uploadFile({ importUrl, file });
+      const ext = fileExt(file.name);
+      let allRows: any[] = [];
+
+      if (ext === ".csv") {
+        const text = await file.text();
+        const lines = text.split(/\r?\n/).filter(l => l.trim());
+        const headers = lines[0].split(",").map(h => h.replace(/^"|"$/g, "").trim());
+        allRows = lines.slice(1).map((line, idx) => {
+          const rowData = line.split(",").map(c => c.replace(/^"|"$/g, "").trim());
+          const obj: any = { __id: idx };
+          headers.forEach((h, i) => {
+            obj[h] = rowData[i] || "";
+          });
+          return obj;
+        });
+      } else {
+        allRows = await parseExcelRows(file);
+        allRows = allRows.map((r, i) => ({ ...r, __id: i }));
+      }
+
+      const finalMappedData = allRows
+        .filter(row => !excludedIndices.has(row.__id))
+        .map(row => {
+           const mapped: any = {};
+           Object.entries(mapping).forEach(([csvCol, allowedCol]) => {
+             if (allowedCol) {
+               mapped[allowedCol] = row[csvCol];
+             }
+           });
+           return mapped;
+        });
+
+      if (finalMappedData.length === 0) {
+        toast.error("No valid rows to import");
+        return;
+      }
+
+      const payload = {
+        organizationId: selectedOrgId,
+        data: finalMappedData
+      };
+
+      const token = getSecureItem("token");
+      const res = await fetch(`http://localhost:5000/api${importUrl}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": token ? `Bearer ${token}` : ""
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || `Import failed: ${res.status}`);
+      }
+
+      const response = await res.json();
       const data = response?.data || null;
+
       if (data) {
         setResult(data);
       }
-      
-      // Check if import was successful
-      const hasErrors = !!data && data.failedCount > 0;
-      const totalRows = data?.totalRows || 0;
+
       const successCount = data?.successCount || 0;
-      
-      console.log("Import response:", response);
-      console.log("Import data:", data);
-      console.log("Has errors:", hasErrors);
-      console.log("Total rows:", totalRows);
-      console.log("Success count:", successCount);
-      
-      if (hasErrors) {
-        toast.error("Import completed with errors. Please review the failed rows.");
+      const totalRows = data?.totalRows || 0;
+
+      if (data?.failedCount > 0) {
+        toast.error("Import completed with some errors.");
         onCompleted?.();
         return;
       }
-      
-      // Always close popup on import completion (success or no data)
+
       if (totalRows >= 0) {
         if (successCount > 0) {
           toast.success(response?.message || "Import completed successfully");
         } else {
-          toast.warning("No data was imported. Please check your file format.");
+          toast.warning("No data was imported.");
         }
         onCompleted?.();
-        
-        // Force close popup immediately
-        setTimeout(() => {
-          closeAll();
-        }, 1);
+        setTimeout(() => closeAll(), 1);
       }
     } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : "Import failed";
-      toast.error(message);
+      toast.error(e instanceof Error ? e.message : "Import failed");
     }
   };
 
   const onExport = async () => {
     try {
-      const finalFilters = { ...filters };
-      if (exportFromDate) finalFilters.from = exportFromDate;
-      if (exportToDate) finalFilters.to = exportToDate;
+      const finalFilters: any = exportScope === "all" ? {} : { ...filters };
+      finalFilters.organizationId = selectedOrgId;
+
+      if (exportScope === "date") {
+        if (exportFromDate) finalFilters.from = exportFromDate;
+        if (exportToDate) finalFilters.to = exportToDate;
+      }
 
       if (exportFormat === "csv") {
         // Use existing CSV export logic
@@ -299,7 +484,7 @@ export default function ImportModal({
 
         // Get CSV data from response
         const csvText = await res.text();
-        
+
         // Parse CSV to get data for Excel export
         const lines = csvText.split('\n').filter(line => line.trim());
         if (lines.length < 2) {
@@ -324,7 +509,7 @@ export default function ImportModal({
           sheetName: moduleName
         });
       }
-      
+
       toast.success(`${exportFormat.toUpperCase()} export completed`);
       closeAll();
     } catch (e: unknown) {
@@ -334,8 +519,8 @@ export default function ImportModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white shadow-2xl">
+    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-md">
+      <div className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white shadow-[0_20px_50px_rgba(0,0,0,0.2)]">
         <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
           <div>
             <h3 className="text-sm font-black uppercase tracking-widest text-slate-900">
@@ -372,6 +557,50 @@ export default function ImportModal({
         <div className="relative max-h-[70vh] overflow-auto p-4 space-y-4">
           {tab === "import" && (
             <>
+              {/* Organization Selection Dropdown */}
+              <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
+                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">
+                  Organization Selection
+                </label>
+                {isSuperAdmin || isRootOrgAdmin ? (
+                  <div className="relative">
+                    <select
+                      className="w-full bg-white border border-slate-300 rounded-xl p-3 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 outline-none appearance-none cursor-pointer"
+                      value={selectedOrgId}
+                      onChange={(e) => setSelectedOrgId(e.target.value)}
+                    >
+                      <option value="">Select Organization</option>
+                      <optgroup label="Main Organizations">
+                        {orgData?.data?.filter((o: any) => !o.parentOrganizationId).map((o: any) => (
+                          <option key={o._id} value={o._id}>{o.name}</option>
+                        ))}
+                      </optgroup>
+                      <optgroup label="Sub Organizations">
+                        {orgData?.data?.filter((o: any) => o.parentOrganizationId).map((o: any) => (
+                          <option key={o._id} value={o._id}>{o.name}</option>
+                        ))}
+                      </optgroup>
+                    </select>
+                    <Building2 className="absolute right-4 top-3.5 text-slate-400" size={16} />
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-3 bg-white border border-slate-200 rounded-xl p-3 text-sm font-semibold text-slate-700">
+                    <Building2 size={16} className="text-slate-400" />
+                    <span>{orgName}</span>
+                  </div>
+                )}
+                {selectedOrgId && (
+                  <p className="mt-2 text-[10px] text-blue-600 font-bold uppercase tracking-tight flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-pulse"></span>
+                    Data will be imported into: {
+                      (isSuperAdmin || isRootOrgAdmin)
+                        ? orgData?.data?.find((o: any) => o._id === selectedOrgId)?.name || "Selected Organization"
+                        : orgName
+                    }
+                  </p>
+                )}
+              </div>
+
               {/* Format Selector */}
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                 <label className="mb-3 block text-[10px] font-black uppercase tracking-widest text-slate-500">
@@ -384,7 +613,15 @@ export default function ImportModal({
                       name="importFormat"
                       value="csv"
                       checked={selectedFormat === "csv"}
-                      onChange={(e) => setSelectedFormat(e.target.value as "csv" | "excel")}
+                      onChange={() => {
+                        setSelectedFormat("csv");
+                        setFile(null);
+                        setPreviewTotalRows(0);
+                        setPreviewRows([]);
+                        setCsvColumns([]);
+                        setMapping({});
+                        setResult(null);
+                      }}
                       className="mr-2"
                     />
                     <FileText size={16} />
@@ -396,7 +633,15 @@ export default function ImportModal({
                       name="importFormat"
                       value="excel"
                       checked={selectedFormat === "excel"}
-                      onChange={(e) => setSelectedFormat(e.target.value as "csv" | "excel")}
+                      onChange={() => {
+                        setSelectedFormat("excel");
+                        setFile(null);
+                        setPreviewTotalRows(0);
+                        setPreviewRows([]);
+                        setCsvColumns([]);
+                        setMapping({});
+                        setResult(null);
+                      }}
                       className="mr-2"
                     />
                     <FileSpreadsheet size={16} />
@@ -435,15 +680,25 @@ export default function ImportModal({
                   Upload {selectedFormat.toUpperCase()}
                 </label>
                 <FilePond
+                  key={selectedFormat}
                   files={file ? [file] : []}
                   onupdatefiles={(fileItems) => {
-                    const next = fileItems[0]?.file || null;
+                    console.log("FilePond onupdatefiles:", fileItems.length, "items");
+                    const next = (fileItems[0]?.file as File) || null;
+                    if (next) {
+                      console.log("New file selected in FilePond:", next.name);
+                    } else {
+                      console.log("File removed from FilePond");
+                    }
                     void onPickFile(next);
                   }}
                   allowMultiple={false}
                   maxFiles={1}
-                  acceptedFileTypes={selectedFormat === "csv" ? ["text/csv", ".csv"] : [".xlsx"]}
-                  labelIdle='Drag & Drop your file or <span class="filepond--label-action">Browse</span>'
+                  acceptedFileTypes={selectedFormat === "csv"
+                    ? [".csv", "text/csv", "application/csv", "text/x-csv", "application/x-csv", "text/comma-separated-values", "text/x-comma-separated-values", "application/vnd.ms-excel"]
+                    : [".xlsx", ".xls", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.ms-excel"]
+                  }
+                  labelIdle={`Drag & Drop your ${selectedFormat.toUpperCase()} file or <span class="filepond--label-action">Browse</span>`}
                   disabled={loading}
                   credits={false}
                 />
@@ -457,12 +712,197 @@ export default function ImportModal({
               {csvColumns.length > 0 && (
                 <MappingTable
                   csvColumns={csvColumns}
-                  allowedFields={allowedFields}
+                  allowedFields={filteredAllowedFields}
+                  requiredFields={filteredRequiredFields}
                   mapping={mapping}
                   onChange={(col, value) =>
                     setMapping((prev) => ({ ...prev, [col]: value }))
                   }
                 />
+              )}
+
+              {previewRows.length > 0 && csvColumns.length > 0 && (
+                <div className="rounded-xl border border-slate-300 bg-white shadow-sm overflow-hidden mb-4">
+                  <div className="bg-slate-100 px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-800">
+                        File Preview (Showing {previewRows.length} rows)
+                      </h4>
+                      <label className="flex items-center gap-1.5 cursor-pointer bg-white px-2 py-1 rounded border border-slate-300 text-[9px] font-black text-slate-700 hover:bg-slate-50 transition-colors shadow-sm">
+                        <input
+                          type="checkbox"
+                          checked={showPreview}
+                          onChange={(e) => setShowPreview(e.target.checked)}
+                          className="w-3.5 h-3.5 accent-blue-600 rounded"
+                        />
+                        <span>SHOW PREVIEW</span>
+                      </label>
+                    </div>
+                    <div className="flex items-center gap-1 bg-white border border-slate-300 rounded-lg p-0.5 shadow-sm mr-auto ml-4">
+                      <button
+                        onClick={() => scrollTable("left")}
+                        className="p-1 hover:bg-slate-100 rounded text-slate-600 transition-colors border-r border-slate-100"
+                        title="Scroll Left"
+                      >
+                        <ChevronLeft size={14} strokeWidth={3} />
+                      </button>
+                      <button
+                        onClick={() => scrollTable("right")}
+                        className="p-1 hover:bg-slate-100 rounded text-slate-600 transition-colors"
+                        title="Scroll Right"
+                      >
+                        <ChevronRight size={14} strokeWidth={3} />
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        placeholder="Search rows..."
+                        className="text-[11px] px-3 py-1.5 rounded-lg border border-slate-400 bg-white text-slate-900 placeholder:text-slate-500 outline-none focus:ring-2 focus:ring-slate-900/10 min-w-[200px]"
+                        value={searchQuery}
+                        onChange={(e) => {
+                          setSearchQuery(e.target.value);
+                          setCurrentPage(1);
+                        }}
+                      />
+                      <span className={`text-[10px] font-black px-2 py-1 rounded-md uppercase tracking-tight shadow-sm ${excludedIndices.size > 0 ? "bg-rose-600 text-white" : "bg-slate-800 text-white"
+                        }`}>
+                        {excludedIndices.size} Excluded
+                      </span>
+                    </div>
+                  </div>
+                  {showPreview && (
+                    <>
+                      <div
+                        ref={scrollRef}
+                        className="max-h-[350px] overflow-auto scrollbar-thin scrollbar-thumb-slate-400 scrollbar-track-transparent"
+                      >
+                        <table className="w-full text-left text-xs whitespace-nowrap min-w-full table-auto border-collapse">
+                          <thead className="bg-slate-100 sticky top-0 border-b border-slate-200 z-20 shadow-sm">
+                            <tr>
+                              <th className="px-4 py-3 bg-slate-100 border-r border-slate-200 w-12 sticky left-0 z-30 shadow-[2px_0_5px_rgba(0,0,0,0.05)]">
+                                <span className="sr-only">Exclude</span>
+                              </th>
+                              {csvColumns.map((col) => (
+                                <th key={col} className="px-4 py-2 font-black text-slate-900 bg-slate-100 border-r border-slate-200 last:border-r-0">
+                                  {col}{" "}
+                                  {mapping[col] && (
+                                    <span className="inline-block ml-1 text-[9px] font-black uppercase tracking-widest text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded-md border border-blue-200">
+                                      {mapping[col]}
+                                    </span>
+                                  )}
+                                </th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-200">
+                            {paginatedRows.map((row) => {
+                              const isExcluded = excludedIndices.has(row.__id);
+                              return (
+                                <tr
+                                  key={row.__id}
+                                  className={`hover:bg-slate-50 transition-colors ${isExcluded ? "bg-slate-100 text-slate-400 opacity-60 italic" : "text-slate-700 font-medium"
+                                    }`}
+                                >
+                                  <td className="px-4 py-3 border-r border-slate-200 bg-white sticky left-0 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.05)] text-center">
+                                    <input
+                                      type="checkbox"
+                                      checked={isExcluded}
+                                      onChange={() => toggleExclude(row.__id)}
+                                      title="Mark to exclude from import"
+                                      className="accent-rose-600 cursor-pointer w-4 h-4 rounded border-slate-300"
+                                    />
+                                  </td>
+                                  {csvColumns.map((col) => {
+                                    const value = row[col];
+                                    return (
+                                      <td key={col} className={`px-4 py-3 border-r border-slate-100 last:border-r-0 ${isExcluded ? "line-through decoration-rose-500 decoration-2" : ""}`}>
+                                        {value !== undefined && value !== null ? String(value) : (
+                                          <span className="text-slate-300 italic">empty</span>
+                                        )}
+                                      </td>
+                                    );
+                                  })}
+                                </tr>
+                              );
+                            })}
+                            {paginatedRows.length === 0 && (
+                              <tr>
+                                <td colSpan={csvColumns.length + 1} className="px-4 py-12 text-center text-slate-500 font-bold bg-slate-50">
+                                  No rows matching "{searchQuery}"
+                                </td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* Pagination Controls */}
+                      {filteredPreviewRows.length > rowsPerPage && (
+                        <div className="bg-slate-50 px-4 py-3 border-t border-slate-200 flex items-center justify-between text-[11px] font-bold">
+                          <div className="text-slate-600">
+                            Showing <span className="text-slate-900">{(currentPage - 1) * rowsPerPage + 1}</span> to <span className="text-slate-900">{Math.min(currentPage * rowsPerPage, filteredPreviewRows.length)}</span> of <span className="text-slate-900">{filteredPreviewRows.length}</span> results
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                              disabled={currentPage === 1}
+                              className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 disabled:opacity-40 text-slate-700"
+                            >
+                              Previous
+                            </button>
+                            <div className="flex items-center gap-1 px-2 text-slate-900">
+                              {(() => {
+                                const pages = [];
+                                const maxVisible = 5;
+                                let start = Math.max(1, currentPage - 2);
+                                let end = Math.min(totalPages, start + maxVisible - 1);
+
+                                if (end - start + 1 < maxVisible) {
+                                  start = Math.max(1, end - maxVisible + 1);
+                                }
+
+                                for (let i = start; i <= end; i++) {
+                                  pages.push(
+                                    <button
+                                      key={i}
+                                      onClick={() => setCurrentPage(i)}
+                                      className={`w-8 h-8 rounded-lg border ${currentPage === i
+                                        ? "bg-slate-900 text-white border-slate-900"
+                                        : "bg-white text-slate-700 border-slate-300 hover:bg-slate-100"
+                                        }`}
+                                    >
+                                      {i}
+                                    </button>
+                                  );
+                                }
+                                return pages;
+                              })()}
+                              {totalPages > (currentPage + 2) && totalPages > 5 && (
+                                <>
+                                  <span className="px-1 text-slate-400">...</span>
+                                  <button
+                                    onClick={() => setCurrentPage(totalPages)}
+                                    className="w-8 h-8 rounded-lg border bg-white text-slate-700 border-slate-300 hover:bg-slate-100"
+                                  >
+                                    {totalPages}
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                            <button
+                              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                              disabled={currentPage === totalPages}
+                              className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 disabled:opacity-40 text-slate-700"
+                            >
+                              Next
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
               )}
 
               <ValidationSummary
@@ -511,7 +951,84 @@ export default function ImportModal({
           {tab === "export" && (
             <div className="space-y-4">
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
-                Export will include currently applied filters from this table view. If you wish to export data for a specific date range, please select the dates below.
+                Export will include currently applied filters from this table view. Choose below if you want all data or a specific date range.
+              </div>
+
+              {/* Organization Selection Dropdown (Export Tab) */}
+              <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
+                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">
+                  Organization Context
+                </label>
+                {isSuperAdmin || isRootOrgAdmin ? (
+                  <div className="relative">
+                    <select
+                      className="w-full bg-white border border-slate-300 rounded-xl p-3 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 outline-none appearance-none cursor-pointer"
+                      value={selectedOrgId}
+                      onChange={(e) => setSelectedOrgId(e.target.value)}
+                    >
+                      <option value="">Select Organization</option>
+                      <optgroup label="Main Organizations">
+                        {orgData?.data?.filter((o: any) => !o.parentOrganizationId).map((o: any) => (
+                          <option key={o._id} value={o._id}>{o.name}</option>
+                        ))}
+                      </optgroup>
+                      <optgroup label="Sub Organizations">
+                        {orgData?.data?.filter((o: any) => o.parentOrganizationId).map((o: any) => (
+                          <option key={o._id} value={o._id}>{o.name}</option>
+                        ))}
+                      </optgroup>
+                    </select>
+                    <Building2 className="absolute right-4 top-3.5 text-slate-400" size={16} />
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-3 bg-white border border-slate-200 rounded-xl p-3 text-sm font-semibold text-slate-700">
+                    <Building2 size={16} className="text-slate-400" />
+                    <span>{orgName}</span>
+                  </div>
+                )}
+                {selectedOrgId && (
+                  <p className="mt-2 text-[10px] text-blue-600 font-bold uppercase tracking-tight flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-pulse"></span>
+                    Data will be exported from: {
+                      (isSuperAdmin || isRootOrgAdmin)
+                        ? orgData?.data?.find((o: any) => o._id === selectedOrgId)?.name || "Selected Organization"
+                        : orgName
+                    }
+                  </p>
+                )}
+              </div>
+
+              {/* Data Range Selector */}
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <label className="mb-3 block text-[10px] font-black uppercase tracking-widest text-slate-500">
+                  Select Data Range
+                </label>
+                <div className="flex gap-4 text-slate-500">
+                  <label className="flex items-center space-x-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="exportScope"
+                      value="all"
+                      checked={exportScope === "all"}
+                      onChange={() => setExportScope("all")}
+                      className="mr-2"
+                    />
+                    <FileText size={16} />
+                    <span className="text-sm">Export All</span>
+                  </label>
+                  <label className="flex items-center space-x-2 cursor-pointer ">
+                    <input
+                      type="radio"
+                      name="exportScope"
+                      value="date"
+                      checked={exportScope === "date"}
+                      onChange={() => setExportScope("date")}
+                      className="mr-2"
+                    />
+                    <FileSpreadsheet size={16} />
+                    <span className="text-sm">Custom Date Range</span>
+                  </label>
+                </div>
               </div>
 
               {/* Export Format Selector */}
@@ -547,30 +1064,34 @@ export default function ImportModal({
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
-                    Start Date (From)
-                  </label>
-                  <input
-                    type="date"
-                    className="w-full rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
-                    value={exportFromDate}
-                    onChange={(e) => setExportFromDate(e.target.value)}
-                  />
+              {exportScope === "date" && (
+                <div className="grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2 duration-200">
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
+                      Start Date (From)
+                    </label>
+                    <input
+                      type="date"
+                      className="w-full rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
+                      value={exportFromDate}
+                      onChange={(e) => setExportFromDate(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
+                      End Date (To)
+                    </label>
+                    <input
+                      type="date"
+                      className="w-full rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
+                      value={exportToDate}
+                      onChange={(e) => setExportToDate(e.target.value)}
+                      required
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
-                    End Date (To)
-                  </label>
-                  <input
-                    type="date"
-                    className="w-full rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
-                    value={exportToDate}
-                    onChange={(e) => setExportToDate(e.target.value)}
-                  />
-                </div>
-              </div>
+              )}
             </div>
           )}
         </div>
@@ -599,7 +1120,7 @@ export default function ImportModal({
               type="button"
               onClick={() => void onExport()}
               className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-black uppercase tracking-widest text-white hover:bg-emerald-700 disabled:opacity-50"
-              disabled={loading}
+              disabled={loading || !isExportValid}
             >
               <Download size={14} />
               Export Data
