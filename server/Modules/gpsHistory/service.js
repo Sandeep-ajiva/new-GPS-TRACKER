@@ -60,10 +60,11 @@ function applyTimestampFilter(filter, field, dateRange) {
 }
 
 function buildScopedVehicleFilter(vehicleId, orgScope) {
-  return {
-    vehicleId: new mongoose.Types.ObjectId(vehicleId),
-    ...buildOrgScopeFilter(orgScope),
-  };
+  const filter = { ...buildOrgScopeFilter(orgScope) };
+  if (vehicleId && vehicleId !== "all") {
+    filter.vehicleId = new mongoose.Types.ObjectId(vehicleId);
+  }
+  return filter;
 }
 
 async function fetchHistoryPoints(vehicleId, orgScope, query = {}) {
@@ -77,7 +78,7 @@ async function fetchHistoryPoints(vehicleId, orgScope, query = {}) {
   const points = await GpsHistory.find(filter)
     .sort({ gpsTimestamp: 1 })
     .select(
-      "latitude longitude speed heading gpsTimestamp ignitionStatus odometer address",
+      "vehicleId imei latitude longitude speed heading gpsTimestamp ignitionStatus odometer address",
     )
     .lean();
 
@@ -155,105 +156,192 @@ async function getPlayback(vehicleId, orgScope, query = {}) {
 
 async function getTravelSummary(vehicleId, orgScope, query = {}) {
   const { points, dateRange } = await fetchHistoryPoints(vehicleId, orgScope, query);
-  const { trips, tripSummary } = buildTrips(points);
 
-  const vehicle = await Vehicle.findById(vehicleId).populate("organizationId").lean();
-  let driverName = "No Driver Found";
-  if (vehicle && vehicle.driverId) {
-    const driver = await Driver.findById(vehicle.driverId).lean();
-    if (driver) {
-      driverName = `${driver.firstName || ""} ${driver.lastName || ""}`.trim() || "Unnamed Driver";
-    }
+  // Group points by vehicleId if "all" is selected
+  const pointsByVehicle = {};
+  if (vehicleId === "all") {
+    points.forEach(p => {
+      const vId = p.vehicleId?.toString();
+      if (vId) {
+        if (!pointsByVehicle[vId]) pointsByVehicle[vId] = [];
+        pointsByVehicle[vId].push(p);
+      }
+    });
+  } else if (vehicleId && vehicleId !== "undefined") {
+    pointsByVehicle[vehicleId] = points;
   }
 
-  const branchName = vehicle?.organizationId?.name || "Unknown Branch";
+  const vehicleIds = Object.keys(pointsByVehicle).filter(id => id && id !== "undefined" && mongoose.isValidObjectId(id));
+  const vehicles = await Vehicle.find({ _id: { $in: vehicleIds } }).populate("organizationId").lean();
+  const drivers = await Driver.find({ _id: { $in: vehicles.map(v => v.driverId).filter(id => id) } }).lean();
 
-  const getDayName = (date) => {
-    return new Intl.DateTimeFormat("en-US", { weekday: "long" }).format(new Date(date));
-  };
+  const results = [];
 
-  if (!trips.length) {
-    return {
-      vehicleId,
-      from: dateRange.from,
-      to: dateRange.to,
-      trips: [],
-    };
-  }
+  for (const vId of vehicleIds) {
+    const vPoints = pointsByVehicle[vId];
+    if (!vPoints || vPoints.length === 0) continue;
 
-  return {
-    vehicleId,
-    from: dateRange.from,
-    to: dateRange.to,
-    trips: [
-      {
-        date: dateRange.from ? new Date(dateRange.from).toLocaleDateString("en-GB").replace(/\//g, "-") : "-",
-        day: dateRange.from ? getDayName(dateRange.from) : "-",
-        branchName: branchName,
-        driverName: driverName,
+    const vehicle = vehicles.find(v => v._id.toString() === vId);
+    const branchName = vehicle?.organizationId?.name || "Unknown Branch";
+    const driver = drivers.find(d => d._id?.toString() === vehicle?.driverId?.toString());
+    const driverName = driver ? `${driver.firstName || ""} ${driver.lastName || ""}`.trim() || "Unnamed" : "No Driver Found";
+
+    // Split points by day
+    const pointsByDay = {};
+    vPoints.forEach(p => {
+      const d = new Date(p.gpsTimestamp).toISOString().split("T")[0];
+      if (!pointsByDay[d]) pointsByDay[d] = [];
+      pointsByDay[d].push(p);
+    });
+
+    const dailySummaries = [];
+    Object.keys(pointsByDay).sort().forEach(date => {
+      const dayPoints = pointsByDay[date];
+      const { trips, tripSummary } = buildTrips(dayPoints);
+
+      const maxStop = Math.max(0, ...trips.map(t => t.stopTime || 0), ...trips.map(t => t.inactiveTime || 0));
+      const idleCount = trips.reduce((acc, t) => acc + (t.idleTime > 0 ? 1 : 0), 0);
+      const overSpeedCountDaily = trips.filter(t => t.maxSpeed > 60).length;
+
+      dailySummaries.push({
+        date: date.split("-").reverse().join("-"),
+        day: new Intl.DateTimeFormat("en-US", { weekday: "long" }).format(new Date(date)),
         distance: tripSummary.totalTripDistance,
         runningTime: tripSummary.totalRunning,
         idleTime: tripSummary.totalIdle,
         stopTime: tripSummary.totalStop,
         inactiveTime: tripSummary.totalInactive,
         duration: tripSummary.totalDuration,
+        maxStoppage: maxStop,
+        idleCount: idleCount,
+        overSpeedCount: overSpeedCountDaily,
+        avgSpeed: tripSummary.avgSpeed,
+        maxSpeed: tripSummary.maxSpeed,
+        firstIgnitionOn: tripSummary.firstIgnitionOn,
+        lastIgnitionOff: tripSummary.lastIgnitionOff,
         startLocation: trips[0]?.startLocation,
         endLocation: trips[trips.length - 1]?.endLocation,
         startOdometer: trips[0]?.startOdometer,
         endOdometer: trips[trips.length - 1]?.endOdometer,
-        alerts: trips.reduce((sum, trip) => sum + (trip.alerts || 0), 0),
-        maxSpeed: Math.max(...trips.map((t) => t.maxSpeed || 0)),
-        avgSpeed: tripSummary.totalRunning > 0 ? Number((tripSummary.totalTripDistance / (tripSummary.totalRunning / 3600)).toFixed(2)) : 0,
-      },
-    ],
-  };
-}
+        alerts: trips.reduce((sum, t) => sum + (t.alerts || 0), 0),
+      });
+    });
 
-async function getTripSummary(vehicleId, orgScope, query = {}) {
-  const { points, dateRange } = await fetchHistoryPoints(vehicleId, orgScope, query);
-  const { trips, tripSummary } = buildTrips(points);
+    const { trips: allTrips, tripSummary: totalSummary } = buildTrips(vPoints);
+    const maxStoppageGlobal = Math.max(0, ...allTrips.map(t => t.stopTime || 0), ...allTrips.map(t => t.inactiveTime || 0));
+    const idleCountGlobal = allTrips.reduce((acc, t) => acc + (t.idleTime > 0 ? 1 : 0), 0);
+    const overSpeedCountGlobal = allTrips.filter(t => t.maxSpeed > 60).length;
 
-  const vehicle = await Vehicle.findById(vehicleId).populate("organizationId").lean();
-  let driverName = "No Driver Found";
-  if (vehicle && vehicle.driverId) {
-    const driver = await Driver.findById(vehicle.driverId).lean();
-    if (driver) {
-      driverName = `${driver.firstName || ""} ${driver.lastName || ""}`.trim() || "Unnamed Driver";
-    }
+    results.push({
+      vehicleId: vId,
+      vehicleNumber: vehicle?.vehicleNumber || "N/A",
+      imei: vehicle?.deviceImei || vPoints[0]?.imei || "N/A",
+      brand: vehicle?.brand || "-",
+      model: vehicle?.model || "-",
+      branchName,
+      driverName,
+      distance: totalSummary.totalTripDistance,
+      runningTime: totalSummary.totalRunning,
+      idleTime: totalSummary.totalIdle,
+      stopTime: totalSummary.totalStop,
+      inactiveTime: totalSummary.totalInactive,
+      duration: totalSummary.totalDuration,
+      maxStoppage: maxStoppageGlobal,
+      idleCount: idleCountGlobal,
+      overSpeedCount: overSpeedCountGlobal,
+      avgSpeed: totalSummary.avgSpeed,
+      maxSpeed: totalSummary.maxSpeed,
+      startLocation: allTrips[0]?.startLocation,
+      endLocation: allTrips[allTrips.length - 1]?.endLocation,
+      startOdometer: allTrips[0]?.startOdometer || 0,
+      endOdometer: allTrips[allTrips.length - 1]?.endOdometer || 0,
+      alerts: allTrips.reduce((sum, trip) => sum + (trip.alerts || 0), 0),
+      dailyBreakdown: dailySummaries
+    });
   }
-
-  const branchName = vehicle?.organizationId?.name || "Unknown Branch";
-  const getDayName = (date) => {
-    return new Intl.DateTimeFormat("en-US", { weekday: "long" }).format(new Date(date));
-  };
-
-  const enrichedTrips = trips.map(trip => ({
-    ...trip,
-    date: trip.startTime ? new Date(trip.startTime).toLocaleDateString("en-GB").replace(/\//g, "-") : "-",
-    day: trip.startTime ? getDayName(trip.startTime) : "-",
-    branchName,
-    driverName,
-    // Use metrics from finalizeTrip
-    runningTime: trip.runningTime,
-    idleTime: trip.idleTime,
-    stopTime: trip.stopTime,
-    inactiveTime: trip.inactiveTime,
-    avgSpeed: trip.avgSpeed,
-    maxSpeed: trip.maxSpeed,
-    // For playback
-    playbackParams: {
-      from: trip.startTime,
-      to: trip.endTime,
-      vehicleId
-    }
-  }));
 
   return {
     vehicleId,
     from: dateRange.from,
     to: dateRange.to,
-    trips: enrichedTrips,
-    tripSummary,
+    trips: results,
+  };
+}
+
+async function getTripSummary(vehicleId, orgScope, query = {}) {
+  const { points, dateRange } = await fetchHistoryPoints(vehicleId, orgScope, query);
+
+  // Group points by vehicleId if "all" is selected
+  const pointsByVehicle = {};
+  if (vehicleId === "all") {
+    points.forEach(p => {
+      const vId = p.vehicleId?.toString();
+      if (vId) {
+        if (!pointsByVehicle[vId]) pointsByVehicle[vId] = [];
+        pointsByVehicle[vId].push(p);
+      }
+    });
+  } else if (vehicleId && vehicleId !== "undefined") {
+    pointsByVehicle[vehicleId] = points;
+  }
+
+  const vehicleIds = Object.keys(pointsByVehicle).filter(id => id && id !== "undefined" && mongoose.isValidObjectId(id));
+  const vehiclesList = await Vehicle.find({ _id: { $in: vehicleIds } }).populate("organizationId").lean();
+  const driversList = await Driver.find({ _id: { $in: vehiclesList.map(v => v.driverId).filter(id => id) } }).lean();
+
+  const results = [];
+
+  for (const vId of vehicleIds) {
+    const vPoints = pointsByVehicle[vId];
+    if (!vPoints || vPoints.length === 0) continue;
+
+    const { trips, tripSummary } = buildTrips(vPoints);
+    const vehicle = vehiclesList.find(v => v._id.toString() === vId);
+    const branchName = vehicle?.organizationId?.name || "Unknown Branch";
+    const driver = driversList.find(d => d._id?.toString() === vehicle?.driverId?.toString());
+    const driverName = driver ? `${driver.firstName || ""} ${driver.lastName || ""}`.trim() || "Unnamed" : "No Driver Found";
+
+    const overSpeedThreshold = 60; // Default or from vehicle
+    const overSpeedCount = trips.filter(t => t.maxSpeed > overSpeedThreshold).length;
+
+    results.push({
+      vehicleId: vId,
+      vehicleNumber: vehicle?.vehicleNumber || "N/A",
+      imei: vehicle?.deviceImei || vPoints[0]?.imei || "N/A",
+      brand: vehicle?.brand || "-",
+      model: vehicle?.model || "-",
+      branchName,
+      driverName,
+      distance: tripSummary.totalTripDistance,
+      runningTime: tripSummary.totalRunning,
+      idleTime: tripSummary.totalIdle,
+      stopTime: tripSummary.totalStop,
+      inactiveTime: tripSummary.totalInactive,
+      duration: tripSummary.totalDuration,
+      firstIgnitionOn: tripSummary.firstIgnitionOn,
+      lastIgnitionOff: tripSummary.lastIgnitionOff,
+      avgSpeed: tripSummary.avgSpeed,
+      maxSpeed: tripSummary.maxSpeed,
+      immobilize: vehicle?.isImmobilized ? "Y" : "N",
+      overSpeedCount: overSpeedCount,
+      alerts: trips.reduce((sum, t) => sum + (t.alerts || 0), 0),
+      tripCount: trips.length,
+      individualTrips: trips.map(t => ({
+        ...t,
+        startCoordinate: t.startLocation ? `(${t.startLocation.latitude?.toFixed(6)}, ${t.startLocation.longitude?.toFixed(6)})` : "-",
+        endCoordinate: t.endLocation ? `(${t.endLocation.latitude?.toFixed(6)}, ${t.endLocation.longitude?.toFixed(6)})` : "-",
+        driverName,
+        overSpeed: t.maxSpeed > overSpeedThreshold ? "Y" : "N",
+        immobilize: vehicle?.isImmobilized ? "Y" : "N",
+      }))
+    });
+  }
+
+  return {
+    vehicleId,
+    from: dateRange.from,
+    to: dateRange.to,
+    trips: results,
   };
 }
 
@@ -306,23 +394,53 @@ async function getAlertSummary(vehicleId, orgScope, query = {}) {
     dateRange,
   );
 
-  const [latestAlerts, alertDocs, emergencyDocs] = await Promise.all([
+  const [alertDocs, emergencyDocs] = await Promise.all([
     Alert.find(alertFilter)
+      .populate("organizationId", "name")
+      .populate("vehicleId", "vehicleNumber driverId")
       .sort({ gpsTimestamp: -1 })
-      .limit(10)
-      .select("_id alertId alertName severity gpsTimestamp")
-      .lean(),
-    Alert.find(alertFilter)
-      .select("alertId alertName severity gpsTimestamp")
       .lean(),
     EmergencyEvent.find(alertFilter).select("_id eventType gpsTimestamp").lean(),
   ]);
+
+  // Fetch drivers for the vehicles found in alertDocs
+  const vehicleDriverIds = alertDocs
+    .map(a => a.vehicleId?.driverId)
+    .filter(id => id && mongoose.isValidObjectId(id));
+
+  const drivers = await Driver.find({ _id: { $in: vehicleDriverIds } }).select("firstName lastName").lean();
+
+  const enrichedAlerts = alertDocs.map(alert => {
+    const driver = drivers.find(d => d._id.toString() === alert.vehicleId?.driverId?.toString());
+
+    // Aesthetic mapping to match user screenshot style
+    let type = alert.alertName || "Alert";
+    let info = alert.message || alert.alertName || "-";
+
+    if (type.includes("Ignition")) {
+      type = "Ignition/ACC";
+      info = alert.alertName; // e.g. "Ignition On" or "Ignition Off"
+    }
+
+    return {
+      id: alert._id,
+      gpsTimestamp: alert.gpsTimestamp,
+      branch: alert.organizationId?.name || "N/A",
+      vehicle: alert.vehicleId?.vehicleNumber || "N/A",
+      driver: driver ? `${driver.firstName || ""} ${driver.lastName || ""}`.trim() : "N/A",
+      type,
+      information: info,
+      location: alert.address || (alert.latitude && alert.longitude ? `${alert.latitude}, ${alert.longitude}` : "-"),
+      duration: "00:00:00",
+    };
+  });
 
   return {
     vehicleId,
     from: dateRange.from,
     to: dateRange.to,
-    ...summarizeAlerts(alertDocs, emergencyDocs, latestAlerts),
+    alerts: enrichedAlerts,
+    ...summarizeAlerts(alertDocs, emergencyDocs, []), // Keep summary counts
   };
 }
 

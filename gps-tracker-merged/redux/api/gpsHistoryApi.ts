@@ -36,10 +36,10 @@ export const gpsHistoryApi = baseApi.injectEndpoints({
             }),
             providesTags: ["History"],
         }),
-        getPlayback: builder.query({
-            query: ({ vehicleId, from, to }: HistoryQueryParams) => ({
+        getGpsHistory: builder.query<{ data: { points: Array<{ latitude: number; longitude: number; speed: number; heading: number | null; gpsTimestamp: string; ignitionStatus: boolean; odometer: number; address?: string }> } }, { vehicleId: string; from: string; to: string }>({
+            query: ({ vehicleId, from, to }) => ({
                 url: `/gps-history/playback/${vehicleId}`,
-                params: buildDateParams({ from, to }),
+                params: { from, to },
             }),
             providesTags: ["History"],
         }),
@@ -79,7 +79,7 @@ export const {
     useLazyGetVehicleHistoryQuery,
     useGetStatisticsQuery,
     useGetVehicleStatusQuery,
-    useGetPlaybackQuery,
+    useGetGpsHistoryQuery,
     useGetTravelSummaryQuery,
     useGetTripSummaryQuery,
     useGetDaywiseDistanceQuery,

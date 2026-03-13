@@ -4,6 +4,7 @@ const mongoose = require("mongoose");
 const Service = require("./service");
 
 function validateVehicleId(vehicleId) {
+  if (vehicleId === "all") return;
   if (!mongoose.isValidObjectId(vehicleId)) {
     const error = new Error("Invalid vehicleId");
     error.status = 400;

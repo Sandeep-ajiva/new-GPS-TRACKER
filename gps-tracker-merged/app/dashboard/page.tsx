@@ -881,7 +881,7 @@ export default function DashboardPage() {
                 {activeTab === "Daywise Distance" && <DaywiseDistancePage organizations={organizations} vehicles={allVehicles} userRole={userRole} userOrgId={userOrgId} />}
                 {activeTab === "Travel Summary" && <TravelSummaryPage organizations={organizations} vehicles={allVehicles} userRole={userRole} userOrgId={userOrgId} />}
                 {activeTab === "Trip Summary" && <TripSummaryPage organizations={organizations} vehicles={allVehicles} userRole={userRole} userOrgId={userOrgId} />}
-                {activeTab === "Vehicle Status" && <VehicleStatusPage organizations={organizations} vehicles={allVehicles} userRole={userRole} userOrgId={userOrgId} />}
+                {activeTab === "Vehicle Status" && <VehicleStatusPage organizations={organizations} vehicles={uiVehicles} userRole={userRole} userOrgId={userOrgId} />}
                 {activeTab === "Alert Summary" && <AlertSummaryPage organizations={organizations} vehicles={allVehicles} userRole={userRole} userOrgId={userOrgId} />}
                 {["Tour", "App Config", "Sys Config", "User Rights"].includes(activeTab) && (
                   <div className="flex h-64 flex-col items-center justify-center italic text-slate-500">

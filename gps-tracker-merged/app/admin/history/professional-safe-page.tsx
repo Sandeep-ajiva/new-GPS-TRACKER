@@ -21,7 +21,7 @@ import {
   X,
   ZoomIn,
 } from "lucide-react";
-import { MapContainer, Marker, Polyline, Popup } from "react-leaflet";
+import { MapContainer, Marker, Polyline, Popup, useMap } from "react-leaflet";
 import type { LatLngExpression, Map as LeafletMap } from "leaflet";
 import "leaflet/dist/leaflet.css";
 import "leaflet-defaulticon-compatibility/dist/leaflet-defaulticon-compatibility.css";
@@ -185,6 +185,18 @@ const inferAlertType = (item: RawHistoryPoint) => {
 
   return "";
 };
+
+const isValidLatLng = (lat: any, lng: any): boolean => {
+  return typeof lat === "number" && !isNaN(lat) && typeof lng === "number" && !isNaN(lng);
+};
+
+function MapInstanceAccessor({ onMap }: { onMap: (map: LeafletMap) => void }) {
+  const map = useMap();
+  useEffect(() => {
+    if (map) onMap(map);
+  }, [map, onMap]);
+  return null;
+}
 
 export default function ProfessionalHistoryPage() {
   const [vehicleId, setVehicleId] = useState("");
@@ -507,14 +519,21 @@ export default function ProfessionalHistoryPage() {
     const startedAt = performance.now();
 
     const animate = (now: number) => {
-      const t = Math.min((now - startedAt) / duration, 1);
+      const elapsed = now - startedAt;
+      const t = Math.min(elapsed / duration, 1);
       const lat = from.lat + (to.lat - from.lat) * t;
       const lng = from.lng + (to.lng - from.lng) * t;
 
-      setAnimatedPos({ lat, lng });
+      if (isValidLatLng(lat, lng)) {
+        setAnimatedPos({ lat, lng });
 
-      if (followVehicle && leafletMapRef.current) {
-        leafletMapRef.current.panTo([lat, lng], { animate: true, duration: 0.2 });
+        if (followVehicle && leafletMapRef.current) {
+          try {
+            leafletMapRef.current.panTo([lat, lng], { animate: true, duration: 0.1 });
+          } catch (e) {
+            console.error("Leaflet panTo error:", e);
+          }
+        }
       }
 
       if (t < 1) {
@@ -569,7 +588,11 @@ export default function ProfessionalHistoryPage() {
     });
 
     if (leafletMapRef.current) {
-      leafletMapRef.current.setView(INDIA_DEFAULT_CENTER, 5, { animate: true });
+      try {
+        leafletMapRef.current.setView(INDIA_DEFAULT_CENTER, 5, { animate: true });
+      } catch (e) {
+        console.error("Leaflet setView error:", e);
+      }
     }
 
     return () => cancelAnimationFrame(frame);
@@ -590,7 +613,11 @@ export default function ProfessionalHistoryPage() {
     });
 
     if (leafletMapRef.current) {
-      leafletMapRef.current.setView([latestPoint.lat, latestPoint.lng], 15, { animate: true });
+      try {
+        leafletMapRef.current.setView([latestPoint.lat, latestPoint.lng], 15, { animate: true });
+      } catch (e) {
+        console.error("Leaflet setView error:", e);
+      }
     }
 
     return () => cancelAnimationFrame(frame);
@@ -611,7 +638,11 @@ export default function ProfessionalHistoryPage() {
   useEffect(() => {
     if (!leafletMapRef.current || activeDayPoints.length === 0 || !selectedDay) return;
     const bounds = activeDayPoints.map((p) => [p.lat, p.lng] as [number, number]);
-    leafletMapRef.current.fitBounds(bounds, { padding: [30, 30] });
+    try {
+      leafletMapRef.current.fitBounds(bounds, { padding: [30, 30] });
+    } catch (e) {
+      console.error("Leaflet fitBounds error:", e);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDay]);
 
@@ -689,7 +720,11 @@ export default function ProfessionalHistoryPage() {
   const zoomToRoute = () => {
     if (!leafletMapRef.current || activeDayPoints.length === 0) return;
     const bounds = activeDayPoints.map((p) => [p.lat, p.lng] as [number, number]);
-    leafletMapRef.current.fitBounds(bounds, { padding: [30, 30] });
+    try {
+      leafletMapRef.current.fitBounds(bounds, { padding: [30, 30] });
+    } catch (e) {
+      console.error("Leaflet fitBounds error:", e);
+    }
   };
 
   const getVehicleDisplayName = (vehicle: VehicleOption) => {
@@ -720,129 +755,129 @@ export default function ProfessionalHistoryPage() {
     <ApiErrorBoundary hasError={hasError}>
       <div className="min-h-screen bg-white p-4 text-gray-900">
         <div className="rounded-2xl border border-gray-200 bg-white px-4 py-4 shadow-sm">
-            <div className="mb-3 flex items-center justify-between">
-              <div>
-                <p className="text-[11px] font-black uppercase tracking-[0.2em] text-gray-500">Professional History</p>
-                <h1 className="text-xl font-black text-gray-900">Vehicle Playback</h1>
-              </div>
-              <div className="text-sm font-semibold text-gray-700">
-                {!hasLoadedSearch
-                  ? "Search to load"
-                  : activeDayPoints.length > 0
-                    ? `${currentIndex + 1}/${activeDayPoints.length}`
-                    : "0 points"}
-                {selectedDay && <span className="ml-2 text-[10px] text-blue-600 font-black uppercase tracking-widest">{new Date(selectedDay + "T00:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "short" })}</span>}
-              </div>
+          <div className="mb-3 flex items-center justify-between">
+            <div>
+              <p className="text-[11px] font-black uppercase tracking-[0.2em] text-gray-500">Professional History</p>
+              <h1 className="text-xl font-black text-gray-900">Vehicle Playback</h1>
+            </div>
+            <div className="text-sm font-semibold text-gray-700">
+              {!hasLoadedSearch
+                ? "Search to load"
+                : activeDayPoints.length > 0
+                  ? `${currentIndex + 1}/${activeDayPoints.length}`
+                  : "0 points"}
+              {selectedDay && <span className="ml-2 text-[10px] text-blue-600 font-black uppercase tracking-widest">{new Date(selectedDay + "T00:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "short" })}</span>}
+            </div>
+          </div>
+
+          <form onSubmit={handleSearch} className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-6">
+            <div>
+              <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-gray-600">Vehicle</label>
+              <select
+                required
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900"
+                value={vehicleId}
+                onChange={(event) => {
+                  setVehicleId(event.target.value);
+                  setCurrentIndex(0);
+                  setIsPlaying(false);
+                  setAnimatedPos(null);
+                  lastIndexRef.current = 0;
+                  setShouldFetch(false);
+                }}
+              >
+                <option value="">Select Vehicle...</option>
+                {vehicles.map((vehicle) => (
+                  <option key={vehicle._id} value={vehicle._id}>
+                    {getVehicleDisplayName(vehicle)}
+                  </option>
+                ))}
+              </select>
             </div>
 
-            <form onSubmit={handleSearch} className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-6">
-              <div>
-                <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-gray-600">Vehicle</label>
-                <select
-                  required
-                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900"
-                  value={vehicleId}
-                  onChange={(event) => {
-                    setVehicleId(event.target.value);
-                    setCurrentIndex(0);
-                    setIsPlaying(false);
-                    setAnimatedPos(null);
-                    lastIndexRef.current = 0;
-                    setShouldFetch(false);
-                  }}
-                >
-                  <option value="">Select Vehicle...</option>
-                  {vehicles.map((vehicle) => (
-                    <option key={vehicle._id} value={vehicle._id}>
-                      {getVehicleDisplayName(vehicle)}
-                    </option>
-                  ))}
-                </select>
-              </div>
+            <div>
+              <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-gray-600">From</label>
+              <input
+                type="datetime-local"
+                required={!showAllHistory}
+                disabled={showAllHistory}
+                value={dateFrom}
+                onChange={(event) => {
+                  setDateFrom(event.target.value);
+                  setShouldFetch(false);
+                }}
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 disabled:bg-gray-100"
+              />
+            </div>
 
-              <div>
-                <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-gray-600">From</label>
-                <input
-                  type="datetime-local"
-                  required={!showAllHistory}
-                  disabled={showAllHistory}
-                  value={dateFrom}
-                  onChange={(event) => {
-                    setDateFrom(event.target.value);
-                    setShouldFetch(false);
-                  }}
-                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 disabled:bg-gray-100"
-                />
-              </div>
+            <div>
+              <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-gray-600">To</label>
+              <input
+                type="datetime-local"
+                required={!showAllHistory}
+                disabled={showAllHistory}
+                value={dateTo}
+                onChange={(event) => {
+                  setDateTo(event.target.value);
+                  setShouldFetch(false);
+                }}
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 disabled:bg-gray-100"
+              />
+            </div>
 
-              <div>
-                <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-gray-600">To</label>
-                <input
-                  type="datetime-local"
-                  required={!showAllHistory}
-                  disabled={showAllHistory}
-                  value={dateTo}
-                  onChange={(event) => {
-                    setDateTo(event.target.value);
-                    setShouldFetch(false);
-                  }}
-                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 disabled:bg-gray-100"
-                />
-              </div>
+            <div className="flex items-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className={showAllHistory ? "border-green-500 bg-green-50 text-green-700" : ""}
+                onClick={() => {
+                  const next = !showAllHistory;
+                  setShowAllHistory(next);
+                  setShouldFetch(false);
+                }}
+              >
+                <Calendar size={14} className="mr-1" />
+                {showAllHistory ? "All" : "Range"}
+              </Button>
+              <Button type="submit" disabled={isLoading}>
+                {isLoading ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Search className="mr-1 h-4 w-4" />}
+                Load
+              </Button>
+            </div>
 
-              <div className="flex items-end gap-2">
+            <div className="flex items-end gap-2">
+              {(["yesterday", "lastweek"] as const).map((preset) => (
                 <Button
-                  type="button"
-                  variant="outline"
-                  className={showAllHistory ? "border-green-500 bg-green-50 text-green-700" : ""}
-                  onClick={() => {
-                    const next = !showAllHistory;
-                    setShowAllHistory(next);
-                    setShouldFetch(false);
-                  }}
-                >
-                  <Calendar size={14} className="mr-1" />
-                  {showAllHistory ? "All" : "Range"}
-                </Button>
-                <Button type="submit" disabled={isLoading}>
-                  {isLoading ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Search className="mr-1 h-4 w-4" />}
-                  Load
-                </Button>
-              </div>
-
-              <div className="flex items-end gap-2">
-                {(["yesterday", "lastweek"] as const).map((preset) => (
-                  <Button
-                    key={preset}
-                    type="button"
-                    size="sm"
-                    className={
-                      activePreset === preset
-                        ? "bg-blue-600 text-white border-blue-600"
-                        : "bg-white text-gray-800 border-gray-300 hover:bg-gray-100"
-                    }
-                    onClick={() => handleQuickDate(preset)}
-                  >
-                    {preset === "yesterday" ? "Yesterday" : "Last Week"}
-                  </Button>
-                ))}
-              </div>
-
-              <div className="flex items-end gap-2">
-                <Button
+                  key={preset}
                   type="button"
                   size="sm"
                   className={
-                    activePreset === "lastmonth"
+                    activePreset === preset
                       ? "bg-blue-600 text-white border-blue-600"
                       : "bg-white text-gray-800 border-gray-300 hover:bg-gray-100"
                   }
-                  onClick={() => handleQuickDate("lastmonth")}
+                  onClick={() => handleQuickDate(preset)}
                 >
-                  Last Month
+                  {preset === "yesterday" ? "Yesterday" : "Last Week"}
                 </Button>
-              </div>
-            </form>
+              ))}
+            </div>
+
+            <div className="flex items-end gap-2">
+              <Button
+                type="button"
+                size="sm"
+                className={
+                  activePreset === "lastmonth"
+                    ? "bg-blue-600 text-white border-blue-600"
+                    : "bg-white text-gray-800 border-gray-300 hover:bg-gray-100"
+                }
+                onClick={() => handleQuickDate("lastmonth")}
+              >
+                Last Month
+              </Button>
+            </div>
+          </form>
         </div>
 
         <div className={`mt-4 grid items-start grid-cols-1 gap-6 ${hasLoadedSearch ? "xl:grid-cols-[minmax(0,1fr)_340px]" : ""}`}>
@@ -947,17 +982,9 @@ export default function ProfessionalHistoryPage() {
                       center={mapCenter}
                       zoom={vehicleId ? 12 : 5}
                       className="h-[56vh] min-h-[420px] w-full"
-                      dragging={true}
                       scrollWheelZoom={true}
-                      doubleClickZoom={true}
-                      touchZoom={true}
-                      boxZoom={true}
-                      keyboard={true}
-                      zoomControl={true}
-                      ref={(mapInstance) => {
-                        if (mapInstance) leafletMapRef.current = mapInstance;
-                      }}
                     >
+                      <MapInstanceAccessor onMap={(map) => { leafletMapRef.current = map; }} />
                       <MapTileLayer satellite={false} />
 
                       {/* Faint grey routes for non-selected days */}
@@ -968,15 +995,22 @@ export default function ProfessionalHistoryPage() {
                       {/* Active route (selected day or full range) */}
                       {routePositions.length > 1 && <Polyline positions={routePositions} pathOptions={{ color: "#2563eb", weight: 4 }} />}
 
-                      {points[0] && <Marker position={[points[0].lat, points[0].lng]}><Popup>Route Start</Popup></Marker>}
-                      {points.length > 1 && (
+                      {points[0] && isValidLatLng(points[0].lat, points[0].lng) && (
+                        <Marker position={[points[0].lat, points[0].lng]}><Popup>Route Start</Popup></Marker>
+                      )}
+                      {points.length > 1 && isValidLatLng(points[points.length - 1].lat, points[points.length - 1].lng) && (
                         <Marker position={[points[points.length - 1].lat, points[points.length - 1].lng]}>
                           <Popup>Route End</Popup>
                         </Marker>
                       )}
 
                       {(animatedPos || currentPoint) && (
-                        <Marker position={[animatedPos?.lat ?? currentPoint!.lat, animatedPos?.lng ?? currentPoint!.lng]}>
+                        <Marker
+                          position={[
+                            animatedPos?.lat ?? currentPoint!.lat,
+                            animatedPos?.lng ?? currentPoint!.lng
+                          ]}
+                        >
                           <Popup>
                             <div className="text-xs">
                               <div>{new Date(currentTime).toLocaleString()}</div>
@@ -1026,117 +1060,117 @@ export default function ProfessionalHistoryPage() {
           </div>
 
           {hasLoadedSearch && (
-          <aside className="self-start space-y-4 text-gray-900 xl:sticky xl:top-6">
-            <div className="space-y-4">
-              <div className="rounded-2xl border border-gray-200 bg-gradient-to-br from-slate-50 to-white p-4 shadow-sm">
-                <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-500">Vehicle Overview</p>
-                <div className="mt-2 flex items-start justify-between gap-3">
-                  <div>
-                    <h3 className="text-lg font-black text-slate-900">{selectedVehicleLabel}</h3>
-                    <p className="text-xs font-semibold text-slate-500">{selectedVehicle?.make || ""} {selectedVehicle?.model || ""}</p>
+            <aside className="self-start space-y-4 text-gray-900 xl:sticky xl:top-6">
+              <div className="space-y-4">
+                <div className="rounded-2xl border border-gray-200 bg-gradient-to-br from-slate-50 to-white p-4 shadow-sm">
+                  <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-500">Vehicle Overview</p>
+                  <div className="mt-2 flex items-start justify-between gap-3">
+                    <div>
+                      <h3 className="text-lg font-black text-slate-900">{selectedVehicleLabel}</h3>
+                      <p className="text-xs font-semibold text-slate-500">{selectedVehicle?.make || ""} {selectedVehicle?.model || ""}</p>
+                    </div>
+                    <span className="rounded-full border border-slate-200 bg-slate-100 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-slate-700">
+                      {selectedVehicle?.status || "unknown"}
+                    </span>
                   </div>
-                  <span className="rounded-full border border-slate-200 bg-slate-100 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-slate-700">
-                    {selectedVehicle?.status || "unknown"}
-                  </span>
+                  <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Vehicle Type</p>
+                      <p className="font-semibold text-slate-900">{selectedVehicle?.vehicleType || "N/A"}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">IMEI</p>
+                      <p className="font-semibold text-slate-900 break-all">{selectedVehicle?.imei || selectedVehicle?.deviceImei || "N/A"}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Registration</p>
+                      <p className="font-semibold text-slate-900">{selectedVehicle?.registrationNumber || selectedVehicle?.plateNumber || "N/A"}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Organization</p>
+                      <p className="font-semibold text-slate-900">{selectedVehicleOrgName}</p>
+                    </div>
+                  </div>
                 </div>
-                <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-                  <div>
-                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Vehicle Type</p>
-                    <p className="font-semibold text-slate-900">{selectedVehicle?.vehicleType || "N/A"}</p>
+
+                <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-black uppercase tracking-[0.18em] text-slate-700">Playback Snapshot</h3>
+                    <button
+                      onClick={() => setIsDriverModalOpen(true)}
+                      className="text-xs font-bold text-blue-600 hover:text-blue-700"
+                    >
+                      Driver details
+                    </button>
                   </div>
-                  <div>
-                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">IMEI</p>
-                    <p className="font-semibold text-slate-900 break-all">{selectedVehicle?.imei || selectedVehicle?.deviceImei || "N/A"}</p>
+                  <div className="mt-3 space-y-3">
+                    <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+                      <div className="mb-1 flex items-center justify-between text-xs text-gray-700">
+                        <span>Time</span>
+                        <Clock size={12} />
+                      </div>
+                      <div className="text-sm font-semibold">{currentTime ? new Date(currentTime).toLocaleTimeString() : "--:--:--"}</div>
+                    </div>
+
+                    <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+                      <div className="mb-1 flex items-center justify-between text-xs text-gray-700">
+                        <span>Speed</span>
+                        <Gauge size={12} />
+                      </div>
+                      <div className="text-sm font-semibold">{(currentPoint?.speed ?? 0).toFixed(1)} km/h</div>
+                    </div>
+
+                    <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+                      <div className="mb-1 flex items-center justify-between text-xs text-gray-700">
+                        <span>Driver</span>
+                        <Navigation size={12} />
+                      </div>
+                      <div className="text-sm font-semibold">{driverName}</div>
+                    </div>
+
+                    <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+                      <div className="mb-1 flex items-center justify-between text-xs text-gray-700">
+                        <span>Location</span>
+                        <MapPin size={12} />
+                      </div>
+                      <div className="text-xs leading-5 text-gray-900">{currentPoint?.address || "Unknown location"}</div>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Registration</p>
-                    <p className="font-semibold text-slate-900">{selectedVehicle?.registrationNumber || selectedVehicle?.plateNumber || "N/A"}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Organization</p>
-                    <p className="font-semibold text-slate-900">{selectedVehicleOrgName}</p>
+                </div>
+
+                <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+                  <h3 className="text-sm font-black uppercase tracking-[0.18em] text-slate-700">Journey Window</h3>
+                  <div className="mt-3 space-y-3 text-sm">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Start</p>
+                      <p className="font-semibold text-slate-900">{timelineWindow.start}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">End</p>
+                      <p className="font-semibold text-slate-900">{timelineWindow.end}</p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 pt-1">
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Points</p>
+                        <p className="font-semibold text-slate-900">{points.length}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Alerts</p>
+                        <p className="font-semibold text-slate-900">{alertCount}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Max Speed</p>
+                        <p className="font-semibold text-slate-900">{maxSpeed.toFixed(1)} km/h</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Stops</p>
+                        <p className="font-semibold text-slate-900">{timelineStats.stops}</p>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
-
-              <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-black uppercase tracking-[0.18em] text-slate-700">Playback Snapshot</h3>
-                  <button
-                    onClick={() => setIsDriverModalOpen(true)}
-                    className="text-xs font-bold text-blue-600 hover:text-blue-700"
-                  >
-                    Driver details
-                  </button>
-                </div>
-                <div className="mt-3 space-y-3">
-                  <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
-                    <div className="mb-1 flex items-center justify-between text-xs text-gray-700">
-                      <span>Time</span>
-                      <Clock size={12} />
-                    </div>
-                    <div className="text-sm font-semibold">{currentTime ? new Date(currentTime).toLocaleTimeString() : "--:--:--"}</div>
-                  </div>
-
-                  <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
-                    <div className="mb-1 flex items-center justify-between text-xs text-gray-700">
-                      <span>Speed</span>
-                      <Gauge size={12} />
-                    </div>
-                    <div className="text-sm font-semibold">{(currentPoint?.speed ?? 0).toFixed(1)} km/h</div>
-                  </div>
-
-                  <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
-                    <div className="mb-1 flex items-center justify-between text-xs text-gray-700">
-                      <span>Driver</span>
-                      <Navigation size={12} />
-                    </div>
-                    <div className="text-sm font-semibold">{driverName}</div>
-                  </div>
-
-                  <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
-                    <div className="mb-1 flex items-center justify-between text-xs text-gray-700">
-                      <span>Location</span>
-                      <MapPin size={12} />
-                    </div>
-                    <div className="text-xs leading-5 text-gray-900">{currentPoint?.address || "Unknown location"}</div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-                <h3 className="text-sm font-black uppercase tracking-[0.18em] text-slate-700">Journey Window</h3>
-                <div className="mt-3 space-y-3 text-sm">
-                  <div>
-                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Start</p>
-                    <p className="font-semibold text-slate-900">{timelineWindow.start}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">End</p>
-                    <p className="font-semibold text-slate-900">{timelineWindow.end}</p>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3 pt-1">
-                    <div>
-                      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Points</p>
-                      <p className="font-semibold text-slate-900">{points.length}</p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Alerts</p>
-                      <p className="font-semibold text-slate-900">{alertCount}</p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Max Speed</p>
-                      <p className="font-semibold text-slate-900">{maxSpeed.toFixed(1)} km/h</p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Stops</p>
-                      <p className="font-semibold text-slate-900">{timelineStats.stops}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </aside>
+            </aside>
           )}
         </div>
       </div>

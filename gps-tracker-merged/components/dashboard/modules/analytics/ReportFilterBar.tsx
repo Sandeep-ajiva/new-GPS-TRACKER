@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState, useEffect } from "react"
-import { Building2, CalendarRange, Car, Filter, ChevronDown, Search } from "lucide-react"
+import { Building2, CalendarRange, Car, Filter, ChevronDown, Search, Truck, Zap, Calendar, ArrowRight } from "lucide-react"
 import { AnalyticsFilterModal } from "./AnalyticsFilterModal"
 
 export type ReportFilterState = {
@@ -77,6 +77,11 @@ export function ReportFilterBar({
     const isSuperAdmin = normalizedRole === "superadmin" || normalizedRole === "root"
     const isAdmin = normalizedRole === "admin"
 
+    // Sync draft with value when value changes externally (e.g. from modal apply)
+    useEffect(() => {
+        setDraft(value)
+    }, [value])
+
     useEffect(() => {
         if (!isSuperAdmin && isAdmin && organizations.length === 1 && draft.organizationId !== organizations[0]._id) {
             setDraft(prev => ({ ...prev, organizationId: organizations[0]._id }))
@@ -97,7 +102,7 @@ export function ReportFilterBar({
             filtered = filtered.filter(v => (v.organizationId?._id || v.organizationId) === userOrgId)
         }
 
-        // Filter by advanced attributes if present
+        // Filter by advanced attributes
         if (draft.brand && draft.brand !== "all") {
             filtered = filtered.filter(v => (v.brand || v.make || v.vehicleBrand) === draft.brand)
         }
@@ -114,138 +119,194 @@ export function ReportFilterBar({
         return filtered
     }, [vehicles, draft.organizationId, draft.brand, draft.model, draft.branch, draft.vehicleType, isSuperAdmin, userOrgId])
 
+    const selectedVehicleLabel = useMemo(() => {
+        if (value.vehicleId === "all") return "All Vehicles"
+        const v = vehicles.find(v => (v._id || v.id) === value.vehicleId)
+        return v ? v.vehicleNumber : "Selected Vehicle"
+    }, [value.vehicleId, vehicles])
+
     const applyPreset = (preset: "yesterday" | "week" | "month") => {
+        let next = { ...draft }
         if (preset === "yesterday") {
             const y = getYesterday()
-            const next = { ...draft, from: y, to: y }
-            setDraft(next)
-            onApply(next)
+            next = { ...draft, from: y, to: y, preset: "Yesterday" }
         } else if (preset === "week") {
             const w = getLastWeek()
-            const next = { ...draft, ...w }
-            setDraft(next)
-            onApply(next)
+            next = { ...draft, ...w, preset: "Last Week" }
         } else if (preset === "month") {
             const m = getLastMonth()
-            const next = { ...draft, ...m }
-            setDraft(next)
-            onApply(next)
+            next = { ...draft, ...m, preset: "Last Month" }
         }
+        setDraft(next)
+        onApply(next)
     }
 
+    const reportLabel = useMemo(() => {
+        if (value.vehicleId === "all") return `${availableVehicles.length} Vehicles`
+        return vehicles.find(v => (v._id || v.id) === value.vehicleId)?.vehicleNumber || "1 Vehicle"
+    }, [value.vehicleId, availableVehicles, vehicles])
+
+    const activeOrgName = useMemo(() => {
+        return organizations.find(o => o._id === value.organizationId)?.name || "All Organizations"
+    }, [value.organizationId, organizations])
+
+    const dateRangeLabel = useMemo(() => {
+        const from = new Date(value.from).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+        const to = new Date(value.to).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+        return `${from} → ${to}`
+    }, [value.from, value.to])
+
     return (
-        <div className="flex flex-wrap items-center gap-0 border border-[#d8e6d2] bg-white text-sm">
-            {/* FIGMA STYLE COMPACT FILTER BAR */}
+        <div className="flex flex-col border-b border-slate-200 bg-white shadow-sm z-10 sticky top-0">
+            <div className="flex flex-wrap items-center gap-0">
 
-            <div className="flex items-center gap-1 border-r border-[#d8e6d2] px-2 py-2">
-                <button
-                    onClick={() => setIsAdvancedModalOpen(true)}
-                    className="flex h-8 w-8 items-center justify-center rounded border border-[#d8e6d2] bg-white text-slate-500 hover:bg-slate-50 shadow-sm"
-                >
-                    <Search size={16} />
-                </button>
-                <button className="flex h-8 w-8 items-center justify-center rounded border border-[#d8e6d2] bg-[#38a63c] text-white shadow-sm">
-                    <Filter size={16} />
-                </button>
-            </div>
-
-            <div className="flex items-center gap-4 px-6 border-r border-[#d8e6d2] h-[44px]">
-                <button
-                    onClick={() => applyPreset("yesterday")}
-                    className="text-[#2f8d35] font-bold hover:underline"
-                >
-                    Yesterday
-                </button>
-                <button
-                    onClick={() => applyPreset("week")}
-                    className="text-[#2f8d35] font-bold hover:underline"
-                >
-                    Last Week
-                </button>
-                <button
-                    onClick={() => applyPreset("month")}
-                    className="text-[#2f8d35] font-bold hover:underline"
-                >
-                    Last Month
-                </button>
-            </div>
-
-            {showOrgSelector && (
-                <div className="flex items-center border-r border-[#d8e6d2]">
-                    <div className="flex h-[44px] items-center bg-[#f7fbf5] px-4 font-bold text-slate-500">
-                        Company =
-                    </div>
-                    <div className="relative flex items-center bg-white px-2">
-                        <select
-                            value={draft.organizationId}
-                            onChange={(e) => setDraft((v) => ({ ...v, organizationId: e.target.value, vehicleId: "all" }))}
-                            className="appearance-none bg-transparent py-2 pl-2 pr-8 font-bold text-[#2f8d35] outline-none"
-                        >
-                            <option value="all">All</option>
-                            {organizations.map((org) => (
-                                <option key={org._id} value={org._id}>
-                                    {org.name}
-                                </option>
-                            ))}
-                        </select>
-                        <ChevronDown className="pointer-events-none absolute right-2 h-4 w-4 text-[#2f8d35]" />
-                    </div>
-                </div>
-            )}
-
-            <div className="flex items-center border-r border-[#d8e6d2]">
-                <div className="flex h-[44px] items-center bg-[#f7fbf5] px-4 font-bold text-slate-500">
-                    Vehicle =
-                </div>
-                <div className="relative flex items-center bg-white px-2">
-                    <select
-                        value={draft.vehicleId}
-                        onChange={(e) => setDraft((v) => ({ ...v, vehicleId: e.target.value }))}
-                        className="appearance-none bg-transparent py-2 pl-2 pr-8 font-bold text-[#2f8d35] outline-none"
+                {/* Quick Search & Filter Buttons */}
+                <div className="flex items-center gap-1 border-r border-slate-100 p-2">
+                    <button
+                        onClick={() => setIsAdvancedModalOpen(true)}
+                        className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-slate-400 hover:bg-slate-50 hover:text-[#2f8d35] transition-all border border-slate-100 shadow-sm group"
+                        title="Advanced Filters"
                     >
-                        <option value="all">All</option>
-                        {availableVehicles.map((v) => (
-                            <option key={v._id || v.id} value={v._id || v.id}>
-                                {v.vehicleNumber || v.id}
-                            </option>
-                        ))}
-                    </select>
-                    <ChevronDown className="pointer-events-none absolute right-2 h-4 w-4 text-[#2f8d35]" />
+                        <Search size={18} className="group-hover:scale-110 transition-transform" />
+                    </button>
+                    <div className="h-6 w-[1px] bg-slate-100 mx-1"></div>
+                    <button
+                        onClick={() => setIsAdvancedModalOpen(true)}
+                        className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#2f8d35] text-white shadow-lg shadow-[#2f8d35]/20 hover:bg-[#26702b] transition-all active:scale-95 group"
+                        title="Filters Applied"
+                    >
+                        <Filter size={18} className="group-hover:rotate-12 transition-transform" />
+                    </button>
+                </div>
+
+                {/* Presets Grid */}
+                <div className="flex items-center gap-4 px-6 border-r border-slate-100 h-14 bg-slate-50/30">
+                    <button
+                        onClick={() => applyPreset("yesterday")}
+                        className={`text-[10px] uppercase font-black tracking-widest transition-colors ${draft.preset === "Yesterday" ? "text-[#2f8d35] border-b-2 border-[#2f8d35]/50 pb-0.5" : "text-slate-400 hover:text-[#2f8d35]"}`}
+                    >
+                        Yesterday
+                    </button>
+                    <button
+                        onClick={() => applyPreset("week")}
+                        className={`text-[10px] uppercase font-black tracking-widest transition-colors ${draft.preset === "Last Week" ? "text-[#2f8d35] border-b-2 border-[#2f8d35]/50 pb-0.5" : "text-slate-400 hover:text-[#2f8d35]"}`}
+                    >
+                        Last Week
+                    </button>
+                    <button
+                        onClick={() => applyPreset("month")}
+                        className={`text-[10px] uppercase font-black tracking-widest transition-colors ${draft.preset === "Last Month" ? "text-[#2f8d35] border-b-2 border-[#2f8d35]/50 pb-0.5" : "text-slate-400 hover:text-[#2f8d35]"}`}
+                    >
+                        Last Month
+                    </button>
+                </div>
+
+                {/* Smart Selectors */}
+                {showOrgSelector && (
+                    <div className="flex items-center border-r border-slate-100 group cursor-pointer hover:bg-slate-50 transition-all" onClick={() => setIsAdvancedModalOpen(true)}>
+                        <div className="flex h-14 items-center bg-[#fcfdfc] px-4 font-black text-[9px] uppercase tracking-widest text-slate-400 border-r border-slate-100/50">
+                            Company
+                        </div>
+                        <div className="flex items-center px-4 py-2 gap-2">
+                            <div className="h-6 w-6 rounded-lg bg-slate-100 flex items-center justify-center text-slate-400">
+                                <Building2 size={12} />
+                            </div>
+                            <span className="text-[11px] font-black text-slate-700 max-w-[120px] truncate uppercase">
+                                {activeOrgName}
+                            </span>
+                            <ChevronDown size={14} className="text-slate-300 group-hover:text-[#2f8d35] transition-colors" />
+                        </div>
+                    </div>
+                )}
+
+                <div className="flex items-center border-r border-slate-100 group cursor-pointer hover:bg-slate-50 transition-all" onClick={() => setIsAdvancedModalOpen(true)}>
+                    <div className="flex h-14 items-center bg-[#fcfdfc] px-4 font-black text-[9px] uppercase tracking-widest text-slate-400 border-r border-slate-100/50">
+                        Vehicle
+                    </div>
+                    <div className="flex items-center px-4 py-2 gap-2">
+                        <div className="h-6 w-6 rounded-lg bg-[#f0f9ef] flex items-center justify-center text-[#2f8d35]">
+                            <Truck size={12} />
+                        </div>
+                        <div className="flex flex-col">
+                            <span className="text-[11px] font-black text-[#2f8d35] max-w-[140px] truncate uppercase tracking-tight leading-none">
+                                {selectedVehicleLabel}
+                            </span>
+                            {value.vehicleId === "all" && (
+                                <span className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">
+                                    {availableVehicles.length} Assets in scope
+                                </span>
+                            )}
+                        </div>
+                        <ChevronDown size={14} className="text-[#2f8d35]/30 group-hover:text-[#2f8d35] transition-colors" />
+                    </div>
+                </div>
+
+                {/* Date Range - High Profile */}
+                <div className="flex items-center border-r border-slate-100 px-6 h-14 bg-slate-50/10">
+                    <div className="flex items-center gap-3 bg-white border border-slate-200 rounded-2xl px-3 py-1.5 shadow-sm group hover:border-[#2f8d35]/30 transition-all">
+                        <Calendar size={14} className="text-slate-300" />
+                        <input
+                            type="date"
+                            value={draft.from}
+                            onChange={(e) => {
+                                const next = { ...draft, from: e.target.value }
+                                setDraft(next)
+                                onApply(next)
+                            }}
+                            className="bg-transparent text-[11px] font-black text-slate-700 outline-none uppercase tracking-tighter"
+                        />
+                        <ArrowRight size={12} className="text-slate-200" />
+                        <input
+                            type="date"
+                            value={draft.to}
+                            onChange={(e) => {
+                                const next = { ...draft, to: e.target.value }
+                                setDraft(next)
+                                onApply(next)
+                            }}
+                            className="bg-transparent text-[11px] font-black text-slate-700 outline-none uppercase tracking-tighter"
+                        />
+                    </div>
+                </div>
+
+                {/* Final Action */}
+                <div className="ml-auto flex items-center pr-4 py-2">
+                    <button
+                        type="button"
+                        onClick={() => onApply(draft)}
+                        className="inline-flex h-10 items-center gap-3 rounded-xl bg-[#2f8d35] px-6 text-[10px] font-black uppercase tracking-[0.2em] text-white transition shadow-lg shadow-[#2f8d35]/20 hover:bg-[#26702b] hover:-translate-y-0.5 active:translate-y-0 group"
+                    >
+                        <Zap className="h-3.5 w-3.5 group-hover:animate-pulse" />
+                        Update Report ({value.vehicleId === "all" ? availableVehicles.length : 1})
+                    </button>
                 </div>
             </div>
 
-            <div className="flex items-center border-r border-[#d8e6d2]">
-                <div className="flex h-[44px] items-center bg-[#f7fbf5] px-4 font-bold text-slate-500">
-                    Date Range
+            {/* Summary Context Strip */}
+            <div className="flex flex-wrap items-center gap-6 px-4 py-1.5 bg-slate-900 text-white min-h-[32px]">
+                <div className="flex items-center gap-2 border-r border-white/10 pr-4">
+                    <span className="text-[8px] font-black text-white/40 uppercase tracking-[0.2em]">Organization:</span>
+                    <span className="text-[9px] font-black text-[#4ade80] uppercase tracking-wider">{activeOrgName}</span>
                 </div>
-                <div className="flex items-center bg-[#38a63c] px-3 py-1.5 mx-2 rounded-[4px] text-white font-bold">
-                    <input
-                        type="date"
-                        value={draft.from}
-                        onChange={(e) => setDraft((v) => ({ ...v, from: e.target.value }))}
-                        className="bg-transparent text-white outline-none [color-scheme:dark]"
-                    />
+                <div className="flex items-center gap-2 border-r border-white/10 pr-4">
+                    <span className="text-[8px] font-black text-white/40 uppercase tracking-[0.2em]">Assets:</span>
+                    <div className="flex items-center gap-1.5">
+                        <span className="text-[9px] font-black text-white uppercase tracking-wider">{reportLabel}</span>
+                        {value.vehicleId === "all" && <span className="bg-white/10 px-1.5 py-0.5 rounded text-[8px] font-bold">ALL</span>}
+                    </div>
                 </div>
-                <span className="font-bold text-slate-400">to</span>
-                <div className="flex items-center bg-[#38a63c] px-3 py-1.5 mx-2 rounded-[4px] text-white font-bold">
-                    <input
-                        type="date"
-                        value={draft.to}
-                        onChange={(e) => setDraft((v) => ({ ...v, to: e.target.value }))}
-                        className="bg-transparent text-white outline-none [color-scheme:dark]"
-                    />
+                <div className="flex items-center gap-2 border-r border-white/10 pr-4">
+                    <span className="text-[8px] font-black text-white/40 uppercase tracking-[0.2em]">Range:</span>
+                    <span className="text-[9px] font-black text-white uppercase tracking-wider">{dateRangeLabel}</span>
                 </div>
-            </div>
-
-            <div className="ml-auto flex items-center pr-2">
-                <button
-                    type="button"
-                    onClick={() => onApply(draft)}
-                    className="inline-flex h-[32px] items-center gap-2 rounded-lg bg-[#38a63c] px-4 text-xs font-black text-white transition hover:bg-[#2f8d35]"
-                >
-                    <Filter className="h-3 w-3" />
-                    Apply
-                </button>
+                <div className="flex items-center gap-2">
+                    <span className="text-[8px] font-black text-white/40 uppercase tracking-[0.2em]">Preset:</span>
+                    <span className="text-[9px] font-black text-amber-400 uppercase tracking-wider">{value.preset || "Custom Range"}</span>
+                </div>
+                <div className="ml-auto flex items-center gap-2">
+                    <div className="h-1.5 w-1.5 rounded-full bg-[#4ade80] animate-pulse"></div>
+                    <span className="text-[8px] font-black text-white/30 uppercase tracking-[0.3em]">Live Analytics Stream</span>
+                </div>
             </div>
 
             {isAdvancedModalOpen && (
@@ -263,5 +324,5 @@ export function ReportFilterBar({
                 />
             )}
         </div>
-    )
+    );
 }

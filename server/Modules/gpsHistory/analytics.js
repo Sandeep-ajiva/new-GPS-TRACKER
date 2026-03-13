@@ -59,16 +59,23 @@ function calculateTripDistance(points) {
     .map((point) => point.odometer)
     .filter((value) => isFiniteNumber(value));
 
+  let odoDistance = 0;
   if (validOdometers.length >= 2) {
-    const start = validOdometers[0];
-    const end = validOdometers[validOdometers.length - 1];
-
-    if (end >= start) {
-      return Number((end - start).toFixed(2));
+    const startValue = validOdometers[0];
+    const endValue = validOdometers[validOdometers.length - 1];
+    if (endValue >= startValue) {
+      odoDistance = Number((endValue - startValue).toFixed(2));
     }
   }
 
-  return calculatePathDistance(points);
+  const pathDistance = calculatePathDistance(points);
+
+  // Use path distance if odometer is static (common in simulations or config errors)
+  if (odoDistance <= 0 && pathDistance > 0) {
+    return pathDistance;
+  }
+
+  return odoDistance || pathDistance;
 }
 
 function finalizeTrip(points, endedByIgnitionOff) {
@@ -96,8 +103,9 @@ function finalizeTrip(points, endedByIgnitionOff) {
 
     if ((curr.speed || 0) > maxSpeed) maxSpeed = curr.speed || 0;
 
-    // If point has an alert flag (if available) - placeholder
+    // Detection logic
     if (curr.emergencyStatus) alerts++;
+    if ((curr.speed || 0) > 60) alerts++; // Overspeed Threshold
   }
 
   const distance = calculateTripDistance(points);
@@ -226,6 +234,9 @@ function buildTrips(historyPoints = []) {
   const totalStop = trips.reduce((sum, trip) => sum + trip.stopTime, 0);
   const totalInactive = trips.reduce((sum, trip) => sum + (trip.inactiveTime || 0), 0);
 
+  const firstIgnitionOnPoint = orderedPoints.find(p => p.ignitionStatus);
+  const lastIgnitionOffPoint = [...orderedPoints].reverse().find(p => p.ignitionStatus === false);
+
   return {
     trips,
     tripSummary: {
@@ -238,6 +249,16 @@ function buildTrips(historyPoints = []) {
       totalInactive,
       stopCount: trips.filter((trip) => trip.endedByIgnitionOff).length,
       averageTripDuration: trips.length > 0 ? Math.round(totalDuration / trips.length) : 0,
+      firstIgnitionOn: firstIgnitionOnPoint ? {
+        time: firstIgnitionOnPoint.gpsTimestamp,
+        location: toLocation(firstIgnitionOnPoint)
+      } : null,
+      lastIgnitionOff: lastIgnitionOffPoint ? {
+        time: lastIgnitionOffPoint.gpsTimestamp,
+        location: toLocation(lastIgnitionOffPoint)
+      } : null,
+      avgSpeed: totalRunning > 0 ? Number((totalTripDistance / (totalRunning / 3600)).toFixed(2)) : 0,
+      maxSpeed: trips.length > 0 ? Math.max(...trips.map(t => t.maxSpeed || 0)) : 0
     },
   };
 }

@@ -515,6 +515,21 @@ const Service = {
             "warning",
           );
         }
+
+        // Ignition Alerts (based on transition)
+        if (ignition && !(prev && prev.ignitionStatus)) {
+          await createAlertAndCount(
+            "ignition_on",
+            "Vehicle Ignition Turned ON",
+            "info",
+          );
+        } else if (!ignition && prev && prev.ignitionStatus) {
+          await createAlertAndCount(
+            "ignition_off",
+            "Vehicle Ignition Turned OFF",
+            "info",
+          );
+        }
       } catch (e) {
         console.error("Alert error:", e);
       }
