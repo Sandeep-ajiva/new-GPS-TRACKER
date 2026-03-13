@@ -461,6 +461,7 @@ export default function DriversPage() {
                             exportUrl="/importexport/export/drivers"
                             allowedFields={[
                                 "organizationId",
+                                "organizationName",
                                 "firstName",
                                 "lastName",
                                 "email",
@@ -471,8 +472,10 @@ export default function DriversPage() {
                                 "password",
                             ]}
                             requiredFields={[
-                                ...(isSuperAdmin ? ["organizationId"] : []),
+                                ...(isSuperAdmin || isRootOrgAdmin ? ["organizationId"] : []),
                                 "firstName",
+                                "lastName",
+                                "email",
                                 "phone",
                                 "licenseNumber",
                                 "password",

@@ -16,6 +16,8 @@ import { useGetGpsDevicesQuery } from "@/redux/api/gpsDeviceApi";
 import { useGetOrganizationsQuery } from "@/redux/api/organizationApi";
 // 🔐 ORG CONTEXT UPDATE
 import { useOrgContext } from "@/hooks/useOrgContext";
+// 🔧 ACTIVE STATUS FILTERING
+import { isActiveStatus, filterExcludedIds } from "@/utils/mappingHelpers";
 
 export default function DriverMappingPage() {
     // 🔐 ORG CONTEXT UPDATE
@@ -77,13 +79,19 @@ export default function DriverMappingPage() {
     );
 
     const availableVehicles = useMemo(
-        () => vehicles.filter((v: any) =>
-            !assignedVehicleIds.has(v._id?.toString()) && v.deviceId
-        ),
+        () => {
+            // ✅ FIXED: Filter by both unassigned AND active status
+            const unassignedVehicles = filterExcludedIds(vehicles || [], assignedVehicleIds);
+            return unassignedVehicles.filter((v: any) => isActiveStatus(v.status) && v.deviceId);
+        },
         [vehicles, assignedVehicleIds],
     );
     const availableDrivers = useMemo(
-        () => drivers.filter((d: any) => !assignedDriverIds.has(d._id?.toString())),
+        () => {
+            // ✅ FIXED: Filter by both unassigned AND active status
+            const unassignedDrivers = filterExcludedIds(drivers || [], assignedDriverIds);
+            return unassignedDrivers.filter((d: any) => isActiveStatus(d.status));
+        },
         [drivers, assignedDriverIds],
     );
 

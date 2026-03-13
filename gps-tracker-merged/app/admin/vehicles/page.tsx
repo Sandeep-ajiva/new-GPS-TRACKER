@@ -785,6 +785,7 @@ export default function VehiclesPage() {
               exportUrl="/importexport/export/vehicles"
               allowedFields={[
                 "organizationId",
+                "organizationName",
                 "vehicleType",
                 "vehicleNumber",
                 "ais140Compliant",
@@ -798,7 +799,11 @@ export default function VehiclesPage() {
                 "lastUpdated",
                 "deviceImei",
               ]}
-              requiredFields={["organizationId", "vehicleType", "vehicleNumber"]}
+              requiredFields={[
+                ...(isSuperAdmin || isRootOrgAdmin ? ["organizationId"] : []),
+                "vehicleType",
+                "vehicleNumber",
+              ]}
               filters={{
                 vehicleNumber: filters.number,
                 vehicleType: filters.type,

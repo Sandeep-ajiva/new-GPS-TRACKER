@@ -489,7 +489,7 @@ exports.delete = async (req, res) => {
         });
       }
       
-      if (!organization.parentOrganizationId) {
+      if (!organization.parentOrganizationId || organization.parentOrganizationId === "") {
   return res.status(400).json({
           status: false, 
     message: "Root organization cannot be deleted",

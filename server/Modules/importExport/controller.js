@@ -2,6 +2,7 @@ const ImportExportService = require("./service");
 
 exports.importData = async (req, res) => {
   try {
+
     if (!["admin", "superadmin"].includes(req.user.role)) {
       return res.status(403).json({
         status: false,
@@ -10,7 +11,7 @@ exports.importData = async (req, res) => {
     }
 
     const { entity } = req.params;
-    const result = await ImportExportService.importCsv({
+    const result = await ImportExportService.importData({
       entity: (entity || "").toLowerCase(),
       file: req.file,
       req,
@@ -36,7 +37,7 @@ exports.exportData = async (req, res) => {
     }
 
     const { entity } = req.params;
-    await ImportExportService.exportCsv({
+    await ImportExportService.exportData({
       entity: (entity || "").toLowerCase(),
       req,
       res,

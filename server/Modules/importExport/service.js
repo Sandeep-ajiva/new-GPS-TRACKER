@@ -1,231 +1,217 @@
 const fs = require("fs");
-const path = require("path");
-const readline = require("readline");
-const Vehicle = require("../vehicle/model");
-const GpsDevice = require("../gpsDevice/model");
-const GpsHistory = require("../gpsHistory/model");
-const Driver = require("../drivers/model");
+const XLSX = require("xlsx");
 const Organization = require("../organizations/model");
-const User = require("../users/model");
+const { getEntityConfig } = require("./config");
 const {
   CHUNK_SIZE,
+  parseJsonField,
+  sanitizeString,
+  detectFileType,
   validateUploadedFile,
   validateEntity,
-  prepareHeader,
+  buildColumnMapping,
+  getMissingRequiredMappings,
 } = require("./validator");
-const { parseCsvLine, processChunk } = require("./processor");
+const { processChunk } = require("./processor");
 
 function escapeCsv(value) {
   if (value === null || value === undefined) return "";
-  const str = String(value);
-  if (str.includes('"') || str.includes(",") || str.includes("\n")) {
-    return `"${str.replace(/"/g, '""')}"`;
+  const stringValue = String(value);
+  if (/[",\n]/.test(stringValue)) {
+    return `"${stringValue.replace(/"/g, '""')}"`;
   }
-  return str;
+  return stringValue;
 }
 
-function buildExportConfig(entity) {
-  if (entity === "vehicles") {
-    return {
-      model: Vehicle,
-      filename: "vehicles-export.csv",
-      headers: [
-        "organizationId",
-        "vehicleType",
-        "vehicleNumber",
-        "make",
-        "model",
-        "year",
-        "color",
-        "status",
-        "runningStatus",
-        "ais140Compliant",
-        "ais140CertificateNumber",
-        "deviceId",
-        "deviceImei",
-        "lastUpdated",
-      ],
-      mapper: (doc) => ({
-        organizationId: doc.organizationId || "",
-        vehicleType: doc.vehicleType || "",
-        vehicleNumber: doc.vehicleNumber || "",
-        make: doc.make || "",
-        model: doc.model || "",
-        year: doc.year ?? "",
-        color: doc.color || "",
-        status: doc.status || "",
-        runningStatus: doc.runningStatus || "",
-        ais140Compliant: doc.ais140Compliant ?? "",
-        ais140CertificateNumber: doc.ais140CertificateNumber || "",
-        deviceId: doc.deviceId || "",
-        deviceImei: doc.deviceImei || "",
-        lastUpdated: doc.lastUpdated ? new Date(doc.lastUpdated).toISOString() : "",
-      }),
-    };
+function parseWorkbook(filePath, fileType) {
+  const workbook = XLSX.readFile(filePath, {
+    type: "file",
+    raw: false,
+    dense: true,
+  });
+  const sheetName = workbook.SheetNames[0];
+  if (!sheetName) {
+    throw { status: 400, message: "The uploaded file does not contain any sheets" };
   }
 
-  if (entity === "devices") {
-    return {
-      model: GpsDevice,
-      filename: "devices-export.csv",
-      headers: [
-        "organizationId",
-        "imei",
-        "softwareVersion",
-        "vendorId",
-        "deviceModel",
-        "manufacturer",
-        "simNumber",
-        "serialNumber",
-        "firmwareVersion",
-        "hardwareVersion",
-        "warrantyExpiry",
-        "status",
-        "vehicleId",
-        "vehicleRegistrationNumber",
-      ],
-      mapper: (doc) => ({
-        organizationId: doc.organizationId || "",
-        imei: doc.imei || "",
-        softwareVersion: doc.softwareVersion || "",
-        vendorId: doc.vendorId || "",
-        deviceModel: doc.deviceModel || "",
-        manufacturer: doc.manufacturer || "",
-        simNumber: doc.simNumber || "",
-        serialNumber: doc.serialNumber || "",
-        firmwareVersion: doc.firmwareVersion || "",
-        hardwareVersion: doc.hardwareVersion || "",
-        warrantyExpiry: doc.warrantyExpiry ? new Date(doc.warrantyExpiry).toISOString() : "",
-        status: doc.status || "",
-        vehicleId: doc.vehicleId || "",
-        vehicleRegistrationNumber: doc.vehicleRegistrationNumber || "",
-      }),
-    };
+  const worksheet = workbook.Sheets[sheetName];
+  const rows = XLSX.utils.sheet_to_json(worksheet, {
+    header: 1,
+    defval: "",
+    blankrows: false,
+    raw: false,
+  });
+
+  const firstNonEmptyRowIndex = rows.findIndex((row) =>
+    Array.isArray(row) && row.some((cell) => sanitizeString(cell) !== ""),
+  );
+
+  if (firstNonEmptyRowIndex === -1) {
+    throw { status: 400, message: "Empty file or missing header row" };
   }
 
-  if (entity === "history") {
-    return {
-      model: GpsHistory,
-      filename: "history-export.csv",
-      headers: [
-        "organizationId",
-        "vehicleId",
-        "gpsDeviceId",
-        "imei",
-        "gpsTimestamp",
-        "latitude",
-        "longitude",
-        "speed",
-        "heading",
-        "ignitionStatus",
-        "packetType",
-      ],
-      mapper: (doc) => ({
-        organizationId: doc.organizationId || "",
-        vehicleId: doc.vehicleId || "",
-        gpsDeviceId: doc.gpsDeviceId || "",
-        imei: doc.imei || "",
-        gpsTimestamp: doc.gpsTimestamp ? new Date(doc.gpsTimestamp).toISOString() : "",
-        latitude: doc.latitude ?? "",
-        longitude: doc.longitude ?? "",
-        speed: doc.speed ?? "",
-        heading: doc.heading ?? "",
-        ignitionStatus: doc.ignitionStatus ?? "",
-        packetType: doc.packetType || "",
-      }),
-    };
+  const rawHeaders = (rows[firstNonEmptyRowIndex] || []).map((header) => sanitizeString(header));
+  if (!rawHeaders.some(Boolean)) {
+    throw { status: 400, message: "Empty file or missing header row" };
   }
 
-  if (entity === "drivers") {
-    return {
-      model: Driver,
-      filename: "drivers-export.csv",
-      headers: [
-        "organizationId",
-        "firstName",
-        "lastName",
-        "email",
-        "phone",
-        "licenseNumber",
-        "licenseExpiry",
-        "status",
-        "createdAt",
-      ],
-      mapper: (doc) => ({
-        organizationId: doc.organizationId || "",
-        firstName: doc.firstName || "",
-        lastName: doc.lastName || "",
-        email: doc.email || "",
-        phone: doc.phone || "",
-        licenseNumber: doc.licenseNumber || "",
-        licenseExpiry: doc.licenseExpiry ? new Date(doc.licenseExpiry).toISOString() : "",
-        status: doc.status || "",
-        createdAt: doc.createdAt ? new Date(doc.createdAt).toISOString() : "",
-      }),
-    };
+  const dataRows = rows
+    .slice(firstNonEmptyRowIndex + 1)
+    .filter((row) => Array.isArray(row) && row.some((cell) => sanitizeString(cell) !== ""))
+    .map((row, index) => {
+      const record = {};
+      rawHeaders.forEach((header, headerIndex) => {
+        record[header] = row[headerIndex] ?? "";
+      });
+      return {
+        rowNumber: firstNonEmptyRowIndex + 2 + index,
+        data: record,
+      };
+    });
+
+  return {
+    fileType,
+    rawHeaders,
+    rows: dataRows,
+    sheetName,
+  };
+}
+
+async function buildImportContext(req) {
+  const organizationQuery =
+    req.orgScope === "ALL"
+      ? {}
+      : { _id: { $in: req.orgScope } };
+  const organizations = await Organization.find(organizationQuery)
+    .select("_id name path parentOrganizationId")
+    .lean();
+
+  const organizationsById = new Map();
+  const organizationsByNormalizedName = new Map();
+  for (const organization of organizations) {
+    organizationsById.set(String(organization._id), organization);
+    const key = sanitizeString(organization.name).toLowerCase();
+    if (!organizationsByNormalizedName.has(key)) {
+      organizationsByNormalizedName.set(key, []);
+    }
+    organizationsByNormalizedName.get(key).push(organization);
   }
 
-  if (entity === "organizations") {
-    return {
-      model: Organization,
-      filename: "organizations-export.csv",
-      headers: [
-        "name",
-        "organizationType",
-        "email",
-        "phone",
-        "addressLine",
-        "city",
-        "state",
-        "country",
-        "pincode",
-        "parentOrganizationId",
-        "status",
-      ],
-      mapper: (doc) => ({
-        name: doc.name || "",
-        organizationType: doc.organizationType || "",
-        email: doc.email || "",
-        phone: doc.phone || "",
-        addressLine: doc.address?.addressLine || "",
-        city: doc.address?.city || "",
-        state: doc.address?.state || "",
-        country: doc.address?.country || "",
-        pincode: doc.address?.pincode || "",
-        parentOrganizationId: doc.parentOrganizationId || "",
-        status: doc.status || "",
-      }),
-    };
-  }
+  return {
+    organizations,
+    organizationsById,
+    organizationsByNormalizedName,
+  };
+}
 
-  if (entity === "users") {
-    return {
-      model: User,
-      filename: "users-export.csv",
-      headers: [
-        "organizationId",
-        "firstName",
-        "lastName",
-        "email",
-        "mobile",
-        "role",
-        "status",
-        "createdAt",
-      ],
-      mapper: (doc) => ({
-        organizationId: doc.organizationId || "",
-        firstName: doc.firstName || "",
-        lastName: doc.lastName || "",
-        email: doc.email || "",
-        mobile: doc.mobile || "",
-        role: doc.role || "",
-        status: doc.status || "",
-        createdAt: doc.createdAt ? new Date(doc.createdAt).toISOString() : "",
-      }),
-    };
-  }
+function finalizeResult(entity, fileType, totalRows, processedRows, result) {
+  const failedRows = result.errorRowSet.size;
+  const duplicateRows = result.duplicateRowSet.size;
 
-  return null;
+  return {
+    success: result.successfulRows > 0 && failedRows === 0 && duplicateRows === 0,
+    status: result.successfulRows > 0,
+    entity,
+    fileType,
+    totalRows,
+    processedRows,
+    successfulRows: result.successfulRows,
+    failedRows,
+    duplicateRows,
+    errors: result.errors,
+    summary: {
+      inserted: result.summary.inserted,
+      updated: result.summary.updated,
+      skipped: failedRows + duplicateRows,
+    },
+    message:
+      result.successfulRows > 0
+        ? failedRows || duplicateRows
+          ? "Import completed with partial success"
+          : "Import completed successfully"
+        : "No rows were imported",
+  };
+}
+
+async function importData({ entity, file, req }) {
+  validateEntity(entity);
+  validateUploadedFile(file);
+
+  try {
+    const fileType = detectFileType(file);
+    const parsedWorkbook = parseWorkbook(file.path, fileType);
+    const selectedOrganizationId = sanitizeString(req.body.organizationId);
+    const providedMapping = parseJsonField(req.body.mapping, {});
+    const excludedRows = new Set(parseJsonField(req.body.excludedRows, []).map((value) => Number(value)));
+    const columnMapping = buildColumnMapping(entity, parsedWorkbook.rawHeaders, providedMapping);
+    const missingRequiredMappings = getMissingRequiredMappings(entity, columnMapping, {
+      selectedOrganizationId,
+    });
+
+    if (missingRequiredMappings.length > 0) {
+      throw {
+        status: 400,
+        message: `Missing required mapping: ${missingRequiredMappings.join(", ")}`,
+        data: {
+          entity,
+          fileType,
+          missingRequiredMappings,
+          columnMapping,
+        },
+      };
+    }
+
+    const mappedRows = parsedWorkbook.rows
+      .filter((row, index) => !excludedRows.has(index))
+      .map((row) => {
+        const mapped = {};
+        for (const [sourceColumn, destinationField] of Object.entries(columnMapping)) {
+          if (!destinationField) continue;
+          mapped[destinationField] = row.data[sourceColumn];
+        }
+        return {
+          rowNumber: row.rowNumber,
+          data: mapped,
+        };
+      })
+      .filter((row) => Object.keys(row.data).length > 0);
+
+    if (mappedRows.length === 0) {
+      throw { status: 400, message: "No data rows available after mapping and exclusions" };
+    }
+
+    const context = await buildImportContext(req);
+    const result = {
+      successfulRows: 0,
+      errors: [],
+      errorRowSet: new Set(),
+      duplicateRowSet: new Set(),
+      summary: {
+        inserted: 0,
+        updated: 0,
+      },
+    };
+    const state = {
+      seenVehicleKeys: new Set(),
+      seenDeviceImeis: new Set(),
+      seenDriverKeys: new Set(),
+    };
+
+    for (let start = 0; start < mappedRows.length; start += CHUNK_SIZE) {
+      const chunk = mappedRows.slice(start, start + CHUNK_SIZE);
+      await processChunk(entity, chunk, req, context, result, state, {
+        selectedOrganizationId,
+      });
+    }
+
+    return finalizeResult(entity, fileType, parsedWorkbook.rows.length, mappedRows.length, result);
+  } finally {
+    try {
+      await fs.promises.unlink(file.path);
+    } catch (_) {
+      // Ignore cleanup errors.
+    }
+  }
 }
 
 function buildExportFilter(entity, req) {
@@ -234,9 +220,8 @@ function buildExportFilter(entity, req) {
   if (entity === "organizations") {
     if (req.user.role !== "superadmin" && req.orgScope !== "ALL") {
       filter._id = { $in: req.orgScope };
-    } else if (req.query.organizationId) {
-      filter._id = req.query.organizationId;
     }
+    if (req.query.organizationId) filter._id = req.query.organizationId;
     if (req.query.status) filter.status = req.query.status;
     if (req.query.organizationType) filter.organizationType = req.query.organizationType;
     return filter;
@@ -252,13 +237,13 @@ function buildExportFilter(entity, req) {
     filter.organizationId = req.query.organizationId;
   }
 
-  if (entity === "history") {
-    if (req.query.vehicleId) filter.vehicleId = req.query.vehicleId;
-    if (req.query.imei) filter.imei = req.query.imei;
+  if (entity === "users") {
+    if (req.query.role) filter.role = req.query.role;
+    if (req.query.status) filter.status = req.query.status;
     if (req.query.from || req.query.to) {
-      filter.gpsTimestamp = {};
-      if (req.query.from) filter.gpsTimestamp.$gte = new Date(req.query.from);
-      if (req.query.to) filter.gpsTimestamp.$lte = new Date(req.query.to);
+      filter.createdAt = {};
+      if (req.query.from) filter.createdAt.$gte = new Date(req.query.from);
+      if (req.query.to) filter.createdAt.$lte = new Date(req.query.to);
     }
   }
 
@@ -271,121 +256,58 @@ function buildExportFilter(entity, req) {
     }
   }
 
-  if (entity === "users") {
-    if (req.query.role) filter.role = req.query.role;
+  if (entity === "vehicles") {
+    if (req.query.vehicleType) filter.vehicleType = req.query.vehicleType;
     if (req.query.status) filter.status = req.query.status;
-    if (req.query.organizationId) filter.organizationId = req.query.organizationId;
-    if (req.query.from || req.query.to) {
-      filter.createdAt = {};
-      if (req.query.from) filter.createdAt.$gte = new Date(req.query.from);
-      if (req.query.to) filter.createdAt.$lte = new Date(req.query.to);
-    }
+    if (req.query.runningStatus) filter.runningStatus = req.query.runningStatus;
+  }
+
+  if (entity === "devices") {
+    if (req.query.status) filter.status = req.query.status;
+    if (req.query.imei) filter.imei = req.query.imei;
   }
 
   return filter;
 }
 
-async function importCsv({ entity, file, req }) {
+async function exportData({ entity, req, res }) {
   validateEntity(entity);
-  validateUploadedFile(file);
-
-  const result = {
-    totalRows: 0,
-    successCount: 0,
-    failedCount: 0,
-    errors: [],
-  };
-
-  const state = {
-    seenVehicleKeys: new Set(),
-    seenDeviceImeis: new Set(),
-    seenDriverKeys: new Set(),
-  };
-
-  const stream = fs.createReadStream(file.path, { encoding: "utf8" });
-  const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
-
-  let headers = null;
-  let rowNumber = 0;
-  let chunk = [];
-  let hasAnyDataRow = false;
-
-  try {
-    for await (const line of rl) {
-      if (!headers) {
-        if (!line || !line.trim()) continue;
-        headers = prepareHeader(entity, parseCsvLine(line));
-        continue;
-      }
-
-      if (!line || !line.trim()) continue;
-      rowNumber += 1;
-      hasAnyDataRow = true;
-      result.totalRows += 1;
-
-      chunk.push({ rowNumber, values: parseCsvLine(line) });
-      if (chunk.length === CHUNK_SIZE) {
-        await processChunk(entity, chunk, headers, req, result, state);
-        chunk = [];
-      }
-    }
-
-    if (!headers) {
-      throw { status: 400, message: "Empty file or missing header row" };
-    }
-
-    if (!hasAnyDataRow) {
-      throw { status: 400, message: "Empty file. No data rows found" };
-    }
-
-    if (chunk.length > 0) {
-      await processChunk(entity, chunk, headers, req, result, state);
-    }
-
-    if (result.successCount === 0) {
-      throw {
-        status: 400,
-        message: "No valid rows to import",
-        data: result,
-      };
-    }
-
-    return {
-      status: true,
-      message: "Import completed",
-      data: result,
-    };
-  } finally {
-    try {
-      await fs.promises.unlink(file.path);
-    } catch (_) {
-      // ignore cleanup error
-    }
-  }
-}
-
-async function exportCsv({ entity, req, res }) {
-  validateEntity(entity);
-  const config = buildExportConfig(entity);
-  if (!config) throw { status: 400, message: "Unsupported export entity" };
-
+  const config = getEntityConfig(entity);
+  const exportConfig = config.export;
+  const format = sanitizeString(req.query.format).toLowerCase() === "excel" ? "excel" : "csv";
   const filter = buildExportFilter(entity, req);
 
-  res.setHeader("Content-Type", "text/csv; charset=utf-8");
-  res.setHeader("Content-Disposition", `attachment; filename="${config.filename}"`);
-  res.write(`${config.headers.join(",")}\n`);
+  const query = exportConfig.model.find(filter).lean();
+  (exportConfig.populate || []).forEach((populateConfig) => {
+    query.populate(populateConfig);
+  });
 
-  const cursor = config.model.find(filter).lean().cursor();
+  const docs = await query;
+  const rows = docs.map((doc) => exportConfig.mapDocument(doc));
 
-  for await (const doc of cursor) {
-    const rowObj = config.mapper(doc);
-    const row = config.headers.map((h) => escapeCsv(rowObj[h])).join(",");
-    res.write(`${row}\n`);
+  if (format === "excel") {
+    const worksheet = XLSX.utils.json_to_sheet(rows, { header: exportConfig.headers });
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, entity);
+    const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
+
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename="${exportConfig.filename}.xlsx"`);
+    res.send(buffer);
+    return;
   }
-  res.end();
+
+  const csv = [
+    exportConfig.headers.join(","),
+    ...rows.map((row) => exportConfig.headers.map((header) => escapeCsv(row[header])).join(",")),
+  ].join("\n");
+
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="${exportConfig.filename}.csv"`);
+  res.send(csv);
 }
 
 module.exports = {
-  importCsv,
-  exportCsv,
+  importData,
+  exportData,
 };

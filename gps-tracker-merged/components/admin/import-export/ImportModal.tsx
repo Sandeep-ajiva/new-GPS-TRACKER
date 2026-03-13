@@ -1,19 +1,25 @@
 "use client";
 
-import { useMemo, useState, useRef } from "react";
-import { Loader2, Upload, Download, X, FileText, FileSpreadsheet, ChevronLeft, ChevronRight, Building2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import * as XLSX from "xlsx";
+import {
+  CheckSquare,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  FileSpreadsheet,
+  FileText,
+  Loader2,
+  RefreshCcw,
+  Upload,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 import MappingTable from "./MappingTable";
 import ValidationSummary from "./ValidationSummary";
-import { runExport } from "./ExportHandler";
-import { useImportExport } from "@/hooks/useImportExport";
-import { FilePond } from "react-filepond";
-import "filepond/dist/filepond.min.css";
+import { useImportExport, type ImportResult } from "@/hooks/useImportExport";
 import { generateSampleFile } from "@/utils/sampleFileGenerator";
-import { generateCSVExport } from "@/utils/csvExportGenerator";
-import { generateExcelExport } from "@/utils/excelExportGenerator";
-import { getSecureItem } from "@/app/admin/Helpers/encryptionHelper";
-import { parseExcelHeaders, parseExcelRows } from "@/utils/importExport/excelParser";
+import { parseImportFile, type ParsedImportFile } from "@/utils/importExport/fileParser";
 import { useOrgContext } from "@/hooks/useOrgContext";
 import { useGetOrganizationsQuery } from "@/redux/api/organizationApi";
 
@@ -29,16 +35,202 @@ type ImportModalProps = {
   onCompleted?: () => void;
 };
 
-const MAX_FILE_SIZE = 25 * 1024 * 1024;
-const ALLOWED_EXT = [".csv", ".xlsx", ".xls"];
+type LocalRowIssue = {
+  rowIndex: number;
+  rowNumber: number;
+  field: string;
+  message: string;
+};
 
-function fileExt(name: string) {
-  const idx = name.lastIndexOf(".");
-  return idx >= 0 ? name.slice(idx).toLowerCase() : "";
+type InvalidRowSummary = {
+  rowIndex: number;
+  rowNumber: number;
+  messages: string[];
+};
+
+const MAX_FILE_SIZE = 25 * 1024 * 1024;
+const ACCEPTED_TYPES = ".csv,.xlsx,.xls";
+const PREVIEW_PAGE_SIZE = 5;
+const AUTO_ORG_FIELDS = new Set(["organizationId", "organization", "organizationName"]);
+const VEHICLE_STATUS = new Set(["active", "inactive", "maintenance", "decommissioned"]);
+const VEHICLE_RUNNING_STATUS = new Set(["running", "idle", "stopped", "inactive"]);
+const VEHICLE_TYPES = new Set(["car", "bus", "truck", "bike", "other"]);
+const USER_STATUS = new Set(["active", "inactive"]);
+const USER_ROLES = new Set(["admin", "driver"]);
+const ORG_TYPES = new Set(["logistics", "transport", "school", "taxi", "fleet"]);
+
+function normalizeKey(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
-function normalizeKey(key: string) {
-  return key.toLowerCase().replace(/[^a-z0-9]/g, "");
+function normalizeValue(value: string | undefined) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function buildDefaultMapping(columns: string[], allowedFields: string[]) {
+  const normalizedTargets = new Map(allowedFields.map((field) => [normalizeKey(field), field]));
+  const next: Record<string, string> = {};
+  columns.forEach((column) => {
+    next[column] = normalizedTargets.get(normalizeKey(column)) || "";
+  });
+  return next;
+}
+
+function validatePreviewRows(
+  moduleName: string,
+  rows: Array<{ __index: number } & Record<string, string>>,
+  mapping: Record<string, string>,
+) {
+  const issues: LocalRowIssue[] = [];
+  const getMappedValue = (row: Record<string, string>, field: string) => {
+    const sourceColumn = Object.entries(mapping).find(([, target]) => target === field)?.[0];
+    return sourceColumn ? String(row[sourceColumn] || "").trim() : "";
+  };
+
+  rows.forEach((row) => {
+    const addIssue = (field: string, message: string) => {
+      issues.push({ rowIndex: row.__index, rowNumber: row.__index + 2, field, message });
+    };
+
+    if (moduleName === "devices") {
+      const imei = getMappedValue(row, "imei");
+      const softwareVersion = getMappedValue(row, "softwareVersion");
+      const status = normalizeValue(getMappedValue(row, "status") || "active");
+      if (!/^\d{15}$/.test(imei)) addIssue("imei", "IMEI must be exactly 15 digits");
+      if (!softwareVersion) addIssue("softwareVersion", "softwareVersion is required");
+      if (!["active", "inactive", "suspended"].includes(status)) addIssue("status", "status must be one of active, inactive, suspended");
+    }
+
+    if (moduleName === "drivers") {
+      const firstName = getMappedValue(row, "firstName");
+      const lastName = getMappedValue(row, "lastName");
+      const email = getMappedValue(row, "email");
+      const phone = getMappedValue(row, "phone");
+      const licenseNumber = getMappedValue(row, "licenseNumber");
+      const status = normalizeValue(getMappedValue(row, "status") || "active");
+      const password = getMappedValue(row, "password");
+      if (!firstName) addIssue("firstName", "firstName is required");
+      if (!lastName) addIssue("lastName", "lastName is required");
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) addIssue("email", "email must be valid");
+      if (!/^\+?[1-9]\d{7,14}$/.test(phone)) addIssue("phone", "phone must be a valid international number");
+      if (!licenseNumber) addIssue("licenseNumber", "licenseNumber is required");
+      if (!["active", "inactive", "blocked"].includes(status)) addIssue("status", "status must be one of active, inactive, blocked");
+      if (!password || password.length < 6) addIssue("password", "password must be at least 6 characters");
+    }
+
+    if (moduleName === "vehicles") {
+      const vehicleType = normalizeValue(getMappedValue(row, "vehicleType"));
+      const vehicleNumber = getMappedValue(row, "vehicleNumber");
+      const status = normalizeValue(getMappedValue(row, "status") || "active");
+      const runningStatus = normalizeValue(getMappedValue(row, "runningStatus") || "inactive");
+      const yearValue = getMappedValue(row, "year");
+      const parsedYear = yearValue ? Number(yearValue) : null;
+      const maxYear = new Date().getFullYear() + 1;
+
+      if (!VEHICLE_TYPES.has(vehicleType)) addIssue("vehicleType", "vehicleType must be one of car, bus, truck, bike, other");
+      if (!vehicleNumber) addIssue("vehicleNumber", "vehicleNumber is required");
+      if (!VEHICLE_STATUS.has(status)) addIssue("status", "status must be one of active, inactive, maintenance, decommissioned");
+      if (!VEHICLE_RUNNING_STATUS.has(runningStatus)) addIssue("runningStatus", "runningStatus must be one of running, idle, stopped, inactive");
+      if (yearValue && (!Number.isFinite(parsedYear) || parsedYear < 1900 || parsedYear > maxYear)) {
+        addIssue("year", `year must be between 1900 and ${maxYear}`);
+      }
+    }
+
+    if (moduleName === "users") {
+      const firstName = getMappedValue(row, "firstName");
+      const email = getMappedValue(row, "email");
+      const mobile = getMappedValue(row, "mobile");
+      const role = normalizeValue(getMappedValue(row, "role"));
+      const status = normalizeValue(getMappedValue(row, "status") || "active");
+      const password = getMappedValue(row, "password");
+
+      if (!firstName) addIssue("firstName", "firstName is required");
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) addIssue("email", "email must be valid");
+      if (!/^\+?[1-9]\d{7,14}$/.test(mobile)) addIssue("mobile", "mobile must be a valid international number");
+      if (!USER_ROLES.has(role)) addIssue("role", "role must be one of admin, driver");
+      if (!USER_STATUS.has(status)) addIssue("status", "status must be one of active, inactive");
+      if (!password || password.length < 6) addIssue("password", "password must be at least 6 characters");
+    }
+
+    if (moduleName === "organizations") {
+      const name = getMappedValue(row, "name");
+      const organizationType = normalizeValue(getMappedValue(row, "organizationType"));
+      const email = getMappedValue(row, "email");
+      const phone = getMappedValue(row, "phone");
+      const status = normalizeValue(getMappedValue(row, "status") || "active");
+
+      if (!name) addIssue("name", "name is required");
+      if (!ORG_TYPES.has(organizationType)) addIssue("organizationType", "organizationType must be one of logistics, transport, school, taxi, fleet");
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) addIssue("email", "email must be valid");
+      if (!/^\+?[1-9]\d{7,14}$/.test(phone)) addIssue("phone", "phone must be a valid international number");
+      if (!USER_STATUS.has(status)) addIssue("status", "status must be one of active, inactive");
+    }
+  });
+
+  return issues;
+}
+
+function downloadErrorReport(entity: string, result: ImportResult) {
+  const headers = ["row", "field", "message"];
+  const body = (result.errors || []).map((error) => `${error.row},${error.field},${error.message}`);
+  const blob = new Blob([[headers.join(","), ...body].join("\n")], { type: "text/csv;charset=utf-8;" });
+  const link = document.createElement("a");
+  const url = URL.createObjectURL(blob);
+  link.href = url;
+  link.download = `${entity}-import-errors.csv`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function downloadInvalidRowsReport(
+  entity: string,
+  format: "csv" | "excel",
+  summaries: InvalidRowSummary[],
+  rows: Array<{ __index: number } & Record<string, string>>,
+) {
+  const exportRows = summaries.map((summary) => {
+    const sourceRow = rows.find((row) => row.__index === summary.rowIndex);
+    return {
+      row: summary.rowNumber,
+      issues: summary.messages.join(" | "),
+      ...(sourceRow
+        ? Object.fromEntries(
+            Object.entries(sourceRow).filter(([key]) => key !== "__index"),
+          )
+        : {}),
+    };
+  });
+
+  if (format === "csv") {
+    const headers = Array.from(
+      exportRows.reduce((set, row) => {
+        Object.keys(row).forEach((key) => set.add(key));
+        return set;
+      }, new Set<string>()),
+    );
+    const escapeValue = (value: unknown) => `"${String(value ?? "").replace(/"/g, '""')}"`;
+    const lines = [
+      headers.join(","),
+      ...exportRows.map((row) => headers.map((header) => escapeValue(row[header as keyof typeof row])).join(",")),
+    ];
+    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.href = url;
+    link.download = `${entity}-invalid-rows.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    return;
+  }
+
+  const worksheet = XLSX.utils.json_to_sheet(exportRows);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Invalid Rows");
+  XLSX.writeFile(workbook, `${entity}-invalid-rows.xlsx`);
 }
 
 export default function ImportModal({
@@ -52,1090 +244,632 @@ export default function ImportModal({
   filters,
   onCompleted,
 }: ImportModalProps) {
+  const { orgId, orgName, isSuperAdmin, isRootOrgAdmin } = useOrgContext();
   const { uploadFile, exportFile, loading, progress, error, reset } = useImportExport();
+  const { data: organizationResponse } = useGetOrganizationsQuery(
+    { page: 0, limit: 1000 },
+    { skip: !(isSuperAdmin || isRootOrgAdmin) },
+  );
+
   const [tab, setTab] = useState<"import" | "export">("import");
-  const { role, orgId, orgName, isSuperAdmin, isRootOrgAdmin } = useOrgContext();
-  const { data: orgData } = useGetOrganizationsQuery({ page: 0, limit: 1000 }, { skip: !(isSuperAdmin || isRootOrgAdmin) });
-  
   const [selectedOrgId, setSelectedOrgId] = useState<string>(orgId || "");
-  const [selectedFormat, setSelectedFormat] = useState<"csv" | "excel">("csv");
-  const [exportFormat, setExportFormat] = useState<"csv" | "excel">("csv");
-  const [file, setFile] = useState<File | null>(null);
-  const [previewTotalRows, setPreviewTotalRows] = useState(0);
-  const [previewRows, setPreviewRows] = useState<any[]>([]);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [excludedIndices, setExcludedIndices] = useState<Set<number>>(new Set());
-  const [csvColumns, setCsvColumns] = useState<string[]>([]);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [showPreview, setShowPreview] = useState(false);
-  const rowsPerPage = 10;
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [parsedFile, setParsedFile] = useState<ParsedImportFile | null>(null);
   const [mapping, setMapping] = useState<Record<string, string>>({});
-  const [result, setResult] = useState<{
-    totalRows: number;
-    successCount: number;
-    failedCount: number;
-    errors: { rowNumber: number; message: string }[];
-  } | null>(null);
+  const [excludedRows, setExcludedRows] = useState<Set<number>>(new Set());
+  const [result, setResult] = useState<ImportResult | null>(null);
+  const [previewSearch, setPreviewSearch] = useState("");
+  const [previewPage, setPreviewPage] = useState(1);
+  const [showPreview, setShowPreview] = useState(false);
+  const [exportFormat, setExportFormat] = useState<"csv" | "excel">("csv");
+  const [exportScope, setExportScope] = useState<"all" | "customDate">("all");
   const [exportFromDate, setExportFromDate] = useState("");
   const [exportToDate, setExportToDate] = useState("");
-  const [exportScope, setExportScope] = useState<"all" | "date">("all");
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const previewScrollRef = useRef<HTMLDivElement>(null);
 
-  const scrollTable = (direction: "left" | "right") => {
-    if (scrollRef.current) {
-      const amount = direction === "left" ? -300 : 300;
-      scrollRef.current.scrollBy({ left: amount, behavior: "smooth" });
-    }
-  };
+  const organizations = useMemo(() => organizationResponse?.data || [], [organizationResponse]);
 
-  const isExportValid = useMemo(() => {
-    if (exportScope === "all") return true;
-    return !!(exportFromDate && exportToDate);
-  }, [exportScope, exportFromDate, exportToDate]);
+  useEffect(() => {
+    if (!isOpen) return;
+    setSelectedOrgId(orgId || "");
+  }, [isOpen, orgId]);
 
-  // 🚨 Remove organizationId from mapping lists as per requirements
-  const filteredAllowedFields = useMemo(() => allowedFields.filter(f => f !== "organizationId"), [allowedFields]);
-  const filteredRequiredFields = useMemo(() => requiredFields.filter(f => f !== "organizationId"), [requiredFields]);
+  useEffect(() => {
+    if (!(isSuperAdmin || isRootOrgAdmin)) return;
+    if (selectedOrgId) return;
+    if (!organizations.length) return;
+    setSelectedOrgId(String(organizations[0]._id));
+  }, [isRootOrgAdmin, isSuperAdmin, organizations, selectedOrgId]);
 
+  const previewRows = useMemo(() => {
+    if (!parsedFile) return [];
+    return parsedFile.rows.map((row, index) => ({ __index: index, ...row }));
+  }, [parsedFile]);
+
+  const effectiveRequiredFields = useMemo(() => {
+    if (!selectedOrgId) return requiredFields;
+    return requiredFields.filter((field) => !AUTO_ORG_FIELDS.has(field));
+  }, [requiredFields, selectedOrgId]);
+
+  const mappedFields = useMemo(() => new Set(Object.values(mapping).filter(Boolean)), [mapping]);
   const missingRequiredFields = useMemo(() => {
-    if (Object.keys(mapping).length === 0) return [];
-    const mapped = new Set(Object.values(mapping).filter(Boolean));
-    return filteredRequiredFields.filter((f) => !mapped.has(f));
-  }, [mapping, filteredRequiredFields]);
+    if (!parsedFile) return [];
+    return effectiveRequiredFields.filter((field) => !mappedFields.has(field));
+  }, [effectiveRequiredFields, mappedFields, parsedFile]);
+  const mappedRequiredFields = useMemo(
+    () => effectiveRequiredFields.filter((field) => mappedFields.has(field)),
+    [effectiveRequiredFields, mappedFields],
+  );
+  const ignoredColumns = useMemo(() => {
+    if (!parsedFile) return [];
+    return parsedFile.columns.filter((column) => !mapping[column]);
+  }, [mapping, parsedFile]);
 
-  const duplicateMappedFields = useMemo(() => {
-    const count = new Map<string, number>();
-    Object.values(mapping)
-      .filter(Boolean)
-      .forEach((f) => count.set(f, (count.get(f) || 0) + 1));
-    return [...count.entries()].filter(([, c]) => c > 1).length;
-  }, [mapping]);
+  const localIssues = useMemo(
+    () => (parsedFile ? validatePreviewRows(moduleName, previewRows as Array<{ __index: number } & Record<string, string>>, mapping) : []),
+    [mapping, moduleName, parsedFile, previewRows],
+  );
+
+  const invalidRowIds = useMemo(() => new Set(localIssues.map((issue) => issue.rowIndex)), [localIssues]);
+  const invalidRowSummaries = useMemo<InvalidRowSummary[]>(() => {
+    const grouped = new Map<number, InvalidRowSummary>();
+    localIssues.forEach((issue) => {
+      const existing = grouped.get(issue.rowIndex) || {
+        rowIndex: issue.rowIndex,
+        rowNumber: issue.rowNumber,
+        messages: [],
+      };
+      existing.messages.push(`${issue.field}: ${issue.message}`);
+      grouped.set(issue.rowIndex, existing);
+    });
+    return Array.from(grouped.values()).sort((left, right) => left.rowNumber - right.rowNumber);
+  }, [localIssues]);
+  const allInvalidExcluded = useMemo(
+    () => invalidRowSummaries.length > 0 && invalidRowSummaries.every((item) => excludedRows.has(item.rowIndex)),
+    [excludedRows, invalidRowSummaries],
+  );
+  const previewValidRows = useMemo(() => {
+    if (!parsedFile) return 0;
+    if (missingRequiredFields.length > 0) return 0;
+    return Math.max(parsedFile.totalRows - invalidRowIds.size - excludedRows.size, 0);
+  }, [excludedRows.size, invalidRowIds.size, missingRequiredFields.length, parsedFile]);
 
   const filteredPreviewRows = useMemo(() => {
-    if (!searchQuery) return previewRows;
-    const low = searchQuery.toLowerCase();
+    if (!previewSearch) return previewRows;
+    const query = previewSearch.toLowerCase();
     return previewRows.filter((row) =>
-      Object.values(row).some((val) => String(val).toLowerCase().includes(low))
+      Object.values(row).some((value) => String(value).toLowerCase().includes(query)),
     );
-  }, [previewRows, searchQuery]);
+  }, [previewRows, previewSearch]);
 
-  const paginatedRows = useMemo(() => {
-    const start = (currentPage - 1) * rowsPerPage;
-    return filteredPreviewRows.slice(start, start + rowsPerPage);
-  }, [filteredPreviewRows, currentPage]);
+  const totalPreviewPages = Math.max(1, Math.ceil(filteredPreviewRows.length / PREVIEW_PAGE_SIZE));
+  const previewSlice = useMemo(() => {
+    const start = (previewPage - 1) * PREVIEW_PAGE_SIZE;
+    return filteredPreviewRows.slice(start, start + PREVIEW_PAGE_SIZE);
+  }, [filteredPreviewRows, previewPage]);
 
-  const totalPages = Math.ceil(filteredPreviewRows.length / rowsPerPage);
+  useEffect(() => {
+    setPreviewPage(1);
+  }, [previewSearch, parsedFile]);
 
-  const toggleExclude = (id: number) => {
-    setExcludedIndices((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+  const resetState = () => {
+    setTab("import");
+    setSelectedFile(null);
+    setParsedFile(null);
+    setMapping({});
+    setExcludedRows(new Set());
+    setResult(null);
+    setPreviewSearch("");
+    setPreviewPage(1);
+    setShowPreview(false);
+    setExportFormat("csv");
+    setExportScope("all");
+    setExportFromDate("");
+    setExportToDate("");
+    setSelectedOrgId(orgId || "");
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    reset();
+  };
+
+  const closeModal = () => {
+    resetState();
+    onClose();
   };
 
   if (!isOpen) return null;
 
-  const closeAll = () => {
-    setTab("import");
-    setSelectedFormat("csv");
-    setExportFormat("csv");
-    setFile(null);
-    setPreviewTotalRows(0);
-    setPreviewRows([]);
-    setSearchQuery("");
-    setShowPreview(false);
-    setExcludedIndices(new Set());
-    setCsvColumns([]);
-    setCurrentPage(1);
+  const handleFileSelection = async (file: File | null) => {
+    setResult(null);
+    setSelectedFile(file);
+    setParsedFile(null);
+    setExcludedRows(new Set());
     setMapping({});
-    setResult(null);
-    setExportFromDate("");
-    setExportToDate("");
-    setExportScope("all");
-    setSelectedOrgId(orgId || "");
-    reset();
-    onClose();
-  };
-
-  const downloadSampleCSV = async () => {
+    if (!file) return;
+    if (file.size > MAX_FILE_SIZE) {
+      toast.error("File too large. Maximum allowed size is 25MB");
+      return;
+    }
     try {
-      await generateSampleFile({
-        moduleName,
-        allowedFields: filteredAllowedFields,
-        requiredFields: filteredRequiredFields,
-        format: "csv"
-      });
-      toast.success("Sample CSV file downloaded");
-    } catch (error) {
-      toast.error("Failed to download sample CSV");
-      console.error("Sample CSV download error:", error);
+      const parsed = await parseImportFile(file);
+      setParsedFile(parsed);
+      setMapping(buildDefaultMapping(parsed.columns, allowedFields));
+    } catch (parseError) {
+      toast.error(parseError instanceof Error ? parseError.message : "Failed to parse file");
     }
   };
 
-  const downloadSampleExcel = async () => {
-    try {
-      await generateSampleFile({
-        moduleName,
-        allowedFields: filteredAllowedFields,
-        requiredFields: filteredRequiredFields,
-        format: "excel"
-      });
-      toast.success("Sample Excel file downloaded");
-    } catch (error) {
-      toast.error("Failed to download sample Excel");
-      console.error("Sample Excel download error:", error);
-    }
-  };
-
-  const initMappingFromColumns = (columns: string[]) => {
-    const next: Record<string, string> = {};
-    const allowedNormMap = new Map(filteredAllowedFields.map((f) => [normalizeKey(f), f]));
-    columns.forEach((col) => {
-      const matched = allowedNormMap.get(normalizeKey(col));
-      next[col] = matched || "";
-    });
-    setMapping(next);
-  };
-
-  const parseFirstLine = async (selectedFile: File) => {
-    const head = await selectedFile.slice(0, 64 * 1024).text();
-    const firstLine = head.split(/\r?\n/).find((l) => l.trim().length > 0) || "";
-    if (!firstLine) return [];
-    return firstLine.split(",").map((c) => c.replace(/^"|"$/g, "").trim());
-  };
-
-  const countCsvRows = async (selectedFile: File) => {
-    const reader = selectedFile.stream().getReader();
-    const decoder = new TextDecoder();
-    let buffered = "";
-    let rows = 0;
-    let isFirstLine = true;
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffered += decoder.decode(value, { stream: true });
-      const parts = buffered.split(/\r?\n/);
-      buffered = parts.pop() || "";
-
-      for (const line of parts) {
-        if (!line.trim()) continue;
-        if (isFirstLine) {
-          isFirstLine = false; // skip header
-          continue;
-        }
-        rows += 1;
-      }
-    }
-
-    if (buffered.trim()) {
-      if (!isFirstLine) rows += 1;
-    }
-    return rows;
-  };
-
-  const onPickFile = async (selected: File | null) => {
-    setResult(null);
-    if (!selected) return;
-
-    const ext = fileExt(selected.name);
-
-    if (selectedFormat === "csv" && ext !== ".csv") {
-      toast.error("Please select a CSV file");
-      return;
-    }
-    if (selectedFormat === "excel" && ext !== ".xlsx" && ext !== ".xls") {
-      toast.error("Please select an EXCEL file");
-      return;
-    }
-
-    if (selected.size > MAX_FILE_SIZE) {
-      toast.error("File too large. Max allowed is 25MB");
-      return;
-    }
-
-    setFile(selected);
-
-    try {
-      let columns: string[] = [];
-      setPreviewRows([]);
-
-      console.log("---- FILE UPLOAD DEBUG ----");
-      console.log("File Name:", selected.name);
-      console.log("File Size:", selected.size);
-      console.log("File Type:", selected.type);
-      console.log("Selected Format UI:", selectedFormat);
-      console.log("Extension matched:", ext);
-
-      if (ext === ".csv") {
-        console.log("Processing as CSV...");
-        const totalRows = await countCsvRows(selected);
-        console.log("CSV Total Rows:", totalRows);
-        setPreviewTotalRows(totalRows);
-        columns = await parseFirstLine(selected);
-        console.log("CSV Columns Found:", columns);
-
-        let count = 0;
-        let pRows: any[] = [];
-        const reader = selected.stream().getReader();
-        const decoder = new TextDecoder();
-        let buffered = "";
-        let isFirst = true;
-
-        outer: while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffered += decoder.decode(value, { stream: true });
-          const parts = buffered.split(/\r?\n/);
-          buffered = parts.pop() || "";
-
-          for (const line of parts) {
-            if (!line.trim()) continue;
-            if (isFirst) {
-              isFirst = false;
-              continue;
-            }
-            // Limit preview to 500 rows for performance
-            if (count < 500) {
-              const rowData = line.split(",").map((c) => c.replace(/^"|"$/g, "").trim());
-              const obj: any = { __id: count };
-              columns.forEach((col, idx) => {
-                obj[col] = rowData[idx] || "";
-              });
-              pRows.push(obj);
-              count++;
-            } else {
-              break outer;
-            }
-          }
-        }
-        setPreviewRows(pRows);
-        setCurrentPage(1);
-      } else if (ext === ".xlsx" || ext === ".xls") {
-        console.log("Routing into EXCEL parser...");
-        const rows = await parseExcelRows(selected);
-        console.log("Parsed Excel Rows Length:", rows?.length);
-        setPreviewTotalRows(rows.length);
-
-        columns = await parseExcelHeaders(selected);
-        console.log("Parsed Excel Columns:", columns);
-        // Load up to 500 rows for Excel preview
-        const rowsWithId = (rows || []).slice(0, 500).map((r: any, i: number) => ({ ...r, __id: i }));
-        setPreviewRows(rowsWithId);
-        setCurrentPage(1);
-      }
-
-      setCsvColumns(columns);
-      initMappingFromColumns(columns);
-    } catch (error: any) {
-      console.error("ON PICK FILE ERROR:", error);
-      toast.error(error.message || "Failed to parse file");
-      setPreviewTotalRows(0);
-      setPreviewRows([]);
-      setCsvColumns([
-        `ERROR: ${error?.message}`.substring(0, 100),
-        `STACK: ${String(error?.stack)}`.substring(0, 100)
-      ]);
-      setMapping({});
-      // setFile(null); // DO NOT NULL FILE so we can see error in the mapping table
-    }
-  };
-
-  const onImport = async () => {
-    if (!file) {
-      toast.error("Please select a file");
-      return;
-    }
+  const handleImport = async () => {
+    if (!selectedFile || !parsedFile) return;
     if (missingRequiredFields.length > 0) {
-      toast.error(`Missing required mapping: ${missingRequiredFields.join(", ")}`);
+      toast.error("Please map all required fields before importing");
       return;
     }
-    if (duplicateMappedFields > 0) {
-      toast.error("One or more target fields are mapped multiple times");
+    const invalidRemaining = [...invalidRowIds].filter((rowId) => !excludedRows.has(rowId));
+    if (invalidRemaining.length > 0) {
+      toast.error("Exclude invalid rows before importing");
       return;
     }
 
     try {
-      const ext = fileExt(file.name);
-      let allRows: any[] = [];
-
-      if (ext === ".csv") {
-        const text = await file.text();
-        const lines = text.split(/\r?\n/).filter(l => l.trim());
-        const headers = lines[0].split(",").map(h => h.replace(/^"|"$/g, "").trim());
-        allRows = lines.slice(1).map((line, idx) => {
-          const rowData = line.split(",").map(c => c.replace(/^"|"$/g, "").trim());
-          const obj: any = { __id: idx };
-          headers.forEach((h, i) => {
-            obj[h] = rowData[i] || "";
-          });
-          return obj;
-        });
-      } else {
-        allRows = await parseExcelRows(file);
-        allRows = allRows.map((r, i) => ({ ...r, __id: i }));
-      }
-
-      const finalMappedData = allRows
-        .filter(row => !excludedIndices.has(row.__id))
-        .map(row => {
-           const mapped: any = {};
-           Object.entries(mapping).forEach(([csvCol, allowedCol]) => {
-             if (allowedCol) {
-               mapped[allowedCol] = row[csvCol];
-             }
-           });
-           return mapped;
-        });
-
-      if (finalMappedData.length === 0) {
-        toast.error("No valid rows to import");
-        return;
-      }
-
-      const payload = {
-        organizationId: selectedOrgId,
-        data: finalMappedData
-      };
-
-      const token = getSecureItem("token");
-      const res = await fetch(`http://localhost:5000/api${importUrl}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": token ? `Bearer ${token}` : ""
-        },
-        body: JSON.stringify(payload)
+      const response = await uploadFile({
+        importUrl,
+        file: selectedFile,
+        organizationId: selectedOrgId || undefined,
+        mapping,
+        excludedRows: [...excludedRows],
       });
-
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.message || `Import failed: ${res.status}`);
-      }
-
-      const response = await res.json();
-      const data = response?.data || null;
-
-      if (data) {
-        setResult(data);
-      }
-
-      const successCount = data?.successCount || 0;
-      const totalRows = data?.totalRows || 0;
-
-      if (data?.failedCount > 0) {
-        toast.error("Import completed with some errors.");
-        onCompleted?.();
-        return;
-      }
-
-      if (totalRows >= 0) {
-        if (successCount > 0) {
-          toast.success(response?.message || "Import completed successfully");
-        } else {
-          toast.warning("No data was imported.");
-        }
-        onCompleted?.();
-        setTimeout(() => closeAll(), 1);
-      }
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Import failed");
+      setResult(response);
+      if (response.status) onCompleted?.();
+    } catch (uploadError) {
+      setResult({
+        success: false,
+        status: false,
+        message: uploadError instanceof Error ? uploadError.message : "Import failed",
+        totalRows: parsedFile.totalRows,
+        processedRows: 0,
+        successfulRows: 0,
+        failedRows: parsedFile.totalRows,
+        duplicateRows: 0,
+        errors: [],
+        summary: { inserted: 0, updated: 0, skipped: parsedFile.totalRows },
+      });
     }
   };
 
-  const onExport = async () => {
-    try {
-      const finalFilters: any = exportScope === "all" ? {} : { ...filters };
-      finalFilters.organizationId = selectedOrgId;
-
-      if (exportScope === "date") {
-        if (exportFromDate) finalFilters.from = exportFromDate;
-        if (exportToDate) finalFilters.to = exportToDate;
+  const handleExport = async () => {
+    if (exportScope === "customDate") {
+      if (!exportFromDate || !exportToDate) {
+        toast.error("Please select both from and to dates");
+        return;
       }
 
-      if (exportFormat === "csv") {
-        // Use existing CSV export logic
-        await runExport({
-          exportFile,
-          exportUrl,
-          moduleName,
-          filters: finalFilters,
-        });
-      } else {
-        // For Excel export, use existing exportFile to get CSV data, then convert to Excel
-        const query = new URLSearchParams();
-        Object.entries(finalFilters).forEach(([key, value]) => {
-          if (value === undefined || value === null || value === "") return;
-          query.set(key, String(value));
-        });
-
-        const token = getSecureItem("token");
-        const url = `http://localhost:5000/api${exportUrl}${query.toString() ? `?${query.toString()}` : ""}`;
-        const res = await fetch(url, {
-          method: "GET",
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
-
-        if (!res.ok) {
-          throw new Error(`Export failed: ${res.status}`);
-        }
-
-        // Get CSV data from response
-        const csvText = await res.text();
-
-        // Parse CSV to get data for Excel export
-        const lines = csvText.split('\n').filter(line => line.trim());
-        if (lines.length < 2) {
-          throw new Error("No data available for export");
-        }
-
-        const headers = lines[0].split(',').map(h => h.replace(/^"|"$/g, '').trim());
-        const data = lines.slice(1).map(line => {
-          const values = line.split(',').map(v => v.replace(/^"|"$/g, '').trim());
-          const row: any = {};
-          headers.forEach((header, index) => {
-            row[header] = values[index] || '';
-          });
-          return row;
-        });
-
-        // Generate Excel export
-        await generateExcelExport({
-          data: data,
-          allowedFields,
-          fileName: `${moduleName}-export.xlsx`,
-          sheetName: moduleName
-        });
+      if (new Date(exportToDate) < new Date(exportFromDate)) {
+        toast.error("To date must be after from date");
+        return;
       }
-
-      toast.success(`${exportFormat.toUpperCase()} export completed`);
-      closeAll();
-    } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : "Export failed";
-      toast.error(message);
     }
+
+    await exportFile({
+      exportUrl,
+      filters: {
+        ...filters,
+        organizationId: selectedOrgId || undefined,
+        from: exportScope === "customDate" ? exportFromDate : undefined,
+        to: exportScope === "customDate" ? exportToDate : undefined,
+      },
+      format: exportFormat,
+      fileName: `${moduleName}-export.${exportFormat === "excel" ? "xlsx" : "csv"}`,
+    });
+    closeModal();
+  };
+
+  const scrollPreviewTable = (direction: "left" | "right") => {
+    if (!previewScrollRef.current) return;
+    previewScrollRef.current.scrollBy({ left: direction === "left" ? -240 : 240, behavior: "smooth" });
+  };
+
+  const excludeInvalidRows = () => {
+    setExcludedRows((current) => new Set([...current, ...invalidRowSummaries.map((item) => item.rowIndex)]));
   };
 
   return (
-    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-md">
-      <div className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white shadow-[0_20px_50px_rgba(0,0,0,0.2)]">
-        <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
-          <div>
-            <h3 className="text-sm font-black uppercase tracking-widest text-slate-900">
-              {moduleName} Import / Export
-            </h3>
-            <p className="text-xs text-slate-500">Upload data or export with current filters.</p>
-          </div>
-          <button
-            onClick={closeAll}
-            className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 disabled:opacity-50"
-            disabled={loading}
-          >
-            <X size={16} />
-          </button>
-        </div>
-
-        <div className="px-4 pt-3">
-          <div className="inline-flex rounded-xl bg-slate-100 p-1 text-xs font-bold">
-            <button
-              className={`rounded-lg px-3 py-1 ${tab === "import" ? "bg-white text-slate-900" : "text-slate-500"}`}
-              onClick={() => setTab("import")}
-            >
-              Import
-            </button>
-            <button
-              className={`rounded-lg px-3 py-1 ${tab === "export" ? "bg-white text-slate-900" : "text-slate-500"}`}
-              onClick={() => setTab("export")}
-            >
-              Export
+    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
+      <div className={`relative flex w-full max-w-[46rem] flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl ${tab === "export" ? "max-h-[72vh]" : "h-[78vh]"}`}>
+        <div className="sticky top-0 z-20 border-b border-slate-200 bg-white px-5 py-3">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h3 className="text-lg font-black text-slate-900">Import / Export {moduleName}</h3>
+              <p className="mt-1 text-xs text-slate-500">Upload CSV or Excel files, map columns, and import data safely.</p>
+            </div>
+            <button type="button" onClick={closeModal} className="rounded-full border border-slate-200 p-2 text-slate-500 hover:bg-slate-100">
+              <X size={16} />
             </button>
           </div>
-        </div>
-
-        <div className="relative max-h-[70vh] overflow-auto p-4 space-y-4">
-          {tab === "import" && (
-            <>
-              {/* Organization Selection Dropdown */}
-              <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
-                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">
-                  Organization Selection
-                </label>
-                {isSuperAdmin || isRootOrgAdmin ? (
-                  <div className="relative">
-                    <select
-                      className="w-full bg-white border border-slate-300 rounded-xl p-3 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 outline-none appearance-none cursor-pointer"
-                      value={selectedOrgId}
-                      onChange={(e) => setSelectedOrgId(e.target.value)}
-                    >
-                      <option value="">Select Organization</option>
-                      <optgroup label="Main Organizations">
-                        {orgData?.data?.filter((o: any) => !o.parentOrganizationId).map((o: any) => (
-                          <option key={o._id} value={o._id}>{o.name}</option>
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+            <div className="inline-flex rounded-2xl bg-slate-100 p-1 text-xs font-black uppercase tracking-wide">
+              <button type="button" onClick={() => setTab("import")} className={`rounded-xl px-4 py-2 ${tab === "import" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"}`}>Import</button>
+              <button type="button" onClick={() => setTab("export")} className={`rounded-xl px-4 py-2 ${tab === "export" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"}`}>Export</button>
+            </div>
+            <div className="min-w-[240px] flex-1 max-w-[340px]">
+              {(isSuperAdmin || isRootOrgAdmin) ? (
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-2.5 py-2">
+                  <div className="flex items-center gap-2">
+                    <label className="whitespace-nowrap text-[9px] font-black uppercase tracking-[0.18em] text-slate-500">Organization Context</label>
+                    <div className="relative min-w-0 flex-1">
+                      <select className="w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-900" value={selectedOrgId} onChange={(event) => setSelectedOrgId(event.target.value)}>
+                        {organizations.map((organization: any) => (
+                          <option key={organization._id} value={organization._id}>
+                            {organization.name} {organization.parentOrganizationId ? "(Sub Org)" : "(Main Org)"}
+                          </option>
                         ))}
-                      </optgroup>
-                      <optgroup label="Sub Organizations">
-                        {orgData?.data?.filter((o: any) => o.parentOrganizationId).map((o: any) => (
-                          <option key={o._id} value={o._id}>{o.name}</option>
-                        ))}
-                      </optgroup>
-                    </select>
-                    <Building2 className="absolute right-4 top-3.5 text-slate-400" size={16} />
+                      </select>
                   </div>
-                ) : (
-                  <div className="flex items-center gap-3 bg-white border border-slate-200 rounded-xl p-3 text-sm font-semibold text-slate-700">
-                    <Building2 size={16} className="text-slate-400" />
-                    <span>{orgName}</span>
-                  </div>
-                )}
-                {selectedOrgId && (
-                  <p className="mt-2 text-[10px] text-blue-600 font-bold uppercase tracking-tight flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-pulse"></span>
-                    Data will be imported into: {
-                      (isSuperAdmin || isRootOrgAdmin)
-                        ? orgData?.data?.find((o: any) => o._id === selectedOrgId)?.name || "Selected Organization"
-                        : orgName
-                    }
-                  </p>
-                )}
-              </div>
-
-              {/* Format Selector */}
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <label className="mb-3 block text-[10px] font-black uppercase tracking-widest text-slate-500">
-                  Select File Format
-                </label>
-                <div className="flex gap-4">
-                  <label className="flex items-center space-x-2 cursor-pointer text-slate-500">
-                    <input
-                      type="radio"
-                      name="importFormat"
-                      value="csv"
-                      checked={selectedFormat === "csv"}
-                      onChange={() => {
-                        setSelectedFormat("csv");
-                        setFile(null);
-                        setPreviewTotalRows(0);
-                        setPreviewRows([]);
-                        setCsvColumns([]);
-                        setMapping({});
-                        setResult(null);
-                      }}
-                      className="mr-2"
-                    />
-                    <FileText size={16} />
-                    <span className="text-sm">CSV</span>
-                  </label>
-                  <label className="flex items-center space-x-2 cursor-pointer text-slate-500">
-                    <input
-                      type="radio"
-                      name="importFormat"
-                      value="excel"
-                      checked={selectedFormat === "excel"}
-                      onChange={() => {
-                        setSelectedFormat("excel");
-                        setFile(null);
-                        setPreviewTotalRows(0);
-                        setPreviewRows([]);
-                        setCsvColumns([]);
-                        setMapping({});
-                        setResult(null);
-                      }}
-                      className="mr-2"
-                    />
-                    <FileSpreadsheet size={16} />
-                    <span className="text-sm">Excel (.xlsx)</span>
-                  </label>
                 </div>
-              </div>
-
-              {/* Sample Download Buttons */}
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <label className="mb-3 block text-[10px] font-black uppercase tracking-widest text-slate-500">
-                  Download Sample Files
-                </label>
-                <div className="flex gap-3">
-                  <button
-                    onClick={downloadSampleCSV}
-                    disabled={loading}
-                    className="flex items-center gap-2 px-3 py-2 text-sm bg-white border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-50 text-slate-500"
-                  >
-                    <FileText size={14} />
-                    Download Sample CSV
-                  </button>
-                  <button
-                    onClick={downloadSampleExcel}
-                    disabled={loading}
-                    className="flex items-center gap-2 px-3 py-2 text-sm bg-white border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-50 text-slate-500"
-                  >
-                    <FileSpreadsheet size={14} />
-                    Download Sample Excel
-                  </button>
                 </div>
-              </div>
-
-              <div className="rounded-xl border border-dashed border-slate-300 p-4">
-                <label className="mb-2 block text-[10px] font-black uppercase tracking-widest text-slate-500">
-                  Upload {selectedFormat.toUpperCase()}
-                </label>
-                <FilePond
-                  key={selectedFormat}
-                  files={file ? [file] : []}
-                  onupdatefiles={(fileItems) => {
-                    console.log("FilePond onupdatefiles:", fileItems.length, "items");
-                    const next = (fileItems[0]?.file as File) || null;
-                    if (next) {
-                      console.log("New file selected in FilePond:", next.name);
-                    } else {
-                      console.log("File removed from FilePond");
-                    }
-                    void onPickFile(next);
-                  }}
-                  allowMultiple={false}
-                  maxFiles={1}
-                  acceptedFileTypes={selectedFormat === "csv"
-                    ? [".csv", "text/csv", "application/csv", "text/x-csv", "application/x-csv", "text/comma-separated-values", "text/x-comma-separated-values", "application/vnd.ms-excel"]
-                    : [".xlsx", ".xls", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.ms-excel"]
-                  }
-                  labelIdle={`Drag & Drop your ${selectedFormat.toUpperCase()} file or <span class="filepond--label-action">Browse</span>`}
-                  disabled={loading}
-                  credits={false}
-                />
-                {file && (
-                  <p className="mt-2 text-xs text-slate-600">
-                    Selected: <span className="font-semibold">{file.name}</span>
-                  </p>
-                )}
-              </div>
-
-              {csvColumns.length > 0 && (
-                <MappingTable
-                  csvColumns={csvColumns}
-                  allowedFields={filteredAllowedFields}
-                  requiredFields={filteredRequiredFields}
-                  mapping={mapping}
-                  onChange={(col, value) =>
-                    setMapping((prev) => ({ ...prev, [col]: value }))
-                  }
-                />
+              ) : (
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-2.5 py-2 text-xs font-semibold text-slate-700">
+                  <span className="text-[9px] font-black uppercase tracking-[0.18em] text-slate-500">Organization Context</span>
+                  <span className="ml-2 text-slate-900">{orgName}</span>
+                </div>
               )}
+            </div>
+          </div>
+        </div>
 
-              {previewRows.length > 0 && csvColumns.length > 0 && (
-                <div className="rounded-xl border border-slate-300 bg-white shadow-sm overflow-hidden mb-4">
-                  <div className="bg-slate-100 px-4 py-3 border-b border-slate-200 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-800">
-                        File Preview (Showing {previewRows.length} rows)
-                      </h4>
-                      <label className="flex items-center gap-1.5 cursor-pointer bg-white px-2 py-1 rounded border border-slate-300 text-[9px] font-black text-slate-700 hover:bg-slate-50 transition-colors shadow-sm">
-                        <input
-                          type="checkbox"
-                          checked={showPreview}
-                          onChange={(e) => setShowPreview(e.target.checked)}
-                          className="w-3.5 h-3.5 accent-blue-600 rounded"
-                        />
-                        <span>SHOW PREVIEW</span>
-                      </label>
-                    </div>
-                    <div className="flex items-center gap-1 bg-white border border-slate-300 rounded-lg p-0.5 shadow-sm mr-auto ml-4">
-                      <button
-                        onClick={() => scrollTable("left")}
-                        className="p-1 hover:bg-slate-100 rounded text-slate-600 transition-colors border-r border-slate-100"
-                        title="Scroll Left"
-                      >
-                        <ChevronLeft size={14} strokeWidth={3} />
-                      </button>
-                      <button
-                        onClick={() => scrollTable("right")}
-                        className="p-1 hover:bg-slate-100 rounded text-slate-600 transition-colors"
-                        title="Scroll Right"
-                      >
-                        <ChevronRight size={14} strokeWidth={3} />
-                      </button>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        placeholder="Search rows..."
-                        className="text-[11px] px-3 py-1.5 rounded-lg border border-slate-400 bg-white text-slate-900 placeholder:text-slate-500 outline-none focus:ring-2 focus:ring-slate-900/10 min-w-[200px]"
-                        value={searchQuery}
-                        onChange={(e) => {
-                          setSearchQuery(e.target.value);
-                          setCurrentPage(1);
-                        }}
-                      />
-                      <span className={`text-[10px] font-black px-2 py-1 rounded-md uppercase tracking-tight shadow-sm ${excludedIndices.size > 0 ? "bg-rose-600 text-white" : "bg-slate-800 text-white"
-                        }`}>
-                        {excludedIndices.size} Excluded
-                      </span>
+        <div className={`flex-1 px-5 py-4 ${tab === "export" ? "overflow-y-auto" : "overflow-y-auto"}`}>
+          {tab === "import" ? (
+            result ? (
+              <div className="space-y-4">
+                <ValidationSummary
+                  totalRows={result.totalRows || 0}
+                  validRows={result.successfulRows || 0}
+                  invalidRows={result.failedRows || 0}
+                  duplicateCount={result.duplicateRows || 0}
+                  missingRequiredFields={[]}
+                />
+                {(result.errors || []).length > 0 && (
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                    <div className="mb-3 text-sm font-black text-slate-900">Error Details</div>
+                    <div className="max-h-64 overflow-auto space-y-2 text-sm">
+                      {(result.errors || []).map((item, index) => (
+                        <div key={`${item.row}-${item.field}-${index}`} className="rounded-xl bg-rose-50 px-3 py-2 text-rose-700">
+                          Row {item.row} | {item.field}: {item.message}
+                        </div>
+                      ))}
                     </div>
                   </div>
-                  {showPreview && (
-                    <>
-                      <div
-                        ref={scrollRef}
-                        className="max-h-[350px] overflow-auto scrollbar-thin scrollbar-thumb-slate-400 scrollbar-track-transparent"
-                      >
-                        <table className="w-full text-left text-xs whitespace-nowrap min-w-full table-auto border-collapse">
-                          <thead className="bg-slate-100 sticky top-0 border-b border-slate-200 z-20 shadow-sm">
-                            <tr>
-                              <th className="px-4 py-3 bg-slate-100 border-r border-slate-200 w-12 sticky left-0 z-30 shadow-[2px_0_5px_rgba(0,0,0,0.05)]">
-                                <span className="sr-only">Exclude</span>
-                              </th>
-                              {csvColumns.map((col) => (
-                                <th key={col} className="px-4 py-2 font-black text-slate-900 bg-slate-100 border-r border-slate-200 last:border-r-0">
-                                  {col}{" "}
-                                  {mapping[col] && (
-                                    <span className="inline-block ml-1 text-[9px] font-black uppercase tracking-widest text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded-md border border-blue-200">
-                                      {mapping[col]}
-                                    </span>
-                                  )}
-                                </th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-200">
-                            {paginatedRows.map((row) => {
-                              const isExcluded = excludedIndices.has(row.__id);
-                              return (
-                                <tr
-                                  key={row.__id}
-                                  className={`hover:bg-slate-50 transition-colors ${isExcluded ? "bg-slate-100 text-slate-400 opacity-60 italic" : "text-slate-700 font-medium"
-                                    }`}
-                                >
-                                  <td className="px-4 py-3 border-r border-slate-200 bg-white sticky left-0 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.05)] text-center">
-                                    <input
-                                      type="checkbox"
-                                      checked={isExcluded}
-                                      onChange={() => toggleExclude(row.__id)}
-                                      title="Mark to exclude from import"
-                                      className="accent-rose-600 cursor-pointer w-4 h-4 rounded border-slate-300"
-                                    />
-                                  </td>
-                                  {csvColumns.map((col) => {
-                                    const value = row[col];
-                                    return (
-                                      <td key={col} className={`px-4 py-3 border-r border-slate-100 last:border-r-0 ${isExcluded ? "line-through decoration-rose-500 decoration-2" : ""}`}>
-                                        {value !== undefined && value !== null ? String(value) : (
-                                          <span className="text-slate-300 italic">empty</span>
-                                        )}
-                                      </td>
-                                    );
-                                  })}
-                                </tr>
-                              );
-                            })}
-                            {paginatedRows.length === 0 && (
-                              <tr>
-                                <td colSpan={csvColumns.length + 1} className="px-4 py-12 text-center text-slate-500 font-bold bg-slate-50">
-                                  No rows matching "{searchQuery}"
-                                </td>
-                              </tr>
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
-
-                      {/* Pagination Controls */}
-                      {filteredPreviewRows.length > rowsPerPage && (
-                        <div className="bg-slate-50 px-4 py-3 border-t border-slate-200 flex items-center justify-between text-[11px] font-bold">
-                          <div className="text-slate-600">
-                            Showing <span className="text-slate-900">{(currentPage - 1) * rowsPerPage + 1}</span> to <span className="text-slate-900">{Math.min(currentPage * rowsPerPage, filteredPreviewRows.length)}</span> of <span className="text-slate-900">{filteredPreviewRows.length}</span> results
+                )}
+              </div>
+            ) : (
+              <div className="space-y-5">
+                <div className="grid gap-4 xl:grid-cols-[1.6fr,0.9fr]">
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                    <p className="text-sm font-black text-slate-900">Upload File</p>
+                    <div className="mt-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
+                      <p>Supported: .csv, .xlsx, .xls</p>
+                      <p className="mt-1">Max size: 25 MB</p>
+                    </div>
+                    <label className="mt-3 flex cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-6 text-center hover:border-blue-400 hover:bg-blue-50/40">
+                      <input ref={fileInputRef} type="file" accept={ACCEPTED_TYPES} className="hidden" onChange={(event) => void handleFileSelection(event.target.files?.[0] || null)} />
+                      <Upload className="mb-2 text-slate-400" size={24} />
+                      <span className="text-sm font-black text-slate-900">Browse File</span>
+                    </label>
+                    {selectedFile && parsedFile && (
+                      <div className="mt-3 rounded-2xl border border-slate-200 bg-white p-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-[11px] font-black uppercase tracking-wide text-slate-500">Selected File</p>
+                            <p className="mt-1 truncate text-sm font-semibold text-slate-900">{selectedFile.name}</p>
+                            <p className="text-xs text-slate-500">{(selectedFile.size / 1024).toFixed(1)} KB • {parsedFile.fileType.toUpperCase()} • {parsedFile.totalRows} rows</p>
                           </div>
-                          <div className="flex items-center gap-1">
-                            <button
-                              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                              disabled={currentPage === 1}
-                              className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 disabled:opacity-40 text-slate-700"
-                            >
-                              Previous
-                            </button>
-                            <div className="flex items-center gap-1 px-2 text-slate-900">
-                              {(() => {
-                                const pages = [];
-                                const maxVisible = 5;
-                                let start = Math.max(1, currentPage - 2);
-                                let end = Math.min(totalPages, start + maxVisible - 1);
-
-                                if (end - start + 1 < maxVisible) {
-                                  start = Math.max(1, end - maxVisible + 1);
-                                }
-
-                                for (let i = start; i <= end; i++) {
-                                  pages.push(
-                                    <button
-                                      key={i}
-                                      onClick={() => setCurrentPage(i)}
-                                      className={`w-8 h-8 rounded-lg border ${currentPage === i
-                                        ? "bg-slate-900 text-white border-slate-900"
-                                        : "bg-white text-slate-700 border-slate-300 hover:bg-slate-100"
-                                        }`}
-                                    >
-                                      {i}
-                                    </button>
-                                  );
-                                }
-                                return pages;
-                              })()}
-                              {totalPages > (currentPage + 2) && totalPages > 5 && (
-                                <>
-                                  <span className="px-1 text-slate-400">...</span>
-                                  <button
-                                    onClick={() => setCurrentPage(totalPages)}
-                                    className="w-8 h-8 rounded-lg border bg-white text-slate-700 border-slate-300 hover:bg-slate-100"
-                                  >
-                                    {totalPages}
-                                  </button>
-                                </>
+                          <button type="button" onClick={() => void handleFileSelection(selectedFile)} className="inline-flex items-center gap-1 rounded-xl border border-slate-200 px-2.5 py-2 text-[11px] font-black uppercase tracking-wide text-slate-700 hover:bg-slate-100">
+                            <RefreshCcw size={12} />
+                            Re-parse
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                    </div>
+                    <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                      <div className="flex flex-col gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-black text-slate-900">Templates & Instructions</p>
+                          <p className="mt-1 text-xs text-slate-500">Required columns: {effectiveRequiredFields.join(", ")}</p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <button type="button" onClick={() => void generateSampleFile({ moduleName, allowedFields, requiredFields, format: "csv" })} className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] font-black uppercase tracking-wide text-emerald-800">CSV Template</button>
+                          <button type="button" onClick={() => void generateSampleFile({ moduleName, allowedFields, requiredFields, format: "excel" })} className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-[11px] font-black uppercase tracking-wide text-sky-800">Excel Template</button>
+                        </div>
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                          <p className="mb-2 text-[11px] font-black uppercase tracking-wide text-slate-500">Validation Summary</p>
+                          <ValidationSummary totalRows={parsedFile?.totalRows ?? 0} validRows={previewValidRows} invalidRows={invalidRowIds.size} duplicateCount={0} missingRequiredFields={missingRequiredFields} />
+                          {parsedFile && (
+                            <div className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                              {missingRequiredFields.length === 0 ? (
+                                <span>
+                                  Mapping ready. Required fields matched: {mappedRequiredFields.join(", ") || "all required fields"}{ignoredColumns.length > 0 ? `. Ignored columns: ${ignoredColumns.join(", ")}` : "."}
+                                </span>
+                              ) : (
+                                <span>
+                                  Mapping not ready. Required fields still missing: {missingRequiredFields.join(", ")}. Add matching columns in the file or map them manually before import. Columns not present in the file are ignored automatically{ignoredColumns.length > 0 ? `, and these file columns are currently ignored: ${ignoredColumns.join(", ")}` : "."}
+                                </span>
                               )}
                             </div>
-                            <button
-                              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                              disabled={currentPage === totalPages}
-                              className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 disabled:opacity-40 text-slate-700"
-                            >
-                              Next
-                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    {loading && (
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+                        <div className="mb-2 flex items-center gap-2 font-semibold">
+                          <Loader2 size={16} className="animate-spin" />
+                          Processing import
+                        </div>
+                        <div className="h-2 rounded-full bg-slate-200">
+                          <div className="h-2 rounded-full bg-blue-600" style={{ width: `${progress}%` }} />
+                        </div>
+                      </div>
+                    )}
+                    {error && <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</div>}
+                  </div>
+                </div>
+
+                {parsedFile && (
+                  <>
+                    {(missingRequiredFields.length > 0 || invalidRowSummaries.length > 0) && (
+                      <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="space-y-2">
+                            <div>
+                              <p className="text-sm font-black text-amber-900">Import Checks</p>
+                              {missingRequiredFields.length > 0 && (
+                                <p className="mt-1 text-xs text-amber-800">
+                                  Missing required mapping: {missingRequiredFields.join(", ")}
+                                </p>
+                              )}
+                              {invalidRowSummaries.length > 0 && (
+                                <p className="mt-1 text-xs text-amber-800">
+                                  Invalid rows: {invalidRowSummaries.map((item) => item.rowNumber).join(", ")}
+                                </p>
+                              )}
+                            </div>
+                            {invalidRowSummaries.length > 0 && (
+                              <div className="max-h-28 overflow-auto space-y-1 text-xs text-amber-900">
+                                {invalidRowSummaries.map((item) => (
+                                  <div key={item.rowIndex} className="rounded-xl bg-white/70 px-3 py-2">
+                                    Row {item.rowNumber}: {item.messages.join(" | ")}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {invalidRowSummaries.length > 0 && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={excludeInvalidRows}
+                                  className="inline-flex items-center gap-2 rounded-xl border border-amber-300 bg-white px-3 py-2 text-xs font-black uppercase tracking-wide text-amber-900"
+                                >
+                                  <CheckSquare size={14} />
+                                  {allInvalidExcluded ? "Removed" : "All Remove"}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => downloadInvalidRowsReport(moduleName, "csv", invalidRowSummaries, previewRows)}
+                                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black uppercase tracking-wide text-slate-700"
+                                >
+                                  CSV Report
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => downloadInvalidRowsReport(moduleName, "excel", invalidRowSummaries, previewRows)}
+                                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black uppercase tracking-wide text-slate-700"
+                                >
+                                  Excel Report
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    <div className="rounded-2xl border border-slate-200 bg-white p-5">
+                      <p className="text-sm font-black text-slate-900">Column Mapping</p>
+                      <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200">
+                        <div className="max-w-full overflow-x-auto">
+                          <div className="min-w-[720px]">
+                            <MappingTable csvColumns={parsedFile.columns} allowedFields={allowedFields} requiredFields={effectiveRequiredFields} mapping={mapping} onChange={(column, value) => setMapping((current) => ({ ...current, [column]: value }))} />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-slate-200 bg-white p-5">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-black text-slate-900">Preview Rows</p>
+                          <p className="mt-1 text-xs text-slate-500">Showing {Math.min(previewSlice.length, PREVIEW_PAGE_SIZE)} of {filteredPreviewRows.length} matching rows.</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <label className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-[11px] font-black uppercase tracking-wide text-slate-600">
+                            <input type="checkbox" checked={showPreview} onChange={(event) => setShowPreview(event.target.checked)} />
+                            Show Preview
+                          </label>
+                          <input value={previewSearch} onChange={(event) => setPreviewSearch(event.target.value)} placeholder="Search preview" className="w-40 rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-900" />
+                          <button type="button" onClick={() => scrollPreviewTable("left")} className="rounded-xl border border-slate-200 p-2 text-slate-700 hover:bg-slate-100"><ChevronLeft size={14} /></button>
+                          <button type="button" onClick={() => scrollPreviewTable("right")} className="rounded-xl border border-slate-200 p-2 text-slate-700 hover:bg-slate-100"><ChevronRight size={14} /></button>
+                        </div>
+                      </div>
+                      {!showPreview ? (
+                        <div className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-center text-xs font-semibold text-slate-500">
+                          Preview is hidden. Turn on <span className="font-black text-slate-700">Show Preview</span> to inspect rows.
+                        </div>
+                      ) : (
+                        <div className="mt-4 w-full overflow-hidden rounded-2xl border border-slate-200">
+                          <div ref={previewScrollRef} className="max-w-full overflow-x-auto overflow-y-hidden">
+                            <table className="w-max min-w-full border-collapse text-left text-xs">
+                              <thead className="bg-slate-50 text-slate-600">
+                                <tr>
+                                  <th className="border-b border-slate-200 px-3 py-3 font-black uppercase tracking-wide">Skip</th>
+                                  {parsedFile.columns.map((column) => (
+                                    <th key={column} className="border-b border-slate-200 px-3 py-3 font-black uppercase tracking-wide">{column}</th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {previewSlice.map((row) => {
+                                  const rowId = row.__index as number;
+                                  const isExcluded = excludedRows.has(rowId);
+                                  return (
+                                    <tr key={String(row.__index)} className={isExcluded ? "bg-slate-100 text-slate-400" : invalidRowIds.has(rowId) ? "bg-amber-50 text-slate-700" : "bg-white text-slate-700"}>
+                                      <td className="border-b border-slate-100 px-3 py-3 align-top">
+                                        <input type="checkbox" checked={isExcluded} onChange={() => setExcludedRows((current) => {
+                                          const next = new Set(current);
+                                          if (next.has(rowId)) next.delete(rowId);
+                                          else next.add(rowId);
+                                          return next;
+                                        })} />
+                                      </td>
+                                      {parsedFile.columns.map((column) => (
+                                        <td key={column} className="border-b border-slate-100 px-3 py-3 whitespace-nowrap">{String(row[column] ?? "")}</td>
+                                      ))}
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
                           </div>
                         </div>
                       )}
-                    </>
-                  )}
-                </div>
-              )}
-
-              <ValidationSummary
-                totalRows={result?.totalRows ?? previewTotalRows}
-                validRows={result ? result.successCount : 0}
-                invalidRows={result ? result.failedCount : 0}
-                duplicateCount={duplicateMappedFields}
-                missingRequiredFields={missingRequiredFields}
-              />
-
-              {result && result.errors.length > 0 && (
-                <div className="rounded-xl border border-rose-200 bg-rose-50 p-3">
-                  <div className="mb-1 text-[10px] font-black uppercase tracking-widest text-rose-600">
-                    Invalid Rows Preview
-                  </div>
-                  <div className="max-h-36 space-y-1 overflow-auto text-xs">
-                    {result.errors.slice(0, 25).map((err, idx) => (
-                      <div key={`${err.rowNumber}-${idx}`} className="text-rose-700">
-                        Row {err.rowNumber}: {err.message}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {loading && (
-                <div className="rounded-xl bg-slate-100 p-3 text-xs">
-                  <div className="mb-1 flex items-center gap-2 text-slate-700">
-                    <Loader2 size={14} className="animate-spin" /> Uploading...
-                  </div>
-                  <div className="h-2 rounded-full bg-slate-200">
-                    <div
-                      className="h-2 rounded-full bg-blue-600 transition-all"
-                      style={{ width: `${progress}%` }}
-                    />
-                  </div>
-                  <div className="mt-2 text-[10px] font-semibold uppercase tracking-widest text-slate-500">
-                    {progress >= 100 ? "Upload complete. Processing rows..." : `Uploading... ${progress}%`}
-                  </div>
-                </div>
-              )}
-              {error && <div className="text-xs text-rose-600">{error}</div>}
-            </>
-          )}
-
-          {tab === "export" && (
-            <div className="space-y-4">
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
-                Export will include currently applied filters from this table view. Choose below if you want all data or a specific date range.
-              </div>
-
-              {/* Organization Selection Dropdown (Export Tab) */}
-              <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
-                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">
-                  Organization Context
-                </label>
-                {isSuperAdmin || isRootOrgAdmin ? (
-                  <div className="relative">
-                    <select
-                      className="w-full bg-white border border-slate-300 rounded-xl p-3 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 outline-none appearance-none cursor-pointer"
-                      value={selectedOrgId}
-                      onChange={(e) => setSelectedOrgId(e.target.value)}
-                    >
-                      <option value="">Select Organization</option>
-                      <optgroup label="Main Organizations">
-                        {orgData?.data?.filter((o: any) => !o.parentOrganizationId).map((o: any) => (
-                          <option key={o._id} value={o._id}>{o.name}</option>
-                        ))}
-                      </optgroup>
-                      <optgroup label="Sub Organizations">
-                        {orgData?.data?.filter((o: any) => o.parentOrganizationId).map((o: any) => (
-                          <option key={o._id} value={o._id}>{o.name}</option>
-                        ))}
-                      </optgroup>
-                    </select>
-                    <Building2 className="absolute right-4 top-3.5 text-slate-400" size={16} />
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-3 bg-white border border-slate-200 rounded-xl p-3 text-sm font-semibold text-slate-700">
-                    <Building2 size={16} className="text-slate-400" />
-                    <span>{orgName}</span>
-                  </div>
-                )}
-                {selectedOrgId && (
-                  <p className="mt-2 text-[10px] text-blue-600 font-bold uppercase tracking-tight flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-pulse"></span>
-                    Data will be exported from: {
-                      (isSuperAdmin || isRootOrgAdmin)
-                        ? orgData?.data?.find((o: any) => o._id === selectedOrgId)?.name || "Selected Organization"
-                        : orgName
-                    }
-                  </p>
+                      {showPreview && filteredPreviewRows.length > PREVIEW_PAGE_SIZE && (
+                        <div className="mt-4 flex items-center justify-between gap-3 text-xs text-slate-600">
+                          <span>Page {previewPage} of {totalPreviewPages}</span>
+                          <div className="flex items-center gap-2">
+                            <button type="button" disabled={previewPage === 1} onClick={() => setPreviewPage((current) => Math.max(1, current - 1))} className="rounded-xl border border-slate-200 px-3 py-2 font-black uppercase tracking-wide text-slate-700 disabled:opacity-40">Previous</button>
+                            <button type="button" disabled={previewPage === totalPreviewPages} onClick={() => setPreviewPage((current) => Math.min(totalPreviewPages, current + 1))} className="rounded-xl border border-slate-200 px-3 py-2 font-black uppercase tracking-wide text-slate-700 disabled:opacity-40">Next</button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </>
                 )}
               </div>
-
-              {/* Data Range Selector */}
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <label className="mb-3 block text-[10px] font-black uppercase tracking-widest text-slate-500">
-                  Select Data Range
-                </label>
-                <div className="flex gap-4 text-slate-500">
-                  <label className="flex items-center space-x-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="exportScope"
-                      value="all"
-                      checked={exportScope === "all"}
-                      onChange={() => setExportScope("all")}
-                      className="mr-2"
-                    />
-                    <FileText size={16} />
-                    <span className="text-sm">Export All</span>
-                  </label>
-                  <label className="flex items-center space-x-2 cursor-pointer ">
-                    <input
-                      type="radio"
-                      name="exportScope"
-                      value="date"
-                      checked={exportScope === "date"}
-                      onChange={() => setExportScope("date")}
-                      className="mr-2"
-                    />
-                    <FileSpreadsheet size={16} />
-                    <span className="text-sm">Custom Date Range</span>
-                  </label>
+            )
+          ) : (
+            <div className="grid gap-2.5 grid-cols-1">
+              <div className="grid gap-3 md:grid-cols-3">
+              <div className="rounded-2xl border border-slate-200 bg-white p-3">
+                <p className="text-sm font-black text-slate-900">Format</p>
+                <div className="mt-2.5 space-y-2">
+                  <label className="flex items-center gap-2 rounded-2xl border border-slate-200 px-3 py-2.5 text-sm font-semibold text-slate-700"><input type="radio" checked={exportFormat === "csv"} onChange={() => setExportFormat("csv")} /><FileText size={15} />CSV</label>
+                  <label className="flex items-center gap-2 rounded-2xl border border-slate-200 px-3 py-2.5 text-sm font-semibold text-slate-700"><input type="radio" checked={exportFormat === "excel"} onChange={() => setExportFormat("excel")} /><FileSpreadsheet size={15} />Excel</label>
                 </div>
               </div>
-
-              {/* Export Format Selector */}
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <label className="mb-3 block text-[10px] font-black uppercase tracking-widest text-slate-500">
-                  Export Format
-                </label>
-                <div className="flex gap-4 text-slate-500">
-                  <label className="flex items-center space-x-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="exportFormat"
-                      value="csv"
-                      checked={exportFormat === "csv"}
-                      onChange={(e) => setExportFormat(e.target.value as "csv" | "excel")}
-                      className="mr-2"
-                    />
-                    <FileText size={16} />
-                    <span className="text-sm">Download CSV</span>
-                  </label>
-                  <label className="flex items-center space-x-2 cursor-pointer ">
-                    <input
-                      type="radio"
-                      name="exportFormat"
-                      value="excel"
-                      checked={exportFormat === "excel"}
-                      onChange={(e) => setExportFormat(e.target.value as "csv" | "excel")}
-                      className="mr-2"
-                    />
-                    <FileSpreadsheet size={16} />
-                    <span className="text-sm">Download Excel</span>
-                  </label>
+              <div className="rounded-2xl border border-slate-200 bg-white p-3">
+                <p className="text-sm font-black text-slate-900">Scope</p>
+                <div className="mt-2.5 space-y-2">
+                  <label className="flex items-center gap-2 rounded-2xl border border-slate-200 px-3 py-2.5 text-sm font-semibold text-slate-700"><input type="radio" checked={exportScope === "all"} onChange={() => setExportScope("all")} />All data</label>
+                  <label className="flex items-center gap-2 rounded-2xl border border-slate-200 px-3 py-2.5 text-sm font-semibold text-slate-700"><input type="radio" checked={exportScope === "customDate"} onChange={() => setExportScope("customDate")} />Custom date</label>
+                </div>
+                {exportScope === "customDate" && (
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    <label className="block">
+                      <span className="mb-1.5 block text-[11px] font-black uppercase tracking-wide text-slate-500">From</span>
+                      <input
+                        type="date"
+                        value={exportFromDate}
+                        onChange={(event) => setExportFromDate(event.target.value)}
+                        className="w-full rounded-2xl border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-900"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="mb-1.5 block text-[11px] font-black uppercase tracking-wide text-slate-500">To</span>
+                      <input
+                        type="date"
+                        value={exportToDate}
+                        onChange={(event) => setExportToDate(event.target.value)}
+                        className="w-full rounded-2xl border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-900"
+                      />
+                    </label>
+                  </div>
+                )}
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                <p className="text-sm font-black text-slate-900">Export Summary</p>
+                <div className="mt-2.5 space-y-2 text-xs text-slate-600">
+                  <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                    <span className="font-black uppercase tracking-wide text-slate-500">Format</span>
+                    <p className="mt-1 text-sm font-semibold text-slate-900">{exportFormat === "excel" ? "Excel" : "CSV"}</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                    <span className="font-black uppercase tracking-wide text-slate-500">Scope</span>
+                    <p className="mt-1 text-sm font-semibold text-slate-900">{exportScope === "all" ? "All data" : "Custom date"}</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                    <span className="font-black uppercase tracking-wide text-slate-500">Date Range</span>
+                    <p className="mt-1 text-sm font-semibold text-slate-900">
+                      {exportScope === "customDate" && exportFromDate && exportToDate ? `${exportFromDate} to ${exportToDate}` : "All rows"}
+                    </p>
+                  </div>
                 </div>
               </div>
-
-              {exportScope === "date" && (
-                <div className="grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2 duration-200">
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
-                      Start Date (From)
-                    </label>
-                    <input
-                      type="date"
-                      className="w-full rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
-                      value={exportFromDate}
-                      onChange={(e) => setExportFromDate(e.target.value)}
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
-                      End Date (To)
-                    </label>
-                    <input
-                      type="date"
-                      className="w-full rounded-xl border border-slate-200 p-2 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-slate-900/10"
-                      value={exportToDate}
-                      onChange={(e) => setExportToDate(e.target.value)}
-                      required
-                    />
-                  </div>
+              </div>
+              {exportScope === "all" && (
+                <div className="rounded-2xl border border-slate-200 bg-white p-3 text-xs text-slate-500">
+                  {exportScope === "all" ? "All available records will be exported." : "Only records within the selected date range will be exported."}
+                </div>
+              )}
+              {exportScope === "customDate" && (
+                <div className="rounded-2xl border border-slate-200 bg-white p-3 text-xs text-slate-500">
+                  Only records within the selected date range will be exported.
                 </div>
               )}
             </div>
           )}
         </div>
 
-        <div className="flex items-center justify-end gap-2 border-t border-slate-200 px-4 py-3">
-          <button
-            type="button"
-            onClick={closeAll}
-            className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-black uppercase tracking-widest text-slate-600 hover:bg-slate-50"
-            disabled={loading}
-          >
-            Cancel
-          </button>
-          {tab === "import" ? (
-            <button
-              type="button"
-              onClick={() => void onImport()}
-              className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-xs font-black uppercase tracking-widest text-white hover:bg-blue-700 disabled:opacity-50"
-              disabled={loading || !file}
-            >
-              <Upload size={14} />
-              Import Data
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => void onExport()}
-              className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-black uppercase tracking-widest text-white hover:bg-emerald-700 disabled:opacity-50"
-              disabled={loading || !isExportValid}
-            >
-              <Download size={14} />
-              Export Data
-            </button>
-          )}
-        </div>
-
-        {loading && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/70 backdrop-blur-sm">
-            <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-semibold text-slate-700 shadow-lg">
-              <Loader2 size={16} className="animate-spin" />
-              Processing... Please wait
+        <div className="sticky bottom-0 z-20 border-t border-slate-200 bg-white px-5 py-3">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs text-slate-500">
+              {tab === "import" ? (loading ? "Validating rows and importing data..." : "Ready to continue.") : "The exported file will download in your selected format."}
+            </p>
+            <div className="flex items-center gap-3">
+              {result ? (
+                <>
+                  {(result.errors || []).length > 0 && (
+                    <button type="button" onClick={() => downloadErrorReport(moduleName, result)} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-xs font-black uppercase tracking-wide text-slate-700 hover:bg-slate-100">
+                      <Download size={14} />
+                      Download Error Report
+                    </button>
+                  )}
+                  <button type="button" onClick={() => setResult(null)} className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-black uppercase tracking-wide text-slate-600 hover:bg-slate-100">Import Another File</button>
+                  <button type="button" onClick={closeModal} className="rounded-xl bg-slate-900 px-4 py-2 text-xs font-black uppercase tracking-wide text-white">Close</button>
+                </>
+              ) : (
+                <>
+                  <button type="button" onClick={closeModal} className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-black uppercase tracking-wide text-slate-600 hover:bg-slate-100">Cancel</button>
+                  {tab === "import" ? (
+                    <button type="button" onClick={() => void handleImport()} disabled={loading || !selectedFile || !parsedFile || missingRequiredFields.length > 0} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50">
+                      <Upload size={14} />
+                      Start Import
+                    </button>
+                  ) : (
+                    <button type="button" onClick={() => void handleExport()} disabled={loading} className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50">
+                      <Download size={14} />
+                      Export File
+                    </button>
+                  )}
+                </>
+              )}
             </div>
           </div>
-        )}
+        </div>
       </div>
     </div>
   );
