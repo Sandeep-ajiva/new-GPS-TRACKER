@@ -10,6 +10,8 @@ import { useAssignDeviceMutation, useUnassignDeviceByDetailsMutation } from "@/r
 import { useAssignDriverMutation, useUnassignDriverMutation } from "@/redux/api/vehicleDriverMappingApi";
 import { useOrgContext } from "@/hooks/useOrgContext";
 import { toast } from "sonner";
+// 🔧 ACTIVE STATUS FILTERING
+import { isActiveStatus } from "@/utils/mappingHelpers";
 import Select from "react-select";
 import { useForm, Controller } from "react-hook-form";
 
@@ -78,8 +80,16 @@ export default function VehicleModal({ isOpen, onClose, vehicle, onCreated }: Ve
     const { data: driversResponse, isLoading: isLoadingDrivers } = useGetDriversQuery(driversQueryArg, { skip: canSelectOrg && !effectiveOrgId });
     const { data: devicesResponse, isLoading: isLoadingDevices } = useGetGpsDevicesQuery(devicesQueryArg, { skip: canSelectOrg && !effectiveOrgId });
 
-    const driverOptions = useMemo(() => (driversResponse?.data || []).map((d: any) => ({ value: d._id, label: `${d.firstName} ${d.lastName || ""}`.trim() })), [driversResponse]);
-    const deviceOptions = useMemo(() => (devicesResponse?.data || []).map((d: any) => ({ value: d._id, label: `${d.imei} - ${d.deviceModel}` })), [devicesResponse]);
+    const driverOptions = useMemo(() => {
+        // ✅ FIXED: Filter drivers by active status only
+        const activeDrivers = (driversResponse?.data || []).filter((d: any) => isActiveStatus(d.status));
+        return activeDrivers.map((d: any) => ({ value: d._id, label: `${d.firstName} ${d.lastName || ""}`.trim() }));
+    }, [driversResponse]);
+    const deviceOptions = useMemo(() => {
+        // ✅ FIXED: Filter devices by active status only
+        const activeDevices = (devicesResponse?.data || []).filter((d: any) => isActiveStatus(d.status));
+        return activeDevices.map((d: any) => ({ value: d._id, label: `${d.imei} - ${d.deviceModel}` }));
+    }, [devicesResponse]);
 
     // When org changes (only applicable for selectors), reset driver/device fields
     useEffect(() => {

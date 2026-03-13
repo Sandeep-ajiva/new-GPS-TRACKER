@@ -10,7 +10,7 @@ const net = require("net");
 
 const DEFAULTS = {
   imei: "123456789012345",
-  vehicle: "TS09ER1234",
+  vehicle: "HP207585-001",
   host: "127.0.0.1",
   port: 6000,
   durationSec: 180,

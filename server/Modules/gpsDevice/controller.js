@@ -498,7 +498,7 @@ exports.updateInventory = async (req, res) => {
 
 exports.getAvailable = async (req, res) => {
   try {
-    const filter = { isOnline: true };
+    const filter = { status: "active", vehicleId: null };
 
     // 🔐 ORG SCOPE FIX
     if (req.user.role !== "superadmin" && req.orgScope !== "ALL") {
@@ -506,8 +506,8 @@ exports.getAvailable = async (req, res) => {
     }
 
     const devices = await GpsDevice.find(filter)
-      .populate("organizationId")
-      .populate("vehicleId");
+      .populate("organizationId", "name")
+      .populate("vehicleId", "vehicleNumber");
 
     return res.json({
       status: true,

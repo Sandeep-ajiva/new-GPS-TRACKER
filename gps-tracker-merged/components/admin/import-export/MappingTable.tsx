@@ -3,6 +3,7 @@
 type MappingTableProps = {
   csvColumns: string[];
   allowedFields: string[];
+  requiredFields: string[];
   mapping: Record<string, string>;
   onChange: (csvCol: string, value: string) => void;
 };
@@ -10,6 +11,7 @@ type MappingTableProps = {
 export default function MappingTable({
   csvColumns,
   allowedFields,
+  requiredFields,
   mapping,
   onChange,
 }: MappingTableProps) {
@@ -32,7 +34,7 @@ export default function MappingTable({
               <option value="">Ignore</option>
               {allowedFields.map((field) => (
                 <option key={field} value={field}>
-                  {field}
+                  {field} {requiredFields.includes(field) ? "(Required)" : ""}
                 </option>
               ))}
             </select>

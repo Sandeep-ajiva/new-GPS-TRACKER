@@ -371,6 +371,28 @@ exports.update = async (req, res) => {
     }
 };
 
+// Get active drivers that are NOT assigned to any vehicle
+exports.getAvailable = async (req, res) => {
+    try {
+        const filter = { status: "active", assignedVehicleId: null };
+        
+        // 🔐 ORG SCOPE FIX
+        if (req.user.role !== "superadmin" && req.orgScope !== "ALL") {
+            filter.organizationId = { $in: req.orgScope };
+        }
+
+        const drivers = await Driver.find(filter).populate('organizationId', 'name');
+
+        return res.json({
+            status: true,
+            data: drivers
+        });
+    } catch (error) {
+        console.error("Get Available Drivers Error:", error);
+        return res.status(500).json({ status: false, message: error.message });
+    }
+};
+
 exports.delete = async (req, res) => {
     try {
         const { id } = req.params;

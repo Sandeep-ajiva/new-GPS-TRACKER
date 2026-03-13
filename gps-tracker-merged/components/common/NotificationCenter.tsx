@@ -357,21 +357,9 @@ export function NotificationCenter({ className = "" }: NotificationCenterProps) 
               )}
             </div>
 
-            {/* Footer */}
-            <div className="p-3 border-t border-gray-200 flex items-center justify-between">
-              <button
-                onClick={handleViewAll}
-                className="text-xs font-medium text-blue-600 hover:text-blue-700 transition-colors"
-              >
-                View All →
-              </button>
-              <button
-                onClick={() => setShowSettings(true)}
-                className="text-xs text-gray-500 hover:text-gray-700 transition-colors flex items-center gap-1"
-              >
-                <Settings size={12} />
-                Settings
-              </button>
+            {/* Footer - Removed View All and Settings buttons */}
+            <div className="p-3 border-t border-gray-200">
+              {/* Footer content removed as requested */}
             </div>
           </div>
         )}

@@ -407,7 +407,7 @@ exports.update = async (req, res) => {
     if (req.body.logo !== undefined) {
       if (!isSuperAdmin && !isRootAdmin) {
         // Non-main admins cannot update logo
-        delete req.body.logo;
+      delete req.body.logo;
         if (req.file) {
           // If they uploaded a file, it's already on disk, but we won't use it.
           // Ideally delete it, but for now we just won't update the DB.
@@ -486,15 +486,15 @@ exports.delete = async (req, res) => {
       return res.status(404).json({
         status: false,
         message: "Organization not found or access denied",
-      });
-    }
-
-    if (!organization.parentOrganizationId) {
+        });
+      }
+      
+      if (!organization.parentOrganizationId || organization.parentOrganizationId === "") {
   return res.status(400).json({
-    status: false,
+          status: false, 
     message: "Root organization cannot be deleted",
-  });
-}
+        });
+      }
     /* 🧨 CASCADE DELETE */
 
     await Promise.all([

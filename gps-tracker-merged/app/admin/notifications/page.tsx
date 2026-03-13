@@ -163,7 +163,7 @@ export default function NotificationsPage() {
   const handleClearAll = async () => {
     if (confirm("Are you sure you want to clear all notifications?")) {
       try {
-        await clearAllNotificationsMutation(undefined).unwrap();
+        await clearAllNotifications(undefined).unwrap();
         refetch();
       } catch (error) {
         console.error("Failed to clear notifications:", error);

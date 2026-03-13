@@ -157,6 +157,9 @@ export default function OrganizationsPage() {
   };
 
   const openEditModal = (org: Organization) => {
+    console.log("Opening edit modal with org:", org); // Debug log
+    console.log("Current orgId from context:", orgId); // Debug log
+    console.log("Organizations list:", organizations); // Debug log
     setEditingOrg(org);
     setIsModalOpen(true);
   };
@@ -326,6 +329,9 @@ export default function OrganizationsPage() {
                 "state",
                 "country",
                 "pincode",
+                "parentOrganizationId",
+                "parentOrganizationName",
+                "status",
               ]}
               requiredFields={["name", "organizationType", "email", "phone"]}
               filters={{

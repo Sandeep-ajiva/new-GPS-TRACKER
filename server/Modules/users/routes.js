@@ -21,7 +21,8 @@ router.get(
 router.put(
   "/:id",
   verifyToken,
-  checkAuthorization(["superadmin"], "users", "update"),
+  checkAuthorization(["superadmin", "admin"], "users", "update"),
+  checkOrganization,
   Controller.updateUser
 );
 

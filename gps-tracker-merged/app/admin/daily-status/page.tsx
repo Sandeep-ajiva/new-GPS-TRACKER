@@ -22,7 +22,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 
-import { toast } from "sonner";
+import { toast, Toaster } from "sonner";
 
 import { useGetVehiclesQuery } from "@/redux/api/vehicleApi";
 
@@ -485,7 +485,25 @@ export default function DailyStatusPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <>
+      <Toaster 
+        position="top-center"
+        richColors
+        closeButton
+        expand={false}
+        className="z-[9999999]"
+        toastOptions={{
+          style: {
+            zIndex: 9999999,
+            position: 'fixed',
+            top: '10px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+          }
+        }}
+      />
+      <div className="min-h-screen bg-gray-50">
+
       {/* STICKY HEADER + FILTERS */}
 
       <div className="sticky top-0 z-40 border-b border-gray-200 bg-white shadow-sm">
@@ -1089,5 +1107,6 @@ export default function DailyStatusPage() {
         )}
       </div>
     </div>
+    </>
   );
 }

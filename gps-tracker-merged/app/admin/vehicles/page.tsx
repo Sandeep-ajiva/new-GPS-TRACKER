@@ -785,6 +785,7 @@ export default function VehiclesPage() {
               exportUrl="/importexport/export/vehicles"
               allowedFields={[
                 "organizationId",
+                "organizationName",
                 "vehicleType",
                 "vehicleNumber",
                 "ais140Compliant",
@@ -798,7 +799,11 @@ export default function VehiclesPage() {
                 "lastUpdated",
                 "deviceImei",
               ]}
-              requiredFields={["organizationId", "vehicleType", "vehicleNumber"]}
+              requiredFields={[
+                ...(isSuperAdmin || isRootOrgAdmin ? ["organizationId"] : []),
+                "vehicleType",
+                "vehicleNumber",
+              ]}
               filters={{
                 vehicleNumber: filters.number,
                 vehicleType: filters.type,
@@ -1006,12 +1011,12 @@ export default function VehiclesPage() {
                   vehicleType: editingVehicle.vehicleType,
                   vehicleNumber: editingVehicle.vehicleNumber,
                   model: editingVehicle.model || "",
-                  year: editingVehicle.year || "",
+                  year: editingVehicle.year ? String(editingVehicle.year) : "",
                   color: editingVehicle.color || "",
                   status: editingVehicle.status,
                   runningStatus: editingVehicle.runningStatus || "",
-                  driverId: editingVehicle.driverId || "",
-                  deviceId: editingVehicle.deviceId || "",
+                  driverId: editingVehicle.driverId ? String(editingVehicle.driverId) : "",
+                  deviceId: editingVehicle.deviceId ? String(editingVehicle.deviceId) : "",
                 }
                 : undefined
             }

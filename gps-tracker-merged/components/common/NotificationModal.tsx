@@ -156,14 +156,9 @@ export function NotificationModal({ isOpen, onClose }: NotificationModalProps) {
 
   return (
     <>
-      {/* Backdrop */}
-      <div 
-        className="fixed inset-0 bg-black/50 z-50"
-        onClick={onClose}
-      />
-      
       {/* Modal */}
-      <div className="fixed inset-4 bg-white rounded-xl shadow-2xl z-50 flex flex-col overflow-hidden">
+      <div className="fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center p-4">
+        <div className="bg-white rounded-xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-auto">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-gray-50">
           <div className="flex items-center gap-3">
@@ -538,6 +533,6 @@ export function NotificationModal({ isOpen, onClose }: NotificationModalProps) {
         </div>
       </div>
 
-      </>
+    </>
   );
 }

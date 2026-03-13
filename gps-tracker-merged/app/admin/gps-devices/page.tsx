@@ -659,6 +659,7 @@ export default function GpsDevicesPage() {
               exportUrl="/importexport/export/devices"
               allowedFields={[
                 "organizationId",
+                "organizationName",
                 "imei",
                 "softwareVersion",
                 "vendorId",
@@ -672,7 +673,11 @@ export default function GpsDevicesPage() {
                 "status",
                 "vehicleRegistrationNumber",
               ]}
-              requiredFields={["organizationId", "imei", "softwareVersion"]}
+              requiredFields={[
+                ...(isSuperAdmin || isRootOrgAdmin ? ["organizationId"] : []),
+                "imei",
+                "softwareVersion",
+              ]}
               filters={{
                 imei: filters.imei,
                 status: filters.status,

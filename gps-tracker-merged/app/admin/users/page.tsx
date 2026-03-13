@@ -25,7 +25,7 @@ import { capitalizeFirstLetter } from "../Helpers/CapitalizeFirstLetter";
 import { DynamicModal } from "@/components/common";
 import { FormField } from "@/lib/formTypes";
 
-// import ImportExportButton from "@/components/admin/import-export/ImportExportButton";
+import ImportExportButton from "@/components/admin/import-export/ImportExportButton";
 import {
   User as UserIcon,
   Mail,
@@ -186,18 +186,36 @@ export default function UsersPage() {
   ) => {
     try {
       if (editingUser) {
-        // For update, exclude passwordHash
-        const payload = { ...data };
-        delete payload.passwordHash;
-        await updateUser({ id: editingUser._id, ...payload }).unwrap();
+        // For update, only send allowed fields: firstName, lastName, email, mobile, status
+        const updatePayload = {
+          id: editingUser._id,
+          firstName: data.firstName?.toString().trim(),
+          lastName: data.lastName?.toString().trim(),
+          email: data.email?.toString().trim().toLowerCase(),
+          mobile: data.mobile?.toString().trim(),
+          status: data.status
+        };
+        
+        await updateUser(updatePayload).unwrap();
         toast.success("User updated successfully");
       } else {
-        // 🔐 ORG CONTEXT UPDATE
-        const finalData = { ...data };
+        // 🔐 ORG CONTEXT UPDATE - Create mode includes all fields
+        const createPayload = {
+          firstName: data.firstName?.toString().trim(),
+          lastName: data.lastName?.toString().trim(),
+          email: data.email?.toString().trim().toLowerCase(),
+          mobile: data.mobile?.toString().trim(),
+          role: data.role,
+          organizationId: data.organizationId,
+          status: data.status,
+          passwordHash: data.passwordHash
+        };
+        
         if (!isSuperAdmin) {
-          finalData.organizationId = orgId || "";
+          createPayload.organizationId = orgId || "";
         }
-        await createUser(finalData).unwrap();
+        
+        await createUser(createPayload).unwrap();
         toast.success("User created successfully");
       }
     } catch (err: unknown) {
@@ -259,6 +277,7 @@ export default function UsersPage() {
       label: "Role",
       type: "select",
       required: true,
+      disabled: !!editingUser, // Disable role field in edit mode
       options: [
         { label: "Admin", value: "admin" },
         { label: "Viewer", value: "viewer" },
@@ -283,6 +302,7 @@ export default function UsersPage() {
         name: "organizationId",
         label: "Organization",
         type: "select" as const,
+        disabled: !!editingUser, // Disable organization field in edit mode
         options: organizations.map((org) => ({
           label: org.name,
           value: org._id,
@@ -305,6 +325,7 @@ export default function UsersPage() {
     });
 
     if (!editingUser) {
+      // Create mode: password required, role and organizationId required
       return base.extend({
         passwordHash: z.string().min(6, "Password is required (min 6)"),
       }).superRefine((val, ctx) => {
@@ -314,6 +335,7 @@ export default function UsersPage() {
       });
     }
 
+    // Edit mode: password not required, role and organizationId validation only for display
     return base.superRefine((val, ctx) => {
       if (isSuperAdmin && !val.organizationId) {
         ctx.addIssue({ code: "custom", path: ["organizationId"], message: "Organization is required" });
@@ -461,21 +483,29 @@ export default function UsersPage() {
             </p>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row">
-            {/* <ImportExportButton
+            <ImportExportButton
               moduleName="users"
               importUrl="/importexport/import/users"
               exportUrl="/importexport/export/users"
               allowedFields={[
+                "organizationId",
+                "organizationName",
                 "firstName",
                 "lastName",
                 "email",
                 "mobile",
                 "role",
                 "status",
-                "organizationId",
                 "password",
               ]}
-              requiredFields={["firstName", "lastName", "email", "mobile", "role", "password"]}
+              requiredFields={[
+                ...(isSuperAdmin || isRootOrgAdmin ? ["organizationId"] : []),
+                "firstName",
+                "email",
+                "mobile",
+                "role",
+                "password",
+              ]}
               filters={{
                 name: filters.name,
                 email: filters.email,
@@ -490,7 +520,7 @@ export default function UsersPage() {
                 void refetchUsers();
                 void refetchOrgUsers();
               }}
-            /> */}
+            />
             <button
               onClick={() => setShowFilters(!showFilters)}
               className="rounded-xl bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-widest text-slate-700 shadow-sm transition hover:bg-slate-200"

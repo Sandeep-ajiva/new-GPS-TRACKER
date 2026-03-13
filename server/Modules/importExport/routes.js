@@ -29,15 +29,15 @@ const upload = multer({
   },
   fileFilter: (req, file, cb) => {
     const ext = path.extname(file.originalname || "").toLowerCase();
-    if (ext !== ".csv") {
-      cb(new Error("Only CSV files are allowed"));
+    if (![".csv", ".xlsx", ".xls"].includes(ext)) {
+      cb(new Error("Only CSV and Excel files are allowed"));
       return;
     }
     cb(null, true);
   },
 });
 
-const handleCsvUpload = (req, res, next) => {
+const handleImportUpload = (req, res, next) => {
   upload.single("file")(req, res, (err) => {
     if (!err) return next();
     if (err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE") {
@@ -57,7 +57,7 @@ router.post(
   "/import/:entity",
   verifyToken,
   checkOrganization,
-  handleCsvUpload,
+  handleImportUpload,
   Controller.importData
 );
 
