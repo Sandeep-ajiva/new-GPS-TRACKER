@@ -21,7 +21,7 @@ export default function ImportExportButton(props: ImportExportButtonProps) {
     <>
       <button
         onClick={() => setOpen(true)}
-        className="bg-slate-100 text-slate-700 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 hover:bg-slate-200 transition-colors"
+        className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-black uppercase tracking-[0.22em] text-slate-700 shadow-sm transition-all hover:-translate-y-0.5 hover:border-slate-300 hover:bg-slate-50"
       >
         <UploadCloud size={14} />
         Import / Export
@@ -41,4 +41,3 @@ export default function ImportExportButton(props: ImportExportButtonProps) {
     </>
   );
 }
-

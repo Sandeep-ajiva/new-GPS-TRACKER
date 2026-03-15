@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { X, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DynamicModalProps } from "@/lib/formTypes";
@@ -52,6 +53,7 @@ export function DynamicModal({
   }, [fields, initialData, isOpen]);
 
   if (!isOpen) return null;
+  if (typeof document === "undefined") return null;
 
   const countryValue = String(formData.country || "");
   const stateValue = String(formData.state || "");
@@ -158,11 +160,11 @@ export function DynamicModal({
 
 
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm animate-in fade-in duration-200"
+        className="absolute inset-0 bg-slate-950/45 backdrop-blur-md animate-in fade-in duration-200"
         onClick={onClose}
       />
 
@@ -487,6 +489,7 @@ export function DynamicModal({
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

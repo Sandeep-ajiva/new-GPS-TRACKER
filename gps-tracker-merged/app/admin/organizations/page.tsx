@@ -5,11 +5,9 @@ import { useRouter } from "next/navigation";
 import Table from "@/components/ui/Table";
 import Pagination from "@/components/ui/Pagination";
 import ApiErrorBoundary from "@/components/admin/ErrorBoundary/ApiErrorBoundary";
-import { Plus, Edit, Trash2, Loader2, Eye, Filter } from "lucide-react";
+import { Plus, Edit, Trash2, Eye, Filter } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
-import { getSecureItem } from "@/app/admin/Helpers/encryptionHelper";
-
 // 🔐 ORG CONTEXT UPDATE
 import { useOrgContext } from "@/hooks/useOrgContext";
 
@@ -24,6 +22,10 @@ import {
 import { DynamicModal } from "@/components/common";
 import { FormField } from "@/lib/formTypes";
 import ImportExportButton from "@/components/admin/import-export/ImportExportButton";
+import AdminLoadingState from "@/components/admin/UI/AdminLoadingState";
+import AdminPageHeader from "@/components/admin/UI/AdminPageHeader";
+import AdminPageShell from "@/components/admin/UI/AdminPageShell";
+import AdminSectionCard from "@/components/admin/UI/AdminSectionCard";
 
 /* ================= TYPES ================= */
 
@@ -117,7 +119,7 @@ export default function OrganizationsPage() {
     });
   }, [organizations, filters]);
 
-  const formFields = useMemo(() => getFormFields(!!editingOrg, isSuperAdmin || isRootOrgAdmin, allOrganizations), [editingOrg, isSuperAdmin, isRootOrgAdmin, allOrganizations]);
+  const formFields = useMemo(() => getFormFields(!!editingOrg, isSuperAdmin || isRootOrgAdmin, orgName), [editingOrg, isSuperAdmin, isRootOrgAdmin, orgName]);
 
   const organizationSchema = useMemo(() => {
     const base = z.object({
@@ -137,9 +139,6 @@ export default function OrganizationsPage() {
     });
 
     return base.superRefine((val, ctx) => {
-      if ((isSuperAdmin || isRootOrgAdmin) && !editingOrg && !val.parentOrganizationId) {
-        ctx.addIssue({ code: "custom", path: ["parentOrganizationId"], message: "Parent Organization is required" });
-      }
       if (!editingOrg) {
         if (!val.managerFirstName) ctx.addIssue({ code: "custom", path: ["managerFirstName"], message: "Admin first name is required" });
         if (!val.managerLastName) ctx.addIssue({ code: "custom", path: ["managerLastName"], message: "Admin last name is required" });
@@ -289,11 +288,7 @@ export default function OrganizationsPage() {
      Loading / Error
   ---------------------------------------- */
   if (isLoading) {
-    return (
-      <div className="flex justify-center p-10">
-        <Loader2 className="animate-spin" />
-      </div>
-    );
+    return <AdminLoadingState title="Loading organizations" description="Preparing organization hierarchy and workspace controls." />;
   }
 
   if (error) {
@@ -305,16 +300,17 @@ export default function OrganizationsPage() {
   ---------------------------------------- */
   return (
     <ApiErrorBoundary hasError={false}>
-      <div className="space-y-6">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-2xl font-black text-slate-900">Organizations</h1>
-            {/* 🔐 ORG CONTEXT UPDATE */}
-            <p className="text-sm text-slate-500">
-              Manage your fleet organizations here. <span className="italic opacity-70">(Parent: {orgName})</span>
-            </p>
-          </div>
-          <div className="flex flex-col gap-3 sm:flex-row">
+      <AdminPageShell contentClassName="space-y-6">
+        <AdminPageHeader
+          eyebrow="Hierarchy Management"
+          title="Organizations"
+          description={
+            <>
+              Manage your fleet organizations here.{" "}
+              <span className="font-semibold text-slate-700">(Parent: {orgName})</span>
+            </>
+          }
+          actions={<div className="flex flex-col gap-3 sm:flex-row">
             <ImportExportButton
               moduleName="organizations"
               importUrl="/importexport/import/organizations"
@@ -345,24 +341,23 @@ export default function OrganizationsPage() {
             />
             <button
               onClick={() => setShowFilters(!showFilters)}
-              className="bg-slate-100 text-slate-700 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 hover:bg-slate-200 transition-colors"
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-black uppercase tracking-[0.22em] text-slate-700 shadow-sm transition hover:bg-slate-50"
             >
               <Filter size={16} /> Filtered Organizations
             </button>
             {canCreateOrg && (
               <button
                 onClick={openCreateModal}
-                className="bg-blue-600 text-white px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 hover:bg-blue-700 transition-colors"
+                className="inline-flex items-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-xs font-black uppercase tracking-[0.22em] text-white shadow-[0_14px_30px_rgba(15,23,42,0.16)] transition hover:bg-slate-800"
               >
                 <Plus size={16} /> Add Organization
               </button>
             )}
-          </div>
-        </div>
-      </div>
+          </div>}
+        />
 
       {showFilters && (
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+        <AdminSectionCard title="Filter Organizations" description="Narrow the organization list by name, type, and status." bodyClassName="p-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div>
               <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">
@@ -415,17 +410,24 @@ export default function OrganizationsPage() {
               </button>
             </div>
           </div>
-        </div>
+        </AdminSectionCard>
       )}
 
-      <Table columns={columns} data={filteredOrganizations} />
-      <Pagination
-        page={page}
-        totalPages={(subOrgResponse as any)?.pagination?.totalPages ?? Math.max(1, Math.ceil(((subOrgResponse as any)?.pagination?.totalrecords ?? organizations.length) / LIMIT))}
-        totalItems={(subOrgResponse as any)?.pagination?.totalrecords ?? organizations.length}
-        onPageChange={setPage}
-        disabled={isLoading}
-      />
+      <AdminSectionCard
+        title="Organization Directory"
+        description="A clean operational view of all organizations under your access scope."
+        className="min-h-[420px]"
+        bodyClassName="flex min-h-[340px] flex-col justify-between gap-4 p-4"
+      >
+        <Table columns={columns} data={filteredOrganizations} />
+        <Pagination
+          page={page}
+          totalPages={(subOrgResponse as any)?.pagination?.totalPages ?? Math.max(1, Math.ceil(((subOrgResponse as any)?.pagination?.totalrecords ?? organizations.length) / LIMIT))}
+          totalItems={(subOrgResponse as any)?.pagination?.totalrecords ?? organizations.length}
+          onPageChange={setPage}
+          disabled={isLoading}
+        />
+      </AdminSectionCard>
 
       <DynamicModal
         isOpen={isModalOpen}
@@ -451,46 +453,32 @@ export default function OrganizationsPage() {
               country: editingOrg.address?.country || "",
               pincode: editingOrg.address?.pincode || "",
             }
-            : undefined
+            : {
+              parentOrganizationId: orgId || "",
+              parentOrganizationDisplay: orgName || "",
+            }
         }
         onSubmit={handleSubmit}
         submitLabel={editingOrg ? "Update" : "Create"}
       />
+      </AdminPageShell>
     </ApiErrorBoundary >
   );
 }
 
 /* ================= FORM FIELDS ================= */
 
-function getFormFields(isEdit: boolean, canSelectParent: boolean, allOrgs: any[]): FormField[] {
+function getFormFields(isEdit: boolean, canSelectParent: boolean, currentOrgName?: string): FormField[] {
   const orgFields: FormField[] = [
     ...(canSelectParent && !isEdit
       ? [
         {
-          name: "parentOrganizationId",
+          name: "parentOrganizationDisplay",
           label: "Parent Organization",
-          type: "select" as const,
-          required: true,
-          groups: [
-            {
-              label: "Organizations",
-              options: allOrgs
-                .filter((org) => !org.parentOrganizationId)
-                .map((org) => ({
-                  label: org.name,
-                  value: org._id,
-                })),
-            },
-            {
-              label: "Sub-Organizations",
-              options: allOrgs
-                .filter((org) => org.parentOrganizationId)
-                .map((org) => ({
-                  label: org.name,
-                  value: org._id,
-                })),
-            },
-          ],
+          type: "text",
+          disabled: true,
+          helperText: "This organization is fixed for the current admin scope.",
+          placeholder: currentOrgName || "Current organization",
         },
       ]
       : []),

@@ -17,17 +17,19 @@ export default function EmptyState({
   onAction,
 }: EmptyStateProps) {
   return (
-    <div className="min-h-[400px] flex items-center justify-center bg-gray-50 rounded-xl border-2 border-dashed border-gray-300 p-8">
-      <div className="text-center max-w-md">
-        <div className="flex justify-center mb-4">
-          <AlertCircle className="text-gray-400" size={48} />
+    <div className="flex min-h-[320px] items-center justify-center rounded-[24px] border border-dashed border-slate-300 bg-gradient-to-br from-slate-50 to-white p-8 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]">
+      <div className="max-w-md text-center">
+        <div className="mb-5 flex justify-center">
+          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-100 text-slate-500 ring-1 ring-slate-200">
+            <AlertCircle size={28} />
+          </div>
         </div>
-        <h3 className="text-lg font-bold text-gray-900 mb-2">{title}</h3>
-        <p className="text-gray-600 text-sm mb-6">{description}</p>
+        <h3 className="text-lg font-black text-slate-900">{title}</h3>
+        <p className="mt-2 text-sm font-medium leading-6 text-slate-500">{description}</p>
         {actionLabel && onAction && (
           <button
             onClick={onAction}
-            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            className="mt-6 inline-flex items-center justify-center rounded-xl bg-slate-900 px-5 py-2.5 text-xs font-black uppercase tracking-[0.24em] text-white transition-colors hover:bg-slate-800"
           >
             {actionLabel}
           </button>

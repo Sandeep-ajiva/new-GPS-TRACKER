@@ -4,7 +4,7 @@ import { useState, useMemo } from "react";
 import Table from "@/components/ui/Table";
 import Pagination from "@/components/ui/Pagination";
 import ApiErrorBoundary from "@/components/admin/ErrorBoundary/ApiErrorBoundary";
-import { Plus, Edit, Trash2, Filter, Loader2, User, Phone, Mail, IdCard, Calendar, CheckCircle } from "lucide-react";
+import { Plus, Edit, Trash2, Filter, User, Phone, Mail, IdCard, Calendar, CheckCircle } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
 import {
@@ -21,6 +21,10 @@ import { usePopups } from "@/app/admin/Helpers/PopupContext";
 import { capitalizeFirstLetter } from "@/app/admin/Helpers/CapitalizeFirstLetter";
 import { DynamicModal } from "@/components/common";
 import { FormField } from "@/lib/formTypes";
+import AdminLoadingState from "@/components/admin/UI/AdminLoadingState";
+import AdminPageHeader from "@/components/admin/UI/AdminPageHeader";
+import AdminPageShell from "@/components/admin/UI/AdminPageShell";
+import AdminSectionCard from "@/components/admin/UI/AdminSectionCard";
 // 🔐 ORG CONTEXT UPDATE
 import { useOrgContext } from "@/hooks/useOrgContext";
 import ImportExportButton from "@/components/admin/import-export/ImportExportButton";
@@ -437,24 +441,17 @@ export default function DriversPage() {
         Math.max(1, Math.ceil(totalRecords / LIMIT));
 
     if (isLoading) {
-        return (
-            <div className="flex items-center justify-center h-full">
-                <Loader2 className="animate-spin text-slate-500" size={32} />
-            </div>
-        );
+        return <AdminLoadingState title="Loading drivers" description="Preparing driver records, organization data, and filters." />;
     }
 
     return (
         <ApiErrorBoundary hasError={false}>
-            <div className="space-y-6">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                        <h1 className="text-2xl font-black text-slate-900">Drivers</h1>
-                        <p className="text-sm text-slate-500">
-                            Manage operators and driver profiles in your platform.
-                        </p>
-                    </div>
-                    <div className="flex flex-col gap-3 sm:flex-row">
+            <AdminPageShell contentClassName="space-y-6">
+                <AdminPageHeader
+                    eyebrow="Driver Operations"
+                    title="Drivers"
+                    description="Manage operators and driver profiles in your platform."
+                    actions={<div className="flex flex-col gap-3 sm:flex-row">
                         <ImportExportButton
                             moduleName="drivers"
                             importUrl="/importexport/import/drivers"
@@ -495,23 +492,23 @@ export default function DriversPage() {
                         />
                         <button
                             onClick={() => setShowFilters(!showFilters)}
-                            className="bg-slate-100 text-slate-700 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 hover:bg-slate-200 transition-colors"
+                            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-black uppercase tracking-[0.22em] text-slate-700 shadow-sm transition hover:bg-slate-50"
                         >
                             <Filter size={16} /> Filtered Views
                         </button>
                         {canCreateDriver && (
                             <button
                                 onClick={openCreateModal}
-                                className="bg-blue-600 text-white px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 hover:bg-blue-700 transition-colors shadow-lg shadow-blue-200"
+                                className="inline-flex items-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-xs font-black uppercase tracking-[0.22em] text-white shadow-[0_14px_30px_rgba(15,23,42,0.16)] transition hover:bg-slate-800"
                             >
                                 <Plus size={16} /> Add Driver
                             </button>
                         )}
-                    </div>
-                </div>
+                    </div>}
+                />
 
                 {showFilters && (
-                    <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                    <AdminSectionCard title="Filter Drivers" description="Refine driver records by identity, dates, organization, and license data." bodyClassName="p-4">
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                             <div>
                                 <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
@@ -638,17 +635,24 @@ export default function DriversPage() {
                                 </button>
                             </div>
                         </div>
-                    </div>
+                    </AdminSectionCard>
                 )}
 
-                <Table columns={columns} data={filteredDrivers} loading={isLoading} />
-                <Pagination
-                    page={page}
-                    totalPages={totalPages}
-                    totalItems={totalRecords}
-                    onPageChange={setPage}
-                    disabled={isDriversLoading}
-                />
+                <AdminSectionCard
+                    title="Driver Directory"
+                    description="Operational list of drivers with actions, statuses, and pagination."
+                    className="min-h-[420px]"
+                    bodyClassName="flex min-h-[340px] flex-col justify-between gap-4 p-4"
+                >
+                    <Table columns={columns} data={filteredDrivers} loading={isLoading} />
+                    <Pagination
+                        page={page}
+                        totalPages={totalPages}
+                        totalItems={totalRecords}
+                        onPageChange={setPage}
+                        disabled={isDriversLoading}
+                    />
+                </AdminSectionCard>
 
                 {canCreateDriver && (
                     <DynamicModal
@@ -678,7 +682,7 @@ export default function DriversPage() {
                         submitLabel={editingDriver ? "Update Driver" : "Create Driver"}
                     />
                 )}
-            </div>
+            </AdminPageShell>
         </ApiErrorBoundary>
     );
 }

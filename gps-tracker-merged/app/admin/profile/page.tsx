@@ -8,6 +8,9 @@ import { useGetMeQuery, useUpdateUserMutation } from "@/redux/api/usersApi";
 import { useUpdateOrganizationMutation } from "@/redux/api/organizationApi";
 import { z } from "zod";
 import PhoneInputField from "@/components/common/PhoneInputField";
+import AdminLoadingState from "@/components/admin/UI/AdminLoadingState";
+import AdminPageHeader from "@/components/admin/UI/AdminPageHeader";
+import AdminPageShell from "@/components/admin/UI/AdminPageShell";
 
 export default function ProfilePage() {
     const { data: userData, isLoading, error } = useGetMeQuery(undefined, { refetchOnMountOrArgChange: true });
@@ -85,11 +88,7 @@ export default function ProfilePage() {
     };
 
     if (isLoading) {
-        return (
-            <div className="flex items-center justify-center h-full">
-                <Loader2 className="animate-spin text-slate-500" size={32} />
-            </div>
-        );
+        return <AdminLoadingState title="Loading profile" description="Preparing your account details and organization branding." />;
     }
 
     if (error) {
@@ -102,7 +101,12 @@ export default function ProfilePage() {
 
     return (
         <ApiErrorBoundary hasError={false}>
-            <div className="max-w-4xl space-y-8 pb-10">
+            <AdminPageShell className="max-w-5xl" contentClassName="space-y-8">
+                <AdminPageHeader
+                    eyebrow="Account"
+                    title="Profile"
+                    description="Manage your personal details and organization branding without changing account behavior."
+                />
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                     {/* Sidebar: Branding & Summary */}
                     <div className="md:col-span-1 space-y-6">
@@ -241,7 +245,7 @@ export default function ProfilePage() {
                         </form>
                     </div>
                 </div>
-            </div>
+            </AdminPageShell>
         </ApiErrorBoundary>
     );
 }

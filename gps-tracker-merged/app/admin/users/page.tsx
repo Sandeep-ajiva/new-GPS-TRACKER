@@ -24,6 +24,10 @@ import { useOrgContext } from "@/hooks/useOrgContext";
 import { capitalizeFirstLetter } from "../Helpers/CapitalizeFirstLetter";
 import { DynamicModal } from "@/components/common";
 import { FormField } from "@/lib/formTypes";
+import AdminLoadingState from "@/components/admin/UI/AdminLoadingState";
+import AdminPageHeader from "@/components/admin/UI/AdminPageHeader";
+import AdminPageShell from "@/components/admin/UI/AdminPageShell";
+import AdminSectionCard from "@/components/admin/UI/AdminSectionCard";
 
 import ImportExportButton from "@/components/admin/import-export/ImportExportButton";
 import {
@@ -462,27 +466,17 @@ export default function UsersPage() {
     Math.max(1, Math.ceil(totalRecords / LIMIT));
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <Loader2 className="animate-spin text-slate-500" size={32} />
-      </div>
-    );
+    return <AdminLoadingState title="Loading users" description="Preparing role, organization, and access records." />;
   }
 
   return (
     <ApiErrorBoundary hasError={false}>
-      <div className="space-y-6">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <p className="text-[11px] font-black uppercase tracking-[0.3em] text-slate-400">
-              Access Control
-            </p>
-            <h1 className="text-2xl font-black text-slate-900">Users</h1>
-            <p className="text-sm text-slate-500">
-              Manage administrators and access across organizations.
-            </p>
-          </div>
-          <div className="flex flex-col gap-3 sm:flex-row">
+      <AdminPageShell contentClassName="space-y-6">
+        <AdminPageHeader
+          eyebrow="Access Control"
+          title="Users"
+          description="Manage administrators and access across organizations."
+          actions={<div className="flex flex-col gap-3 sm:flex-row">
             <ImportExportButton
               moduleName="users"
               importUrl="/importexport/import/users"
@@ -523,17 +517,17 @@ export default function UsersPage() {
             />
             <button
               onClick={() => setShowFilters(!showFilters)}
-              className="rounded-xl bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-widest text-slate-700 shadow-sm transition hover:bg-slate-200"
+              className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-black uppercase tracking-[0.22em] text-slate-700 shadow-sm transition hover:bg-slate-50"
             >
               <span className="inline-flex items-center gap-2">
                 <Filter size={16} /> Filter Users
               </span>
             </button>
-          </div>
-        </div>
+          </div>}
+        />
 
         {showFilters && (
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+          <AdminSectionCard title="Filter Users" description="Refine user records by identity, organization, role, status, and dates." bodyClassName="p-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <div>
                 <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
@@ -680,11 +674,12 @@ export default function UsersPage() {
                 </button>
               </div>
             </div>
-          </div>
+          </AdminSectionCard>
         )}
 
         {filters.organizationId && organizationManager && (
-          <div className="flex items-center justify-between rounded-xl border border-emerald-100 bg-emerald-50 p-4">
+          <AdminSectionCard className="border-emerald-200 bg-emerald-50/70" bodyClassName="p-4">
+          <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-4">
               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500 font-black text-white">
                 {organizationManager.firstName[0]}
@@ -711,16 +706,24 @@ export default function UsersPage() {
               </p>
             </div>
           </div>
+          </AdminSectionCard>
         )}
 
-        <Table columns={columns} data={filteredUsers} loading={isLoading} />
-        <Pagination
-          page={page}
-          totalPages={totalPages}
-          totalItems={totalRecords}
-          onPageChange={setPage}
-          disabled={isUsersLoading || isOrgUsersLoading}
-        />
+        <AdminSectionCard
+          title="User Directory"
+          description="Consistent table view for user management, actions, and pagination."
+          className="min-h-[420px]"
+          bodyClassName="flex min-h-[340px] flex-col justify-between gap-4 p-4"
+        >
+          <Table columns={columns} data={filteredUsers} loading={isLoading} />
+          <Pagination
+            page={page}
+            totalPages={totalPages}
+            totalItems={totalRecords}
+            onPageChange={setPage}
+            disabled={isUsersLoading || isOrgUsersLoading}
+          />
+        </AdminSectionCard>
 
         {canCreateUser && (
           <DynamicModal
@@ -754,7 +757,7 @@ export default function UsersPage() {
             submitLabel={editingUser ? "Update User" : "Create User"}
           />
         )}
-      </div>
+      </AdminPageShell>
     </ApiErrorBoundary>
   );
 }

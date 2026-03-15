@@ -1,11 +1,10 @@
 "use client";
 
-import { Users, Car, Radio, Activity, ArrowLeft, Loader2 } from "lucide-react";
+import { Users, Car, Radio, Activity, ArrowLeft } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import OrganizationMap from "@/components/admin/Map/OrganizationMap";
 import { VehicleSidebar } from "@/components/dashboard/vehicle-sidebar";
-import { useSocket } from "@/hooks/useSocket";
 import { RUNNING_SPEED_THRESHOLD } from "@/lib/vehicleStatusUtils";
 import { MapWrapper } from "@/components/dashboard/map-wrapper";
 import { DashboardProvider } from "@/components/dashboard/DashboardContext";
@@ -14,6 +13,12 @@ import { useGetOrganizationsQuery } from "@/redux/api/organizationApi";
 import { useGetVehiclesQuery } from "@/redux/api/vehicleApi";
 import { useGetGpsDevicesQuery } from "@/redux/api/gpsDeviceApi";
 import { useGetLiveVehiclesQuery } from "@/redux/api/gpsLiveApi";
+import AdminLoadingState from "@/components/admin/UI/AdminLoadingState";
+import AdminPageHeader from "@/components/admin/UI/AdminPageHeader";
+import AdminPageShell from "@/components/admin/UI/AdminPageShell";
+import AdminSectionCard from "@/components/admin/UI/AdminSectionCard";
+import AdminStatCard from "@/components/admin/UI/AdminStatCard";
+import AdminStatusBadge from "@/components/admin/UI/AdminStatusBadge";
 
 type DashboardVehicle = {
   id: string;
@@ -224,108 +229,89 @@ export default function DashboardPage() {
      LOADER
   ========================= */
   if (isLoading) {
-    return (
-      <div className="flex h-screen items-center justify-center">
-        <Loader2 className="animate-spin text-blue-500" size={48} />
-      </div>
-    );
+    return <AdminLoadingState fullHeight title="Loading operations dashboard" description="Fetching fleet metrics, organizations, and live tracking status." />;
   }
 
   /* =========================
      JSX (UNCHANGED)
   ========================= */
   return (
-    <div className="space-y-8 pb-10">
-      {/* ===== HEADER ===== */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="text-3xl font-black text-gray-900 tracking-tight">
-            GPS Admin Dashboard
-          </h1>
-          <p className="text-gray-500 font-bold mt-1">
-            Real-time overview of your fleet and devices.
-          </p>
-        </div>
+    <AdminPageShell contentClassName="space-y-8">
+      <AdminPageHeader
+        eyebrow="Operations Overview"
+        title="GPS Admin Dashboard"
+        description="Real-time visibility into organizations, fleet status, connected hardware, and active vehicles."
+        actions={
+          <>
+            {fromSuperadmin && (
+              <button
+                onClick={() => router.push("/superadmin")}
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-black uppercase tracking-[0.22em] text-slate-700 shadow-sm transition hover:bg-slate-50"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                Back to SuperAdmin
+              </button>
+            )}
+            <AdminStatusBadge tone="success">
+              <span className="mr-2 inline-block h-2 w-2 rounded-full bg-emerald-500" />
+              System Live
+            </AdminStatusBadge>
+          </>
+        }
+      />
 
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          {fromSuperadmin && (
-            <button
-              onClick={() => router.push("/superadmin")}
-              className="px-4 py-2 rounded-xl text-xs font-black flex items-center gap-2 border uppercase tracking-widest bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              Back to SuperAdmin
-            </button>
-          )}
-
-          <div className="px-4 py-2 rounded-xl text-xs font-black flex items-center gap-2 border uppercase tracking-widest bg-green-100 text-green-700 border-green-200">
-            <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-            System Live
-          </div>
-        </div>
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <AdminStatCard label="Organizations" value={orgTotal} icon={<Users size={20} />} tone="blue" meta="Active hierarchy and sub-org visibility" />
+        <AdminStatCard label="Vehicles" value={vehicleTotal} icon={<Car size={20} />} tone="amber" meta={`${offlineVehicles} currently offline`} />
+        <AdminStatCard label="GPS Devices" value={deviceTotal} icon={<Radio size={20} />} tone="violet" meta="Provisioned and mapped tracking units" />
+        <AdminStatCard label="Online Vehicles" value={onlineVehicles} icon={<Activity size={20} />} tone="green" meta="Live telemetry reporting now" />
       </div>
 
-      {/* ===== STATS ===== */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard title="Total Organizations" value={orgTotal} icon={<Users size={20} />} color="blue" />
-        <StatCard title="Total Vehicles" value={vehicleTotal} icon={<Car size={20} />} color="orange" />
-        <StatCard title="GPS Devices" value={deviceTotal} icon={<Radio size={20} />} color="purple" />
-        <StatCard title="Online Vehicles" value={onlineVehicles} icon={<Activity size={20} />} color="green" />
-      </div>
-
-      {/* ===== MAP + SIDEBAR ===== */}
       {selectedOrgId ? (
         <DashboardProvider>
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-1 rounded-2xl overflow-hidden border border-slate-200 bg-white">
+          <div className="grid gap-6 xl:grid-cols-[380px_minmax(0,1fr)]">
+            <AdminSectionCard
+              title="Fleet Activity"
+              description="Select a vehicle to review its current live state and focus the operational map."
+              className="overflow-hidden"
+              bodyClassName="p-0"
+            >
               <VehicleSidebar
                 vehicles={visibleVehicles}
                 selectedId={selectedVehicleId}
                 onSelect={(id) => setSelectedVehicleId(id === selectedVehicleId ? null : id)}
                 statusFilter={statusFilter === "all" ? "total" : statusFilter}
               />
-            </div>
+            </AdminSectionCard>
 
-            <div className="lg:col-span-2 bg-white p-1 rounded-2xl shadow-sm border border-gray-100 h-130">
-              <MapWrapper />
-            </div>
+            <AdminSectionCard
+              title="Live Fleet Map"
+              description="Geospatial overview of the currently selected organization with live map controls preserved."
+              bodyClassName="p-2"
+            >
+              <div className="h-[640px] overflow-hidden rounded-[20px] border border-slate-200 bg-slate-50">
+                <MapWrapper />
+              </div>
+            </AdminSectionCard>
           </div>
         </DashboardProvider>
       ) : (
-        <div className="bg-white p-1 rounded-2xl shadow-sm border border-gray-100 h-130">
-          <OrganizationMap
-            organizations={orgPositions}
-            vehicles={[]}
-            selectedOrgId={null}
-            selectedVehicleId={null}
-            onOrgSelect={(id: string) => setSelectedOrgId(id)}
-          />
-        </div>
+        <AdminSectionCard
+          title="Organization Overview"
+          description="Choose an organization from the map to enter its operational dashboard."
+          bodyClassName="p-2"
+        >
+          <div className="h-[680px] overflow-hidden rounded-[22px] border border-slate-200 bg-slate-50">
+            <OrganizationMap
+              organizations={orgPositions}
+              vehicles={[]}
+              selectedOrgId={null}
+              selectedVehicleId={null}
+              onOrgSelect={(id: string) => setSelectedOrgId(id)}
+            />
+          </div>
+        </AdminSectionCard>
       )}
-    </div>
-  );
-}
-
-/* =========================
-   HELPERS (UNCHANGED)
-========================= */
-function StatCard({ title, value, icon, color }: any) {
-  const colors: any = {
-    blue: "bg-blue-600 shadow-blue-200",
-    orange: "bg-orange-500 shadow-orange-200",
-    green: "bg-green-500 shadow-green-200",
-    purple: "bg-purple-600 shadow-purple-200",
-  };
-
-  return (
-    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-      <div className={`p-3 rounded-xl text-white ${colors[color]}`}>
-        {icon}
-      </div>
-      <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-4">
-        {title}
-      </p>
-      <h3 className="text-2xl font-black text-gray-900">{value}</h3>
-    </div>
+    </AdminPageShell>
   );
 }

@@ -16,15 +16,17 @@ export default function ApiErrorBoundary({
 }: ApiErrorBoundaryProps) {
   if (hasError) {
     return (
-      <div className="min-h-[400px] flex items-center justify-center bg-yellow-50 rounded-xl border border-yellow-200 p-8">
-        <div className="text-center max-w-md">
-          <div className="flex justify-center mb-4">
-            <AlertCircle className="text-yellow-600" size={48} />
+      <div className="flex min-h-[320px] items-center justify-center rounded-[24px] border border-amber-200 bg-gradient-to-br from-amber-50 to-white p-8 shadow-[0_10px_30px_rgba(245,158,11,0.08)]">
+        <div className="max-w-md text-center">
+          <div className="mb-5 flex justify-center">
+            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-100 text-amber-700 ring-1 ring-amber-200">
+              <AlertCircle size={28} />
+            </div>
           </div>
-          <h3 className="text-lg font-bold text-yellow-900 mb-2">API Unavailable</h3>
-          <p className="text-yellow-700 text-sm mb-4">{errorMessage}</p>
-          <p className="text-yellow-600 text-xs">
-            ℹ️ Make sure your Node.js backend is running on port 5000
+          <h3 className="text-lg font-black text-amber-950">API Unavailable</h3>
+          <p className="mt-2 text-sm font-medium leading-6 text-amber-800">{errorMessage}</p>
+          <p className="mt-4 text-xs font-semibold uppercase tracking-[0.2em] text-amber-600">
+            Make sure your Node.js backend is running on port 5000
           </p>
         </div>
       </div>

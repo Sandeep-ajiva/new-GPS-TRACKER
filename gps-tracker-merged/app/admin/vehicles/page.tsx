@@ -30,6 +30,10 @@ import { usePopups } from "../Helpers/PopupContext";
 import { capitalizeFirstLetter } from "../Helpers/CapitalizeFirstLetter";
 import { DynamicModal } from "@/components/common";
 import { FormField } from "@/lib/formTypes";
+import AdminLoadingState from "@/components/admin/UI/AdminLoadingState";
+import AdminPageHeader from "@/components/admin/UI/AdminPageHeader";
+import AdminPageShell from "@/components/admin/UI/AdminPageShell";
+import AdminSectionCard from "@/components/admin/UI/AdminSectionCard";
 import { getSecureItem } from "@/app/admin/Helpers/encryptionHelper";
 // 🔐 ORG CONTEXT UPDATE
 import { useOrgContext } from "@/hooks/useOrgContext";
@@ -761,24 +765,17 @@ export default function VehiclesPage() {
     Math.max(1, Math.ceil(totalRecords / LIMIT));
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <Loader2 className="animate-spin text-slate-500" size={32} />
-      </div>
-    );
+    return <AdminLoadingState title="Loading vehicles" description="Preparing fleet records, assignments, and filters." />;
   }
 
   return (
     <ApiErrorBoundary hasError={false}>
-      <div className="space-y-6">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-2xl font-black text-slate-900">Vehicles</h1>
-            <p className="text-sm text-slate-500">
-              Manage your fleet vehicles here.
-            </p>
-          </div>
-          <div className="flex flex-col gap-3 sm:flex-row">
+      <AdminPageShell contentClassName="space-y-6">
+        <AdminPageHeader
+          eyebrow="Fleet Registry"
+          title="Vehicles"
+          description="Manage your fleet vehicles here."
+          actions={<div className="flex flex-col gap-3 sm:flex-row">
             <ImportExportButton
               moduleName="vehicles"
               importUrl="/importexport/import/vehicles"
@@ -818,23 +815,23 @@ export default function VehiclesPage() {
             />
             <button
               onClick={() => setShowFilters(!showFilters)}
-              className="bg-slate-100 text-slate-700 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 hover:bg-slate-200 transition-colors"
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-black uppercase tracking-[0.22em] text-slate-700 shadow-sm transition hover:bg-slate-50"
             >
               <Filter size={16} /> Filtered Vehicles
             </button>
             {canCreateVehicle && (
               <button
                 onClick={openCreateModal}
-                className="bg-blue-600 text-white px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 hover:bg-blue-700 transition-colors"
+                className="inline-flex items-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-xs font-black uppercase tracking-[0.22em] text-white shadow-[0_14px_30px_rgba(15,23,42,0.16)] transition hover:bg-slate-800"
               >
                 <Plus size={16} /> Add Vehicle
               </button>
             )}
-          </div>
-        </div>
+          </div>}
+        />
 
         {showFilters && (
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+          <AdminSectionCard title="Filter Vehicles" description="Refine fleet results by plate, type, organization, driver, status, and device state." bodyClassName="p-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <div>
                 <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
@@ -981,17 +978,24 @@ export default function VehiclesPage() {
                 </button>
               </div>
             </div>
-          </div>
+          </AdminSectionCard>
         )}
 
-        <Table columns={columns} data={filteredVehicles} loading={isLoading} />
-        <Pagination
-          page={page}
-          totalPages={totalPages}
-          totalItems={totalRecords}
-          onPageChange={setPage}
-          disabled={isVehLoading}
-        />
+        <AdminSectionCard
+          title="Vehicle Directory"
+          description="Primary operational table for fleet assets, status, and assignments."
+          className="min-h-[420px]"
+          bodyClassName="flex min-h-[340px] flex-col justify-between gap-4 p-4"
+        >
+          <Table columns={columns} data={filteredVehicles} loading={isLoading} />
+          <Pagination
+            page={page}
+            totalPages={totalPages}
+            totalItems={totalRecords}
+            onPageChange={setPage}
+            disabled={isVehLoading}
+          />
+        </AdminSectionCard>
 
         {canCreateVehicle && (
           <DynamicModal
@@ -1024,60 +1028,60 @@ export default function VehiclesPage() {
             submitLabel={editingVehicle ? "Update Vehicle" : "Create Vehicle"}
           />
         )}
+      </AdminPageShell>
 
-        {isPopupOpen("assignDeviceModal") && (
-          <div className="fixed inset-0 bg-slate-950/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-            <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl border border-slate-200">
-              <h2 className="text-xl text-slate-900 font-bold mb-4">Assign GPS Device</h2>
-              <p className="text-sm text-slate-500 mb-4">
-                Assign a GPS device to{" "}
-                <strong>{selectedVehicleForAssignment?.vehicleNumber}</strong>
-              </p>
-              {getAvailableDevices().length === 0 ? (
-                <div className="p-4 bg-slate-50 rounded-xl text-center">
-                  <p className="text-sm font-semibold text-slate-600">
-                    No device available
-                  </p>
-                  <p className="text-xs text-slate-500 mt-1">
-                    All devices are currently assigned
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-2 max-h-64 overflow-y-auto">
-                  {getAvailableDevices().map((device) => (
-                    <button
-                      key={device._id}
-                      onClick={() => handleAssignDevice(device._id)}
-                      className="w-full p-4 rounded-xl
-  bg-transparent border border-transparent
-  hover:bg-slate-300
-  transition-colors duration-200
-  text-left cursor-pointer"
-                    >
-                      <div className="font-semibold text-sm text-black">{device.imei}</div>
-                      <div className="text-xs text-slate-500">
-                        {device.deviceModel} • {device.connectionStatus}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
-              <div className="flex gap-3 mt-6">
-                <button
-                  type="button"
-                  onClick={() => {
-                    closePopup("assignDeviceModal");
-                    setSelectedVehicleForAssignment(null);
-                  }}
-                  className="flex-1 py-2.5 bg-slate-100 text-slate-700 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-slate-200"
-                >
-                  Cancel
-                </button>
+      {isPopupOpen("assignDeviceModal") && (
+        <div className="fixed inset-0 bg-slate-950/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl border border-slate-200">
+            <h2 className="text-xl text-slate-900 font-bold mb-4">Assign GPS Device</h2>
+            <p className="text-sm text-slate-500 mb-4">
+              Assign a GPS device to{" "}
+              <strong>{selectedVehicleForAssignment?.vehicleNumber}</strong>
+            </p>
+            {getAvailableDevices().length === 0 ? (
+              <div className="p-4 bg-slate-50 rounded-xl text-center">
+                <p className="text-sm font-semibold text-slate-600">
+                  No device available
+                </p>
+                <p className="text-xs text-slate-500 mt-1">
+                  All devices are currently assigned
+                </p>
               </div>
+            ) : (
+              <div className="space-y-2 max-h-64 overflow-y-auto">
+                {getAvailableDevices().map((device) => (
+                  <button
+                    key={device._id}
+                    onClick={() => handleAssignDevice(device._id)}
+                    className="w-full p-4 rounded-xl
+bg-transparent border border-transparent
+hover:bg-slate-300
+transition-colors duration-200
+text-left cursor-pointer"
+                  >
+                    <div className="font-semibold text-sm text-black">{device.imei}</div>
+                    <div className="text-xs text-slate-500">
+                      {device.deviceModel} • {device.connectionStatus}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-3 mt-6">
+              <button
+                type="button"
+                onClick={() => {
+                  closePopup("assignDeviceModal");
+                  setSelectedVehicleForAssignment(null);
+                }}
+                className="flex-1 py-2.5 bg-slate-100 text-slate-700 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-slate-200"
+              >
+                Cancel
+              </button>
             </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </ApiErrorBoundary>
   );
 }

@@ -98,16 +98,23 @@ export default function Sidebar({ className, showClose, onClose, onNavigate, rol
         .filter((group) => group.items.length > 0);
 
     return (
-        <aside className={`w-64 bg-white border-r border-slate-200 h-screen fixed left-0 top-0 flex flex-col z-50 ${className || ""}`}>
-            <div className="h-16 flex items-center px-6 border-b border-slate-200 justify-between">
-                <span className="text-xl font-black text-slate-900 tracking-tight">
-                    {orgName}
-                    <span className="text-slate-400 text-xs font-semibold ml-2 uppercase tracking-[0.35em]">Admin</span>
-                </span>
+        <aside className={`fixed left-0 top-0 z-50 flex h-screen w-72 flex-col border-r border-slate-200/80 bg-white/90 shadow-[0_24px_60px_rgba(15,23,42,0.08)] backdrop-blur ${className || ""}`}>
+            <div className="border-b border-slate-200 px-6 py-5">
+                <div className="flex items-start justify-between gap-3">
+                    <div>
+                        <p className="text-[10px] font-black uppercase tracking-[0.34em] text-slate-400">Operations Console</p>
+                        <span className="mt-2 block text-xl font-black tracking-tight text-slate-950">
+                            {orgName}
+                        </span>
+                        <span className="mt-2 inline-flex rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.28em] text-blue-700">
+                            Admin Workspace
+                        </span>
+                    </div>
+                </div>
                 {showClose && (
                     <button
                         type="button"
-                        className="md:hidden p-2 rounded-lg text-slate-500 hover:bg-slate-100 transition"
+                        className="md:hidden rounded-xl p-2 text-slate-500 transition hover:bg-slate-100"
                         onClick={onClose}
                         aria-label="Close sidebar"
                     >
@@ -118,13 +125,13 @@ export default function Sidebar({ className, showClose, onClose, onNavigate, rol
 
             {/* Navigation */}
             <nav className="flex-1 overflow-y-auto py-6">
-                <div className="space-y-6 px-4">
+                <div className="space-y-7 px-4">
                     {visibleGroups.map((group) => (
                         <div key={group.title}>
-                            <h3 className="px-1 mb-2 text-[10px] font-black uppercase text-slate-400 tracking-[0.35em]">
+                            <h3 className="mb-3 px-2 text-[10px] font-black uppercase tracking-[0.34em] text-slate-400">
                                 {group.title}
                             </h3>
-                            <ul className="space-y-1">
+                            <ul className="space-y-1.5">
                                 {group.items.map((item: MenuItem) => {
                                     // Fix active state: exact match for dashboard, prefix match for others
                                     const isActive = item.exact
@@ -138,13 +145,15 @@ export default function Sidebar({ className, showClose, onClose, onNavigate, rol
                                                     router.push(item.href);
                                                     onNavigate?.();
                                                 }}
-                                                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold transition-all w-full relative ${isActive
-                                                    ? "bg-blue-50 text-slate-900 before:absolute before:left-0 before:top-0 before:bottom-0 before:w-0.75 before:bg-blue-500 before:rounded-r"
-                                                    : "text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+                                                className={`relative flex w-full items-center gap-3 rounded-2xl px-3.5 py-3 text-sm font-semibold transition-all ${isActive
+                                                    ? "bg-slate-950 text-white shadow-[0_12px_24px_rgba(15,23,42,0.18)]"
+                                                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-950"
                                                     }`}
                                                 aria-current={isActive ? "page" : undefined}
                                             >
-                                                <item.icon size={18} />
+                                                <span className={`flex h-9 w-9 items-center justify-center rounded-xl ${isActive ? "bg-white/12 text-white" : "bg-slate-100 text-slate-500"}`}>
+                                                    <item.icon size={18} />
+                                                </span>
                                                 {item.name}
                                             </button>
                                         </li>
@@ -157,7 +166,7 @@ export default function Sidebar({ className, showClose, onClose, onNavigate, rol
             </nav>
 
             {/* Footer / Logout */}
-            <div className="p-4 border-t border-slate-200">
+            <div className="border-t border-slate-200 p-4">
                 <button
                     onClick={() => {
                         if (typeof window !== "undefined") {
@@ -170,7 +179,7 @@ export default function Sidebar({ className, showClose, onClose, onNavigate, rol
                             }
                         }
                     }}
-                    className="flex items-center gap-3 w-full px-3 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                    className="flex w-full items-center gap-3 rounded-2xl border border-rose-200 bg-rose-50 px-3.5 py-3 text-sm font-semibold text-rose-700 transition-colors hover:bg-rose-100">
                     <LogOut size={20} />
                     Sign Out
                 </button>

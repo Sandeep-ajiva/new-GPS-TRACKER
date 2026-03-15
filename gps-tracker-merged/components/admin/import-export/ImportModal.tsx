@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import * as XLSX from "xlsx";
 import {
   CheckSquare,
@@ -473,8 +474,10 @@ export default function ImportModal({
     setExcludedRows((current) => new Set([...current, ...invalidRowSummaries.map((item) => item.rowIndex)]));
   };
 
-  return (
-    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
+    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-[2px]">
       <div className={`relative flex w-full max-w-[46rem] flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl ${tab === "export" ? "max-h-[72vh]" : "h-[78vh]"}`}>
         <div className="sticky top-0 z-20 border-b border-slate-200 bg-white px-5 py-3">
           <div className="flex items-start justify-between gap-4">
@@ -871,6 +874,7 @@ export default function ImportModal({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

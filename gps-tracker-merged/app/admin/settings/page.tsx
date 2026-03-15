@@ -16,6 +16,9 @@ import { capitalizeFirstLetter } from "../Helpers/CapitalizeFirstLetter";
 import { useOrgContext } from "@/hooks/useOrgContext";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
+import AdminPageHeader from "@/components/admin/UI/AdminPageHeader";
+import AdminPageShell from "@/components/admin/UI/AdminPageShell";
+import AdminSectionCard from "@/components/admin/UI/AdminSectionCard";
 
 export default function SettingsPage() {
     const { isSuperAdmin } = useOrgContext();
@@ -72,15 +75,16 @@ export default function SettingsPage() {
     };
 
     return (
-        <div className="space-y-8 pb-10 max-w-5xl font-bold">
-            <div>
-                <h1 className="text-3xl font-black text-gray-900 tracking-tight">System Settings</h1>
-                <p className="text-gray-500 font-bold mt-1 text-sm">Global platform configuration and administrative controls.</p>
-            </div>
+        <AdminPageShell className="max-w-6xl" contentClassName="space-y-8 font-bold">
+            <AdminPageHeader
+                eyebrow="Platform Controls"
+                title="System Settings"
+                description="Global platform configuration and administrative controls."
+            />
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 <div className="lg:col-span-2 space-y-8">
-                    <section className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
+                    <AdminSectionCard className="bg-white" bodyClassName="p-8">
                         <div className="flex items-center gap-3 mb-8">
                             <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl">
                                 <Globe size={20} />
@@ -106,9 +110,9 @@ export default function SettingsPage() {
                                 <SettingInput label="Maintenance Message" value={maintenanceMessage} onChange={setMaintenanceMessage} isTextarea />
                             </div>
                         </div>
-                    </section>
+                    </AdminSectionCard>
 
-                    <section className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
+                    <AdminSectionCard className="bg-white" bodyClassName="p-8">
                         <div className="flex items-center gap-3 mb-8">
                             <div className="p-2.5 bg-orange-50 text-orange-600 rounded-xl">
                                 <Bell size={20} />
@@ -120,7 +124,7 @@ export default function SettingsPage() {
                             <ToggleItem label="Email Alerts" desc="Send transactional and marketing emails." active={emailAlerts} onToggle={() => setEmailAlerts((prev) => !prev)} />
                             <ToggleItem label="SMS Gateway" desc="Enable OTP and order tracking via SMS." active={smsGateway} onToggle={() => setSmsGateway((prev) => !prev)} />
                         </div>
-                    </section>
+                    </AdminSectionCard>
                 </div>
 
                 <div className="space-y-8">
@@ -199,7 +203,7 @@ export default function SettingsPage() {
                     <Save size={18} /> Save All Changes
                 </button>
             </div>
-        </div>
+        </AdminPageShell>
     );
 }
 

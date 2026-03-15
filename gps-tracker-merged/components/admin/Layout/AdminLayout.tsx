@@ -19,13 +19,13 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     }, []);
 
     return (
-        <div className="min-h-screen bg-slate-50">
+        <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(96,165,250,0.10),_transparent_28%),linear-gradient(180deg,_#f8fafc_0%,_#eef2f7_100%)]">
             <Sidebar className="hidden md:flex" role={userRole} />
             {isSidebarOpen && (
                 <div className="fixed inset-0 z-40 md:hidden">
                     <button
                         type="button"
-                        className="absolute inset-0 bg-slate-900/40"
+                        className="absolute inset-0 bg-slate-950/50 backdrop-blur-sm"
                         aria-label="Close sidebar"
                         onClick={() => setIsSidebarOpen(false)}
                     />
@@ -39,8 +39,8 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                 </div>
             )}
             <Header onOpenSidebar={() => setIsSidebarOpen(true)} />
-            <main className="pt-16 min-h-screen pl-0 md:pl-64">
-                <div className="p-4 sm:p-6 max-w-7xl mx-auto">
+            <main className="min-h-screen pl-0 pt-20 md:pl-72">
+                <div className="mx-auto max-w-[1600px] p-4 sm:p-6 xl:p-8">
                     {children}
                 </div>
             </main>

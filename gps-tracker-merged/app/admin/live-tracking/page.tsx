@@ -4,8 +4,11 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 import dynamic from "next/dynamic";
 import { useGetLiveVehiclesQuery } from "@/redux/api/gpsLiveApi";
 import ApiErrorBoundary from "@/components/admin/ErrorBoundary/ApiErrorBoundary";
-import { Loader2 } from "lucide-react";
 import { useSocket } from "@/hooks/useSocket";
+import AdminLoadingState from "@/components/admin/UI/AdminLoadingState";
+import AdminPageHeader from "@/components/admin/UI/AdminPageHeader";
+import AdminPageShell from "@/components/admin/UI/AdminPageShell";
+import AdminSectionCard from "@/components/admin/UI/AdminSectionCard";
 
 const LiveMap = dynamic(() => import("@/components/admin/Map/LeafletLiveMap"), {
   ssr: false,
@@ -226,29 +229,17 @@ export default function LiveTrackingPage() {
   }, [vehicles, currentTime]);
 
   if (isLoading && vehicles.length === 0) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <Loader2 className="animate-spin text-slate-500" size={32} />
-      </div>
-    );
+    return <AdminLoadingState fullHeight title="Loading live tracking" description="Connecting to live telemetry and preparing fleet map controls." />;
   }
 
   return (
     <ApiErrorBoundary hasError={false}>
-      <div className="flex h-[calc(100vh-100px)] flex-col space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <p className="text-[11px] font-black uppercase tracking-[0.3em] text-slate-400">
-              Live Ops
-            </p>
-            <h1 className="text-2xl font-black text-slate-900">
-              Live Tracking
-            </h1>
-            <p className="text-sm text-slate-500">
-              Real-time GPS tracking of your fleet.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-3 items-center">
+      <AdminPageShell contentClassName="flex min-h-[calc(100vh-132px)] flex-col space-y-6">
+        <AdminPageHeader
+          eyebrow="Live Ops"
+          title="Live Tracking"
+          description="Real-time GPS tracking of your fleet."
+          actions={<div className="flex flex-wrap items-center gap-3">
             <div className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-black uppercase tracking-widest text-slate-700">
               Online Vehicles:{" "}
               <span className="text-emerald-600">{onlineCount}</span> /{" "}
@@ -265,13 +256,20 @@ export default function LiveTrackingPage() {
               ></span>
               {isConnected ? "Live Updates Active" : "Connecting..."}
             </div>
-          </div>
-        </div>
+          </div>}
+        />
 
-        <div className="relative flex-1 rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">
-          <LiveMap vehicles={vehicles} />
-        </div>
-      </div>
+        <AdminSectionCard
+          title="Fleet Map"
+          description="Map interactions and live-update behavior remain unchanged, with a cleaner admin surface."
+          className="flex-1"
+          bodyClassName="p-2"
+        >
+          <div className="relative h-[calc(100vh-300px)] min-h-[460px] overflow-hidden rounded-[22px] border border-slate-200 bg-slate-50">
+            <LiveMap vehicles={vehicles} />
+          </div>
+        </AdminSectionCard>
+      </AdminPageShell>
     </ApiErrorBoundary>
   );
 }
