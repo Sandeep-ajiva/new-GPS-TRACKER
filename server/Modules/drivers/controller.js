@@ -1,5 +1,6 @@
 const Driver = require('./model');
 const User = require('../users/model');
+const Vehicle = require('../vehicle/model');
 const Validator = require('../../helpers/validators');
 const mongoose = require('mongoose');
 const paginate = require("../../helpers/limitoffset");
@@ -199,7 +200,19 @@ exports.create = async (req, res) => {
 
 exports.getAll = async (req, res) => {
     try {
-        const { status, page, limit, search } = req.query;
+        const {
+            status,
+            page,
+            limit,
+            search,
+            organizationId,
+            name,
+            phone,
+            licenseNumber,
+            vehicleNumber,
+            startDate,
+            endDate,
+        } = req.query;
 
         const filter = {};
 
@@ -209,6 +222,79 @@ exports.getAll = async (req, res) => {
         }
 
         if (status) filter.status = status;
+        if (organizationId) {
+            if (req.user.role === "superadmin" || req.orgScope === "ALL") {
+                filter.organizationId = organizationId;
+            } else if (
+                Array.isArray(req.orgScope) &&
+                req.orgScope.some((id) => id.toString() === String(organizationId))
+            ) {
+                filter.organizationId = organizationId;
+            }
+        }
+
+        if (name) {
+            filter.$and = [
+                ...(filter.$and || []),
+                {
+                    $or: [
+                        { firstName: { $regex: String(name).trim(), $options: "i" } },
+                        { lastName: { $regex: String(name).trim(), $options: "i" } },
+                    ],
+                },
+            ];
+        }
+
+        if (phone) {
+            filter.phone = { $regex: String(phone).trim(), $options: "i" };
+        }
+
+        if (licenseNumber) {
+            filter.licenseNumber = {
+                $regex: String(licenseNumber).trim().toUpperCase(),
+                $options: "i",
+            };
+        }
+
+        if (vehicleNumber) {
+            const vehicleFilter = {
+                vehicleNumber: {
+                    $regex: String(vehicleNumber).trim().toUpperCase(),
+                    $options: "i",
+                },
+            };
+
+            if (filter.organizationId) {
+                vehicleFilter.organizationId = filter.organizationId;
+            }
+
+            const vehicleIds = await Vehicle.find(vehicleFilter).distinct("_id");
+            filter.assignedVehicleId =
+                vehicleIds.length > 0 ? { $in: vehicleIds } : { $in: [] };
+        }
+
+        if (startDate || endDate) {
+            const joiningDate = {};
+
+            if (startDate) {
+                const parsedStart = new Date(String(startDate));
+                if (!Number.isNaN(parsedStart.getTime())) {
+                    joiningDate.$gte = parsedStart;
+                }
+            }
+
+            if (endDate) {
+                const parsedEnd = new Date(String(endDate));
+                if (!Number.isNaN(parsedEnd.getTime())) {
+                    parsedEnd.setHours(23, 59, 59, 999);
+                    joiningDate.$lte = parsedEnd;
+                }
+            }
+
+            if (Object.keys(joiningDate).length) {
+                filter.joiningDate = joiningDate;
+            }
+        }
 
         const result = await paginate(
             Driver,

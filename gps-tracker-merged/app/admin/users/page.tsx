@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Table from "@/components/ui/Table";
 import Pagination from "@/components/ui/Pagination";
@@ -85,8 +85,27 @@ export default function UsersPage() {
   // API Hooks - Conditionally fetch users
   // If organizationId filter is set, use the dedicated endpoint
   // Otherwise, fetch all users (for superadmin)
+  const usersQueryParams = useMemo(
+    () => ({
+      page: page - 1,
+      limit: LIMIT,
+      name: filters.name || undefined,
+      email: filters.email || undefined,
+      mobile: filters.mobile || undefined,
+      role: filters.role || undefined,
+      status: filters.status || undefined,
+      organizationId: filters.organizationId || undefined,
+      organizationName: filters.organizationName || undefined,
+      from: filters.startDate || undefined,
+      to: filters.endDate || undefined,
+      roles: isRootOrgAdmin ? "admin,manager" : undefined,
+      excludeUserId: isRootOrgAdmin ? user?._id : undefined,
+    }),
+    [LIMIT, page, filters, isRootOrgAdmin, user?._id],
+  );
+
   const { data: usersData, isLoading: isUsersLoading, refetch: refetchUsers } = useGetUsersQuery(
-    { page: page - 1, limit: LIMIT },
+    usersQueryParams,
     {
       skip: !!filters.organizationId, // Skip if filtering by org
       refetchOnMountOrArgChange: true,
@@ -94,7 +113,7 @@ export default function UsersPage() {
   );
 
   const { data: orgUsersData, isLoading: isOrgUsersLoading, refetch: refetchOrgUsers } =
-    useGetManagerByOrganizationQuery({ organizationId: filters.organizationId, page: page - 1, limit: LIMIT }, {
+    useGetManagerByOrganizationQuery(usersQueryParams, {
       skip: !filters.organizationId, // Skip if NOT filtering by org
       refetchOnMountOrArgChange: true,
     });
@@ -128,62 +147,19 @@ export default function UsersPage() {
     [users],
   );
 
-  const filteredUsers = useMemo(() => {
-    let filtered = users;
-
-    // 🔐 ACCESS CONTROL REFINEMENT
-    if (isRootOrgAdmin) {
-      filtered = filtered.filter((u) => {
-        // 1. Exclude self
-        const isSelf = user?._id && u._id === user._id;
-        // 2. Exclude drivers
-        const isDriver = u.role === "driver";
-        // 3. Show only admins/managers
-        const isManagerial = u.role === "admin" || u.role === "manager";
-        return !isSelf && !isDriver && isManagerial;
-      });
-    }
-
-    if (filters.name) {
-      filtered = filtered.filter((u) =>
-        `${u.firstName} ${u.lastName}`
-          .toLowerCase()
-          .includes(filters.name.toLowerCase()),
-      );
-    }
-
-    if (filters.email) {
-      filtered = filtered.filter((u) =>
-        (u.email || "").toLowerCase().includes(filters.email.toLowerCase()),
-      );
-    }
-
-    if (filters.mobile) {
-      filtered = filtered.filter((u) =>
-        (u.mobile || "").toLowerCase().includes(filters.mobile.toLowerCase()),
-      );
-    }
-
-    if (filters.role) {
-      filtered = filtered.filter((u) => u.role === filters.role);
-    }
-
-    if (filters.status) {
-      filtered = filtered.filter((u) => u.status === filters.status);
-    }
-
-    // Filter by organization name
-    if (filters.organizationName) {
-      filtered = filtered.filter((u) => {
-        const orgName = typeof u.organizationId === "object"
-          ? u.organizationId?.name || ""
-          : organizations.find((o) => o._id === u.organizationId)?.name || "";
-        return orgName.toLowerCase().includes(filters.organizationName.toLowerCase());
-      });
-    }
-
-    return filtered;
-  }, [users, filters.name, filters.email, filters.mobile, filters.role, filters.status, filters.organizationName, isRootOrgAdmin, orgId, user, organizations]);
+  useEffect(() => {
+    setPage(1);
+  }, [
+    filters.name,
+    filters.email,
+    filters.mobile,
+    filters.role,
+    filters.status,
+    filters.organizationId,
+    filters.organizationName,
+    filters.startDate,
+    filters.endDate,
+  ]);
 
   const handleSubmit = async (
     data: Record<string, string | number | boolean | File>,
@@ -715,7 +691,7 @@ export default function UsersPage() {
           className="min-h-[420px]"
           bodyClassName="flex min-h-[340px] flex-col justify-between gap-4 p-4"
         >
-          <Table columns={columns} data={filteredUsers} loading={isLoading} />
+          <Table columns={columns} data={users} loading={isLoading} />
           <Pagination
             page={page}
             totalPages={totalPages}

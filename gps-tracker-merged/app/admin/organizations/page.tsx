@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Table from "@/components/ui/Table";
 import Pagination from "@/components/ui/Pagination";
@@ -53,6 +53,7 @@ export default function OrganizationsPage() {
 
   // 🔐 ORG CONTEXT UPDATE
   const { role, orgId, orgName, isSuperAdmin, isRootOrgAdmin } = useOrgContext();
+  const canUseImportExport = role === "admin" || role === "superadmin";
 
   /* ---------------------------------------
      1️⃣ Fetch sub-organizations (NO parentId param)
@@ -60,22 +61,9 @@ export default function OrganizationsPage() {
   const [page, setPage] = useState(1);
   const LIMIT = 10;
 
-  const { data: subOrgResponse, isLoading, error, refetch: refetchSubOrgs } =
-    useGetSubOrganizationsQuery({ page: page - 1, limit: LIMIT });
-
   const { data: allOrgsResponse } = useGetOrganizationsQuery(
     { page: 0, limit: 1000 },
     { skip: !isSuperAdmin && !isRootOrgAdmin }
-  );
-
-  const organizations: Organization[] = useMemo(
-    () => subOrgResponse?.data || [],
-    [subOrgResponse]
-  );
-
-  const allOrganizations = useMemo(
-    () => allOrgsResponse?.data || [],
-    [allOrgsResponse]
   );
 
   /* ---------------------------------------
@@ -98,26 +86,38 @@ export default function OrganizationsPage() {
     status: "",
   });
 
+  const organizationQueryParams = useMemo(
+    () => ({
+      page: page - 1,
+      limit: LIMIT,
+      name: filters.name || undefined,
+      organizationType: filters.type || undefined,
+      status: filters.status || undefined,
+    }),
+    [LIMIT, page, filters]
+  );
+
+  const { data: subOrgResponse, isLoading, error, refetch: refetchSubOrgs } =
+    useGetSubOrganizationsQuery(organizationQueryParams);
+
+  const organizations: Organization[] = useMemo(
+    () => subOrgResponse?.data || [],
+    [subOrgResponse]
+  );
+
+  const allOrganizations = useMemo(
+    () => allOrgsResponse?.data || [],
+    [allOrgsResponse]
+  );
+
   // 🔐 ORG CONTEXT UPDATE
   const canCreateOrg = isSuperAdmin || isRootOrgAdmin;
   const canEditOrg = isSuperAdmin || isRootOrgAdmin;
   const canDeleteOrg = isSuperAdmin || isRootOrgAdmin;
 
-  const filteredOrganizations = useMemo(() => {
-    const nameFilter = filters.name.trim().toLowerCase();
-    return organizations.filter((org) => {
-      if (nameFilter && !org.name.toLowerCase().includes(nameFilter)) {
-        return false;
-      }
-      if (filters.type && org.organizationType !== filters.type) {
-        return false;
-      }
-      if (filters.status && org.status !== filters.status) {
-        return false;
-      }
-      return true;
-    });
-  }, [organizations, filters]);
+  useEffect(() => {
+    setPage(1);
+  }, [filters.name, filters.type, filters.status]);
 
   const formFields = useMemo(() => getFormFields(!!editingOrg, isSuperAdmin || isRootOrgAdmin, orgName), [editingOrg, isSuperAdmin, isRootOrgAdmin, orgName]);
 
@@ -311,34 +311,42 @@ export default function OrganizationsPage() {
             </>
           }
           actions={<div className="flex flex-col gap-3 sm:flex-row">
-            <ImportExportButton
-              moduleName="organizations"
-              importUrl="/importexport/import/organizations"
-              exportUrl="/importexport/export/organizations"
-              allowedFields={[
-                "name",
-                "organizationType",
-                "email",
-                "phone",
-                "addressLine",
-                "city",
-                "state",
-                "country",
-                "pincode",
-                "parentOrganizationId",
-                "parentOrganizationName",
-                "status",
-              ]}
-              requiredFields={["name", "organizationType", "email", "phone"]}
-              filters={{
-                name: filters.name,
-                organizationType: filters.type,
-                status: filters.status,
-              }}
-              onCompleted={() => {
-                void refetchSubOrgs();
-              }}
-            />
+            {canUseImportExport && (
+              <ImportExportButton
+                moduleName="organizations"
+                importUrl="/importexport/import/organizations"
+                exportUrl="/importexport/export/organizations"
+                allowedFields={[
+                  "name",
+                  "organizationType",
+                  "email",
+                  "phone",
+                  "addressLine",
+                  "city",
+                  "state",
+                  "country",
+                  "pincode",
+                  "parentOrganizationId",
+                  "parentOrganizationName",
+                  "status",
+                ]}
+                requiredFields={["name", "organizationType", "email", "phone"]}
+                filters={{
+                  name: filters.name,
+                  organizationType: filters.type,
+                  status: filters.status,
+                }}
+                organizationSelectionMode="disabled"
+                organizationSelectionNote={
+                  isSuperAdmin
+                    ? "Parent organization comes from the file for this import."
+                    : `If no parent is provided in the file, new rows will be created under ${orgName}.`
+                }
+                onCompleted={() => {
+                  void refetchSubOrgs();
+                }}
+              />
+            )}
             <button
               onClick={() => setShowFilters(!showFilters)}
               className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-black uppercase tracking-[0.22em] text-slate-700 shadow-sm transition hover:bg-slate-50"
@@ -419,7 +427,7 @@ export default function OrganizationsPage() {
         className="min-h-[420px]"
         bodyClassName="flex min-h-[340px] flex-col justify-between gap-4 p-4"
       >
-        <Table columns={columns} data={filteredOrganizations} />
+        <Table columns={columns} data={organizations} />
         <Pagination
           page={page}
           totalPages={(subOrgResponse as any)?.pagination?.totalPages ?? Math.max(1, Math.ceil(((subOrgResponse as any)?.pagination?.totalrecords ?? organizations.length) / LIMIT))}

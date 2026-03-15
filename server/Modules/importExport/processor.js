@@ -18,6 +18,48 @@ function addDuplicate(result, row, field, message, raw = null) {
   result.errors.push({ row, field, message, raw, type: "duplicate" });
 }
 
+function buildOrgSlug(name) {
+  return (
+    String(name || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-+|-+$)/g, "") || "org"
+  );
+}
+
+function buildUniqueOrganizationPath(parentPath, baseSlug, rowNumber, usedPaths) {
+  const normalizedParentPath = parentPath || "";
+  const basePath = normalizedParentPath ? `${normalizedParentPath}/${baseSlug}` : `/${baseSlug}`;
+  if (!usedPaths.has(basePath)) {
+    usedPaths.add(basePath);
+    return basePath;
+  }
+
+  let suffix = 1;
+  let candidate = normalizedParentPath
+    ? `${normalizedParentPath}/${baseSlug}-${rowNumber}`
+    : `/${baseSlug}-${rowNumber}`;
+
+  while (usedPaths.has(candidate)) {
+    suffix += 1;
+    candidate = normalizedParentPath
+      ? `${normalizedParentPath}/${baseSlug}-${rowNumber}-${suffix}`
+      : `/${baseSlug}-${rowNumber}-${suffix}`;
+  }
+
+  usedPaths.add(candidate);
+  return candidate;
+}
+
+function addChunkFailure(result, rows, field, message) {
+  rows.forEach((item) => {
+    if (result.errorRowSet.has(item.rowNumber) || result.duplicateRowSet.has(item.rowNumber)) {
+      return;
+    }
+    addError(result, item.rowNumber, field, message, item.raw);
+  });
+}
+
 async function normalizeChunkRows(entity, rows, req, context, result, options) {
   const normalizedRows = [];
 
@@ -37,10 +79,39 @@ async function normalizeChunkRows(entity, rows, req, context, result, options) {
   return normalizedRows;
 }
 
-async function processOrganizationsChunk(rows, req, context, result) {
+async function processOrganizationsChunk(rows, req, context, result, state) {
+  if (rows.length === 0) return;
+
+  const candidateEmails = [...new Set(rows.map((item) => item.data.email).filter(Boolean))];
+  const candidatePhones = [...new Set(rows.map((item) => item.data.phone).filter(Boolean))];
+  const existingOrganizations =
+    candidateEmails.length || candidatePhones.length
+      ? await Organization.find({
+          $or: [
+            candidateEmails.length ? { email: { $in: candidateEmails } } : null,
+            candidatePhones.length ? { phone: { $in: candidatePhones } } : null,
+          ].filter(Boolean),
+        })
+          .select("email phone path")
+          .lean()
+      : [];
+
+  const existingEmails = new Set([
+    ...existingOrganizations.map((organization) => organization.email).filter(Boolean),
+    ...state.seenOrganizationEmails,
+  ]);
+  const existingPhones = new Set([
+    ...existingOrganizations.map((organization) => organization.phone).filter(Boolean),
+    ...state.seenOrganizationPhones,
+  ]);
+
+  const resolvedRows = [];
+  const candidatePaths = [];
+
   for (const item of rows) {
     const row = item.data;
     let parentOrganizationId = null;
+    let parentPath = "";
 
     if (row.parentOrganizationId) {
       const parent = context.organizationsById.get(String(row.parentOrganizationId));
@@ -53,6 +124,7 @@ async function processOrganizationsChunk(rows, req, context, result) {
         continue;
       }
       parentOrganizationId = String(parent._id);
+      parentPath = parent.path || "";
     } else if (row.parentOrganizationName) {
       const parents = context.organizationsByNormalizedName.get(String(row.parentOrganizationName).toLowerCase()) || [];
       const scopedParents =
@@ -64,70 +136,105 @@ async function processOrganizationsChunk(rows, req, context, result) {
         continue;
       }
       parentOrganizationId = String(scopedParents[0]._id);
+      parentPath = scopedParents[0].path || "";
     } else if (req.user.role !== "superadmin") {
       parentOrganizationId = String(req.orgId);
+      parentPath = context.organizationsById.get(String(req.orgId))?.path || "";
     }
 
-    const duplicate = await Organization.findOne({
-      $or: [
-        { email: row.email },
-        { phone: row.phone },
-      ],
-    }).select("_id").lean();
-
-    if (duplicate) {
+    if (existingEmails.has(row.email) || existingPhones.has(row.phone)) {
       addDuplicate(result, item.rowNumber, "email", "Organization with this email or phone already exists", item.raw);
       continue;
     }
 
-    let parentPath = "";
-    if (parentOrganizationId) {
-      const parent = await Organization.findById(parentOrganizationId).select("path").lean();
-      if (!parent) {
-        addError(result, item.rowNumber, "parentOrganizationId", "parent organization was not found", item.raw);
-        continue;
+    existingEmails.add(row.email);
+    existingPhones.add(row.phone);
+
+    const baseSlug = buildOrgSlug(row.name);
+    candidatePaths.push(parentPath ? `${parentPath}/${baseSlug}` : `/${baseSlug}`);
+    resolvedRows.push({
+      item,
+      row,
+      parentOrganizationId,
+      parentPath,
+      baseSlug,
+    });
+  }
+
+  if (resolvedRows.length === 0) return;
+
+  const existingPaths = candidatePaths.length
+    ? await Organization.find({ path: { $in: candidatePaths } }).select("path").lean()
+    : [];
+  const usedPaths = new Set([
+    ...existingPaths.map((organization) => organization.path).filter(Boolean),
+    ...state.seenOrganizationPaths,
+  ]);
+
+  const docs = [];
+  const meta = [];
+  for (const resolved of resolvedRows) {
+    const generatedPath = buildUniqueOrganizationPath(
+      resolved.parentPath,
+      resolved.baseSlug,
+      resolved.item.rowNumber,
+      usedPaths,
+    );
+    docs.push({
+      name: resolved.row.name,
+      organizationType: resolved.row.organizationType,
+      email: resolved.row.email,
+      phone: resolved.row.phone,
+      address: {
+        addressLine: resolved.row.addressLine || "",
+        city: resolved.row.city || "",
+        state: resolved.row.state || "",
+        country: resolved.row.country || "",
+        pincode: resolved.row.pincode || "",
+      },
+      geo: { timezone: "Asia/Kolkata" },
+      settings: {},
+      parentOrganizationId: resolved.parentOrganizationId || null,
+      path: generatedPath,
+      adminUser: null,
+      status: resolved.row.status || "active",
+      createdBy: req.user._id,
+    });
+    meta.push(resolved);
+  }
+
+  try {
+    const insertedOrganizations = await Organization.insertMany(docs, { ordered: false });
+    insertedOrganizations.forEach((organization) => {
+      if (organization.email) state.seenOrganizationEmails.add(organization.email);
+      if (organization.phone) state.seenOrganizationPhones.add(organization.phone);
+      if (organization.path) state.seenOrganizationPaths.add(organization.path);
+    });
+    result.successfulRows += insertedOrganizations.length;
+    result.summary.inserted += insertedOrganizations.length;
+  } catch (error) {
+    if (!error?.writeErrors?.length) throw error;
+    const failedIndexes = new Set();
+    for (const writeError of error.writeErrors) {
+      failedIndexes.add(writeError.index);
+      const source = meta[writeError.index];
+      if (writeError.code === 11000) {
+        addDuplicate(result, source.item.rowNumber, "email", "Duplicate organization unique key conflict", source.item.raw);
+      } else if (source) {
+        addError(result, source.item.rowNumber, "name", writeError.errmsg || "Organization import failed", source.item.raw);
       }
-      parentPath = parent.path;
     }
 
-    const baseSlug = row.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-+|-+$)/g, "") || `org-${Date.now()}`;
-    let slug = baseSlug;
-    let generatedPath = parentPath ? `${parentPath}/${slug}` : `/${slug}`;
+    const insertedCount = docs.length - failedIndexes.size;
+    result.successfulRows += insertedCount;
+    result.summary.inserted += insertedCount;
 
-    // Keep path unique without risking collisions from the same batch.
-    // A short timestamp suffix is enough here because organization imports are low volume.
-    const samePath = await Organization.findOne({ path: generatedPath }).select("_id").lean();
-    if (samePath) {
-      slug = `${baseSlug}-${Date.now()}`;
-      generatedPath = parentPath ? `${parentPath}/${slug}` : `/${slug}`;
-    }
-
-    try {
-      await Organization.create({
-        name: row.name,
-        organizationType: row.organizationType,
-        email: row.email,
-        phone: row.phone,
-        address: {
-          addressLine: row.addressLine || "",
-          city: row.city || "",
-          state: row.state || "",
-          country: row.country || "",
-          pincode: row.pincode || "",
-        },
-        geo: { timezone: "Asia/Kolkata" },
-        settings: {},
-        parentOrganizationId: parentOrganizationId || null,
-        path: generatedPath,
-        adminUser: null,
-        status: row.status || "active",
-        createdBy: req.user._id,
-      });
-      result.successfulRows += 1;
-      result.summary.inserted += 1;
-    } catch (error) {
-      addError(result, item.rowNumber, "name", error.message || "Organization import failed", item.raw);
-    }
+    docs.forEach((doc, index) => {
+      if (failedIndexes.has(index)) return;
+      if (doc.email) state.seenOrganizationEmails.add(doc.email);
+      if (doc.phone) state.seenOrganizationPhones.add(doc.phone);
+      if (doc.path) state.seenOrganizationPaths.add(doc.path);
+    });
   }
 }
 
@@ -233,11 +340,6 @@ async function processDevicesChunk(rows, req, result, state) {
       hardwareVersion: row.hardwareVersion || "",
       warrantyExpiry: row.warrantyExpiry || null,
       vehicleRegistrationNumber: row.vehicleRegistrationNumber || undefined,
-      password: row.password || "rpointais",
-      emergencyNumber: row.emergencyNumber || undefined,
-      userMobile1: row.userMobile1 || undefined,
-      userMobile2: row.userMobile2 || undefined,
-      userMobile3: row.userMobile3 || undefined,
       status: row.status || "active",
       isOnline: false,
       connectionStatus: "offline",
@@ -274,15 +376,32 @@ async function processDriversChunk(rows, req, result, state) {
   if (rows.length === 0) return;
 
   const dedupedRows = [];
+  const seenDriverEmails = new Set();
+  const seenDriverPhones = new Set();
+  const pendingDriverKeys = [];
   for (const item of rows) {
     const key = `${item.data.organizationId}:${item.data.licenseNumber}`;
     if (state.seenDriverKeys.has(key)) {
       addDuplicate(result, item.rowNumber, "licenseNumber", "Duplicate licenseNumber in file for the same organization", item.raw);
       continue;
     }
-    state.seenDriverKeys.add(key);
+    const emailKey = `${item.data.organizationId}:${item.data.email}`;
+    const phoneKey = `${item.data.organizationId}:${item.data.phone}`;
+    if (seenDriverEmails.has(emailKey)) {
+      addDuplicate(result, item.rowNumber, "email", "Duplicate email in file for the same organization", item.raw);
+      continue;
+    }
+    if (seenDriverPhones.has(phoneKey)) {
+      addDuplicate(result, item.rowNumber, "phone", "Duplicate phone in file for the same organization", item.raw);
+      continue;
+    }
+    seenDriverEmails.add(emailKey);
+    seenDriverPhones.add(phoneKey);
+    pendingDriverKeys.push(key);
     dedupedRows.push(item);
   }
+
+  if (dedupedRows.length === 0) return;
 
   const orgIds = [...new Set(dedupedRows.map((item) => item.data.organizationId))];
   const emails = [...new Set(dedupedRows.map((item) => item.data.email).filter(Boolean))];
@@ -314,8 +433,7 @@ async function processDriversChunk(rows, req, result, state) {
   const existingUserEmails = new Set(existingUsers.map((user) => user.email));
   const existingUserMobiles = new Set(existingUsers.map((user) => user.mobile));
 
-  const driverDocs = [];
-  const driverMeta = [];
+  const preparedRows = [];
   for (const item of dedupedRows) {
     const row = item.data;
     const rowKeys = [
@@ -332,100 +450,81 @@ async function processDriversChunk(rows, req, result, state) {
       continue;
     }
 
-    driverDocs.push({
-      organizationId: new mongoose.Types.ObjectId(row.organizationId),
-      assignedVehicleId: null,
-      firstName: row.firstName,
-      lastName: row.lastName,
-      phone: row.phone,
-      email: row.email,
-      licenseNumber: row.licenseNumber,
-      licenseExpiry: row.licenseExpiry || null,
-      status: row.status || "active",
-      availability: true,
-      totalTrips: 0,
-      rating: 0,
-      joiningDate: new Date(),
+    const passwordHash = await bcrypt.hash(row.password, 10);
+    preparedRows.push({
+      item,
+      driverDoc: {
+        organizationId: new mongoose.Types.ObjectId(row.organizationId),
+        assignedVehicleId: null,
+        firstName: row.firstName,
+        lastName: row.lastName,
+        phone: row.phone,
+        email: row.email,
+        licenseNumber: row.licenseNumber,
+        licenseExpiry: row.licenseExpiry || null,
+        status: row.status || "active",
+        availability: true,
+        totalTrips: 0,
+        rating: 0,
+        joiningDate: new Date(),
+      },
+      userDocBase: {
+        organizationId: new mongoose.Types.ObjectId(row.organizationId),
+        firstName: row.firstName,
+        lastName: row.lastName,
+        email: row.email,
+        mobile: row.phone,
+        passwordHash,
+        role: "driver",
+        status: row.status || "active",
+        assignedVehicleId: null,
+      },
     });
-    driverMeta.push(item);
   }
 
-  if (driverDocs.length === 0) return;
+  if (preparedRows.length === 0) return;
 
-  let insertedDrivers = [];
+  const session = await mongoose.startSession();
   try {
-    insertedDrivers = await Driver.insertMany(driverDocs, { ordered: false });
-  } catch (error) {
-    if (!error?.writeErrors?.length) throw error;
-    const failedIndexes = new Set();
-    for (const writeError of error.writeErrors) {
-      failedIndexes.add(writeError.index);
-      const source = driverMeta[writeError.index];
-      if (writeError.code === 11000) {
-        addDuplicate(result, source.rowNumber, "licenseNumber", "Duplicate driver unique key conflict", source.raw);
-      } else {
-        addError(result, source.rowNumber, "licenseNumber", writeError.errmsg || "Driver insert failed", source.raw);
-      }
-    }
-    insertedDrivers = driverDocs
-      .map((doc, index) => (!failedIndexes.has(index) ? doc : null))
-      .filter(Boolean);
-  }
+    await session.withTransaction(async () => {
+      const insertedDrivers = await Driver.insertMany(
+        preparedRows.map((entry) => entry.driverDoc),
+        { session },
+      );
 
-  if (insertedDrivers.length === 0) return;
+      const userDocs = insertedDrivers.map((driver, index) => ({
+        ...preparedRows[index].userDocBase,
+        driverId: driver._id,
+      }));
 
-  const persistedDrivers = await Driver.find({
-    $or: insertedDrivers.map((doc) => ({
-      organizationId: doc.organizationId,
-      licenseNumber: doc.licenseNumber,
-    })),
-  }).select("_id organizationId licenseNumber").lean();
-  const driverByKey = new Map(
-    persistedDrivers.map((driver) => [`${driver.organizationId}:${driver.licenseNumber}`, driver]),
-  );
-
-  const userDocs = [];
-  const userMeta = [];
-  for (const item of driverMeta) {
-    const driver = driverByKey.get(`${item.data.organizationId}:${item.data.licenseNumber}`);
-    if (!driver) continue;
-    const passwordHash = await bcrypt.hash(item.data.password, 10);
-    userDocs.push({
-      organizationId: new mongoose.Types.ObjectId(item.data.organizationId),
-      firstName: item.data.firstName,
-      lastName: item.data.lastName,
-      email: item.data.email,
-      mobile: item.data.phone,
-      passwordHash,
-      role: "driver",
-      status: item.data.status || "active",
-      driverId: driver._id,
-      assignedVehicleId: null,
+      await User.insertMany(userDocs, { session });
     });
-    userMeta.push(item);
-  }
 
-  if (userDocs.length === 0) return;
-
-  try {
-    await User.insertMany(userDocs, { ordered: false });
-    result.successfulRows += userDocs.length;
-    result.summary.inserted += userDocs.length;
+    pendingDriverKeys.forEach((key) => state.seenDriverKeys.add(key));
+    result.successfulRows += preparedRows.length;
+    result.summary.inserted += preparedRows.length;
   } catch (error) {
-    if (!error?.writeErrors?.length) throw error;
-    const failedIndexes = new Set();
-    for (const writeError of error.writeErrors) {
-      failedIndexes.add(writeError.index);
-      const source = userMeta[writeError.index];
-      if (writeError.code === 11000) {
-        addDuplicate(result, source.rowNumber, "email", "Duplicate user unique key conflict", source.raw);
-      } else {
-        addError(result, source.rowNumber, "email", writeError.errmsg || "User insert failed", source.raw);
-      }
+    if (error?.code === 11000 || error?.writeErrors?.length) {
+      const duplicateMessage =
+        error?.message?.includes("mobile")
+          ? "Duplicate user mobile unique key conflict"
+          : error?.message?.includes("email")
+            ? "Duplicate user email unique key conflict"
+            : error?.message?.includes("licenseNumber")
+              ? "Duplicate driver licenseNumber unique key conflict"
+              : "Duplicate unique key conflict during driver import";
+      addChunkFailure(result, preparedRows.map((entry) => entry.item), "driverImport", duplicateMessage);
+      return;
     }
-    const insertedCount = userDocs.length - failedIndexes.size;
-    result.successfulRows += insertedCount;
-    result.summary.inserted += insertedCount;
+
+    addChunkFailure(
+      result,
+      preparedRows.map((entry) => entry.item),
+      "driverImport",
+      error?.message || "Driver import transaction failed",
+    );
+  } finally {
+    await session.endSession();
   }
 }
 
@@ -622,7 +721,7 @@ async function processChunk(entity, rows, req, context, result, state, options) 
   if (normalizedRows.length === 0) return;
 
   if (entity === "organizations") {
-    await processOrganizationsChunk(normalizedRows, req, context, result);
+    await processOrganizationsChunk(normalizedRows, req, context, result, state);
     return;
   }
   if (entity === "users") {

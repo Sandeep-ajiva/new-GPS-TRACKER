@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Table from "@/components/ui/Table";
 import Pagination from "@/components/ui/Pagination";
@@ -73,16 +73,50 @@ export default function VehiclesPage() {
   const filterParam = searchParams.get("filter");
 
   // 🔐 ORG CONTEXT UPDATE
-  const { orgId, isSuperAdmin, isRootOrgAdmin, isSubOrgAdmin } = useOrgContext();
+  const { orgId, role, user, isSuperAdmin, isRootOrgAdmin, isSubOrgAdmin } = useOrgContext();
+  const canUseImportExport = role === "admin" || role === "superadmin";
+  const canSelectImportOrganization = isSuperAdmin || (role === "admin" && !user?.parentOrganizationId);
 
   const canSelectOrg = isSuperAdmin || isRootOrgAdmin;
   const searchQueryParam = searchParams.get("search");
   const [page, setPage] = useState(1);
   const LIMIT = 10;
+  const [showFilters, setShowFilters] = useState(!!searchQueryParam);
+  const [selectedVehicleForAssignment, setSelectedVehicleForAssignment] =
+    useState<Vehicle | null>(null);
+  // Organization selection inside DynamicModal (for superadmin/root admin)
+  const [selectedOrgIdForForm, setSelectedOrgIdForForm] = useState<string>("");
+  // Track device selected in form — used to gate the driver dropdown
+  const [formDeviceId, setFormDeviceId] = useState<string>("");
+  const [filters, setFilters] = useState({
+    number: searchQueryParam || "",
+    type: "",
+    organizationId: "",
+    status: "",
+    runningStatus: "",
+    driverId: "",
+    deviceAssigned: "",
+  });
+
+  const vehicleQueryParams = useMemo(
+    () => ({
+      page: page - 1,
+      limit: LIMIT,
+      organizationId: filters.organizationId || undefined,
+      vehicleNumber: filters.number || undefined,
+      vehicleType: filters.type || undefined,
+      status: filters.status || undefined,
+      runningStatus: filters.runningStatus || undefined,
+      driverId: filters.driverId || undefined,
+      deviceAssigned: filters.deviceAssigned || undefined,
+      connectionStatus: filterParam === "online" ? "online" : undefined,
+    }),
+    [LIMIT, page, filters, filterParam],
+  );
 
   // API Hooks
   const { data: vehData, isLoading: isVehLoading, refetch: refetchVehicles } =
-    useGetVehiclesQuery({ page: page - 1, limit: LIMIT }, { refetchOnMountOrArgChange: true });
+    useGetVehiclesQuery(vehicleQueryParams, { refetchOnMountOrArgChange: true });
   const { data: allVehData } =
     useGetVehiclesQuery({ page: 0, limit: 1000 }, { refetchOnMountOrArgChange: true });
   const { data: orgData, isLoading: isOrgLoading } =
@@ -134,23 +168,6 @@ export default function VehiclesPage() {
     [driverData],
   );
 
-  const [showFilters, setShowFilters] = useState(!!searchQueryParam);
-  const [selectedVehicleForAssignment, setSelectedVehicleForAssignment] =
-    useState<Vehicle | null>(null);
-  // Organization selection inside DynamicModal (for superadmin/root admin)
-  const [selectedOrgIdForForm, setSelectedOrgIdForForm] = useState<string>("");
-  // Track device selected in form — used to gate the driver dropdown
-  const [formDeviceId, setFormDeviceId] = useState<string>("");
-  const [filters, setFilters] = useState({
-    number: searchQueryParam || "",
-    type: "",
-    organizationId: "",
-    status: "",
-    runningStatus: "",
-    driverId: "",
-    deviceAssigned: "",
-  });
-
   // 🔐 ORG CONTEXT UPDATE
   const canCreateVehicle = isSuperAdmin || isRootOrgAdmin || isSubOrgAdmin;
   const canEditVehicle = isSuperAdmin || isRootOrgAdmin || isSubOrgAdmin;
@@ -174,51 +191,18 @@ export default function VehiclesPage() {
     return orgId || "";
   }, [canSelectOrg, selectedOrgIdForForm, orgId]);
 
-  const filteredVehicles = useMemo(() => {
-    let filtered = vehicles;
-
-    if (filterParam === "online") {
-      // Logic needs connection status check from device.
-      // We can map deviceId -> device -> connectionStatus
-      filtered = filtered.filter((v) => {
-        const dev = devices.find((d) => d._id === v.deviceId);
-        return dev?.connectionStatus === "online";
-      });
-    }
-
-    if (filters.organizationId) {
-      filtered = filtered.filter((v) => {
-        const orgId = typeof v.organizationId === "object"
-          ? v.organizationId._id
-          : v.organizationId;
-        return orgId === filters.organizationId;
-      });
-    }
-    if (filters.number) {
-      filtered = filtered.filter((v) =>
-        v.vehicleNumber.toLowerCase().includes(filters.number.toLowerCase()),
-      );
-    }
-    if (filters.type) {
-      filtered = filtered.filter((v) => v.vehicleType === filters.type);
-    }
-    if (filters.status) {
-      filtered = filtered.filter((v) => v.status === filters.status);
-    }
-    if (filters.runningStatus) {
-      filtered = filtered.filter((v) => v.runningStatus === filters.runningStatus);
-    }
-    if (filters.driverId) {
-      filtered = filtered.filter((v) => v.driverId === filters.driverId);
-    }
-    if (filters.deviceAssigned === "assigned") {
-      filtered = filtered.filter((v) => v.deviceId);
-    } else if (filters.deviceAssigned === "unassigned") {
-      filtered = filtered.filter((v) => !v.deviceId);
-    }
-
-    return filtered;
-  }, [vehicles, devices, filters, filterParam]);
+  useEffect(() => {
+    setPage(1);
+  }, [
+    filters.number,
+    filters.type,
+    filters.organizationId,
+    filters.status,
+    filters.runningStatus,
+    filters.driverId,
+    filters.deviceAssigned,
+    filterParam,
+  ]);
 
   // Calculate available devices
   // Device is available if NOT used by ANY vehicle, OR if it is used by CURRENT editing vehicle
@@ -507,18 +491,6 @@ export default function VehiclesPage() {
       icon: <ToggleLeft size={14} className="text-slate-500" />,
     },
     {
-      name: "runningStatus",
-      label: "Running Status",
-      type: "select",
-      options: [
-        { label: "Running", value: "running" },
-        { label: "Idle", value: "idle" },
-        { label: "Stopped", value: "stopped" },
-        { label: "Inactive", value: "inactive" },
-      ],
-      icon: <ToggleLeft size={14} className="text-slate-500" />,
-    },
-    {
       name: "deviceId",
       label: "Assign GPS Device",
       type: "select",
@@ -561,7 +533,6 @@ export default function VehiclesPage() {
       year: z.string().optional(),
       color: z.string().optional(),
       status: z.enum(["active", "inactive"]),
-      runningStatus: z.enum(["running", "idle", "stopped", "inactive"]).optional(),
       deviceId: z.string().optional(),
       driverId: z.string().optional(),
     });
@@ -684,23 +655,6 @@ export default function VehiclesPage() {
       },
     },
     {
-      header: "Running",
-      accessor: (row: Vehicle) => (
-        <span
-          className={`capitalize text-xs font-semibold ${row.runningStatus === "running"
-            ? "text-green-600"
-            : row.runningStatus === "idle"
-              ? "text-amber-600"
-              : row.runningStatus === "stopped"
-                ? "text-red-600"
-                : "text-slate-500"
-            }`}
-        >
-          {row.runningStatus || "-"}
-        </span>
-      ),
-    },
-    {
       header: "Status",
       accessor: (row: Vehicle) => (
         <span
@@ -776,43 +730,45 @@ export default function VehiclesPage() {
           title="Vehicles"
           description="Manage your fleet vehicles here."
           actions={<div className="flex flex-col gap-3 sm:flex-row">
-            <ImportExportButton
-              moduleName="vehicles"
-              importUrl="/importexport/import/vehicles"
-              exportUrl="/importexport/export/vehicles"
-              allowedFields={[
-                "organizationId",
-                "organizationName",
-                "vehicleType",
-                "vehicleNumber",
-                "ais140Compliant",
-                "ais140CertificateNumber",
-                "make",
-                "model",
-                "year",
-                "color",
-                "status",
-                "runningStatus",
-                "lastUpdated",
-                "deviceImei",
-              ]}
-              requiredFields={[
-                ...(isSuperAdmin || isRootOrgAdmin ? ["organizationId"] : []),
-                "vehicleType",
-                "vehicleNumber",
-              ]}
-              filters={{
-                vehicleNumber: filters.number,
-                vehicleType: filters.type,
-                organizationId: filters.organizationId,
-                status: filters.status,
-                runningStatus: filters.runningStatus,
-                driverId: filters.driverId,
-              }}
-              onCompleted={() => {
-                void refetchVehicles();
-              }}
-            />
+            {canUseImportExport && (
+              <ImportExportButton
+                moduleName="vehicles"
+                importUrl="/importexport/import/vehicles"
+                exportUrl="/importexport/export/vehicles"
+                allowedFields={[
+                  "organizationId",
+                  "organizationName",
+                  "vehicleType",
+                  "vehicleNumber",
+                  "ais140Compliant",
+                  "ais140CertificateNumber",
+                  "make",
+                  "model",
+                  "year",
+                  "color",
+                  "status",
+                  "runningStatus",
+                  "lastUpdated",
+                  "deviceImei",
+                ]}
+                requiredFields={[
+                  ...(canSelectImportOrganization ? ["organizationId"] : []),
+                  "vehicleType",
+                  "vehicleNumber",
+                ]}
+                filters={{
+                  vehicleNumber: filters.number,
+                  vehicleType: filters.type,
+                  organizationId: filters.organizationId,
+                  status: filters.status,
+                  runningStatus: filters.runningStatus,
+                  driverId: filters.driverId,
+                }}
+                onCompleted={() => {
+                  void refetchVehicles();
+                }}
+              />
+            )}
             <button
               onClick={() => setShowFilters(!showFilters)}
               className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-black uppercase tracking-[0.22em] text-slate-700 shadow-sm transition hover:bg-slate-50"
@@ -987,7 +943,7 @@ export default function VehiclesPage() {
           className="min-h-[420px]"
           bodyClassName="flex min-h-[340px] flex-col justify-between gap-4 p-4"
         >
-          <Table columns={columns} data={filteredVehicles} loading={isLoading} />
+          <Table columns={columns} data={vehicles} loading={isLoading} />
           <Pagination
             page={page}
             totalPages={totalPages}
@@ -1018,7 +974,6 @@ export default function VehiclesPage() {
                   year: editingVehicle.year ? String(editingVehicle.year) : "",
                   color: editingVehicle.color || "",
                   status: editingVehicle.status,
-                  runningStatus: editingVehicle.runningStatus || "",
                   driverId: editingVehicle.driverId ? String(editingVehicle.driverId) : "",
                   deviceId: editingVehicle.deviceId ? String(editingVehicle.deviceId) : "",
                 }

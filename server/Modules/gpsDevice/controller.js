@@ -173,7 +173,22 @@ exports.create = async (req, res) => {
 
 exports.getAll = async (req, res) => {
   try {
-    const { status, isOnline, page, limit, search } = req.query;
+    const {
+      status,
+      isOnline,
+      page,
+      limit,
+      search,
+      organizationId,
+      imei,
+      model,
+      firmware,
+      simNumber,
+      connectionStatus,
+      assigned,
+      vehicleNumber,
+      warrantyExpiry,
+    } = req.query;
 
     const filter = {};
 
@@ -182,9 +197,63 @@ exports.getAll = async (req, res) => {
       filter.organizationId = { $in: req.orgScope };
     }
 
+    if (organizationId) {
+      if (req.user.role === "superadmin" || req.orgScope === "ALL") {
+        filter.organizationId = organizationId;
+      } else if (
+        Array.isArray(req.orgScope) &&
+        req.orgScope.some((id) => id.toString() === String(organizationId))
+      ) {
+        filter.organizationId = organizationId;
+      }
+    }
+
     // 🎯 extra filters
     if (status) filter.status = status;
     if (isOnline !== undefined) filter.isOnline = isOnline === "true";
+    if (imei) filter.imei = { $regex: String(imei).trim(), $options: "i" };
+    if (model) filter.deviceModel = { $regex: String(model).trim(), $options: "i" };
+    if (simNumber) filter.simNumber = { $regex: String(simNumber).trim(), $options: "i" };
+    if (connectionStatus) filter.connectionStatus = connectionStatus;
+    if (vehicleNumber) {
+      filter.vehicleRegistrationNumber = {
+        $regex: String(vehicleNumber).trim().toUpperCase(),
+        $options: "i",
+      };
+    }
+    if (firmware) {
+      filter.$and = [
+        ...(filter.$and || []),
+        {
+          $or: [
+            { firmwareVersion: { $regex: String(firmware).trim(), $options: "i" } },
+            { softwareVersion: { $regex: String(firmware).trim(), $options: "i" } },
+          ],
+        },
+      ];
+    }
+    if (assigned === "assigned") {
+      filter.vehicleId = { $ne: null };
+    } else if (assigned === "unassigned") {
+      filter.$and = [
+        ...(filter.$and || []),
+        {
+          $or: [{ vehicleId: null }, { vehicleId: { $exists: false } }],
+        },
+      ];
+      delete filter.vehicleId;
+    }
+    if (warrantyExpiry) {
+      const parsedWarrantyDate = new Date(String(warrantyExpiry));
+      if (!Number.isNaN(parsedWarrantyDate.getTime())) {
+        const nextDay = new Date(parsedWarrantyDate);
+        nextDay.setDate(nextDay.getDate() + 1);
+        filter.warrantyExpiry = {
+          $gte: parsedWarrantyDate,
+          $lt: nextDay,
+        };
+      }
+    }
 
     const result = await paginate(
       GpsDevice,

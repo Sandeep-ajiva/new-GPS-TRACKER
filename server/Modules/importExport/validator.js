@@ -1,17 +1,12 @@
 const path = require("path");
 const mongoose = require("mongoose");
 const { getEntityConfig, getSupportedEntities } = require("./config");
+const {
+  ALLOWED_EXTENSIONS,
+  ALLOWED_MIME_TYPES,
+} = require("./constants");
 
 const CHUNK_SIZE = 500;
-const ALLOWED_EXTENSIONS = new Set([".csv", ".xlsx", ".xls"]);
-const ALLOWED_MIME_TYPES = new Set([
-  "text/csv",
-  "application/csv",
-  "text/plain",
-  "application/vnd.ms-excel",
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  "application/octet-stream",
-]);
 
 const VEHICLE_STATUS = new Set(["active", "inactive", "maintenance", "decommissioned"]);
 const VEHICLE_RUNNING_STATUS = new Set(["running", "idle", "stopped", "inactive"]);
@@ -344,11 +339,6 @@ function normalizeImportedRow(entity, rawRow, req, context, options = {}) {
     normalized.firmwareVersion = sanitizeString(rawRow.firmwareVersion);
     normalized.hardwareVersion = sanitizeString(rawRow.hardwareVersion);
     normalized.vehicleRegistrationNumber = sanitizeString(rawRow.vehicleRegistrationNumber).toUpperCase();
-    normalized.password = sanitizeString(rawRow.password) || "rpointais";
-    normalized.emergencyNumber = sanitizeString(rawRow.emergencyNumber);
-    normalized.userMobile1 = sanitizeString(rawRow.userMobile1);
-    normalized.userMobile2 = sanitizeString(rawRow.userMobile2);
-    normalized.userMobile3 = sanitizeString(rawRow.userMobile3);
     normalized.status = normalizeLookupValue(rawRow.status) || "active";
 
     const warrantyExpiry = parseDate(rawRow.warrantyExpiry);

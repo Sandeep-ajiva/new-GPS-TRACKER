@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Table from "@/components/ui/Table";
 import Pagination from "@/components/ui/Pagination";
 import ApiErrorBoundary from "@/components/admin/ErrorBoundary/ApiErrorBoundary";
@@ -33,7 +33,9 @@ export default function DriversPage() {
     const { openPopup, closePopup, isPopupOpen } = usePopups();
 
     // 🔐 ORG CONTEXT UPDATE
-    const { orgId, isSuperAdmin, isRootOrgAdmin, isSubOrgAdmin } = useOrgContext();
+    const { orgId, role, user, isSuperAdmin, isRootOrgAdmin, isSubOrgAdmin } = useOrgContext();
+    const canUseImportExport = role === "admin" || role === "superadmin";
+    const canSelectImportOrganization = isSuperAdmin || (role === "admin" && !user?.parentOrganizationId);
 
     const [showFilters, setShowFilters] = useState(false);
     const [page, setPage] = useState(1);
@@ -57,9 +59,22 @@ export default function DriversPage() {
 
     const [editingDriver, setEditingDriver] = useState<any>(null);
 
+    const driverQueryParams = useMemo(() => ({
+        page: page - 1,
+        limit: LIMIT,
+        name: filters.name || undefined,
+        phone: filters.phone || undefined,
+        licenseNumber: filters.licenseNumber || undefined,
+        vehicleNumber: filters.vehicleNumber || undefined,
+        status: filters.status || undefined,
+        organizationId: filters.organizationId || undefined,
+        startDate: filters.startDate || undefined,
+        endDate: filters.endDate || undefined,
+    }), [page, LIMIT, filters]);
+
     // API Hooks
     const { data: driversData, isLoading: isDriversLoading, refetch: refetchDrivers } = useGetDriversQuery(
-        { page: page - 1, limit: LIMIT },
+        driverQueryParams,
         { refetchOnMountOrArgChange: true }
     );
 
@@ -90,58 +105,18 @@ export default function DriversPage() {
     }, [orgData, subOrgData]);
     const vehicles = useMemo(() => (vehData?.data as any[]) || [], [vehData]);
 
-    const filteredDrivers = useMemo(() => {
-        let filtered = drivers;
-
-        if (filters.name) {
-            filtered = filtered.filter((d) =>
-                `${d.firstName || ""} ${d.lastName || ""}`
-                    .toLowerCase()
-                    .includes(filters.name.toLowerCase()),
-            );
-        }
-
-        if (filters.phone) {
-            filtered = filtered.filter((d) =>
-                (d.phone || "").toLowerCase().includes(filters.phone.toLowerCase()),
-            );
-        }
-
-        if (filters.licenseNumber) {
-            filtered = filtered.filter((d) =>
-                (d.licenseNumber || "")
-                    .toLowerCase()
-                    .includes(filters.licenseNumber.toLowerCase()),
-            );
-        }
-
-        if (filters.vehicleNumber) {
-            filtered = filtered.filter((d) => {
-                const assigned = d.assignedVehicleId;
-                if (!assigned) return false;
-                if (typeof assigned === "object") {
-                    return (assigned.vehicleNumber || "")
-                        .toLowerCase()
-                        .includes(filters.vehicleNumber.toLowerCase());
-                }
-                const vehicle = vehicles.find((item: any) => item._id === assigned);
-                return (vehicle?.vehicleNumber || "")
-                    .toLowerCase()
-                    .includes(filters.vehicleNumber.toLowerCase());
-            });
-        }
-
-        if (filters.status) {
-            filtered = filtered.filter((d) => d.status === filters.status);
-        }
-        if (filters.organizationId) {
-            filtered = filtered.filter((d) => {
-                const id = typeof d.organizationId === 'object' ? d.organizationId._id : d.organizationId;
-                return id === filters.organizationId;
-            });
-        }
-        return filtered;
-    }, [drivers, vehicles, filters.name, filters.phone, filters.licenseNumber, filters.vehicleNumber, filters.status, filters.organizationId]);
+    useEffect(() => {
+        setPage(1);
+    }, [
+        filters.name,
+        filters.phone,
+        filters.licenseNumber,
+        filters.vehicleNumber,
+        filters.status,
+        filters.organizationId,
+        filters.startDate,
+        filters.endDate,
+    ]);
 
     const handleSubmit = async (data: Record<string, string | number | boolean | File>) => {
         try {
@@ -452,44 +427,46 @@ export default function DriversPage() {
                     title="Drivers"
                     description="Manage operators and driver profiles in your platform."
                     actions={<div className="flex flex-col gap-3 sm:flex-row">
-                        <ImportExportButton
-                            moduleName="drivers"
-                            importUrl="/importexport/import/drivers"
-                            exportUrl="/importexport/export/drivers"
-                            allowedFields={[
-                                "organizationId",
-                                "organizationName",
-                                "firstName",
-                                "lastName",
-                                "email",
-                                "phone",
-                                "licenseNumber",
-                                "licenseExpiry",
-                                "status",
-                                "password",
-                            ]}
-                            requiredFields={[
-                                ...(isSuperAdmin || isRootOrgAdmin ? ["organizationId"] : []),
-                                "firstName",
-                                "lastName",
-                                "email",
-                                "phone",
-                                "licenseNumber",
-                                "password",
-                            ]}
-                            filters={{
-                                name: filters.name,
-                                phone: filters.phone,
-                                licenseNumber: filters.licenseNumber,
-                                status: filters.status,
-                                organizationId: filters.organizationId,
-                                from: filters.startDate,
-                                to: filters.endDate,
-                            }}
-                            onCompleted={() => {
-                                void refetchDrivers();
-                            }}
-                        />
+                        {canUseImportExport && (
+                            <ImportExportButton
+                                moduleName="drivers"
+                                importUrl="/importexport/import/drivers"
+                                exportUrl="/importexport/export/drivers"
+                                allowedFields={[
+                                    "organizationId",
+                                    "organizationName",
+                                    "firstName",
+                                    "lastName",
+                                    "email",
+                                    "phone",
+                                    "licenseNumber",
+                                    "licenseExpiry",
+                                    "status",
+                                    "password",
+                                ]}
+                                requiredFields={[
+                                    ...(canSelectImportOrganization ? ["organizationId"] : []),
+                                    "firstName",
+                                    "lastName",
+                                    "email",
+                                    "phone",
+                                    "licenseNumber",
+                                    "password",
+                                ]}
+                                filters={{
+                                    name: filters.name,
+                                    phone: filters.phone,
+                                    licenseNumber: filters.licenseNumber,
+                                    status: filters.status,
+                                    organizationId: filters.organizationId,
+                                    from: filters.startDate,
+                                    to: filters.endDate,
+                                }}
+                                onCompleted={() => {
+                                    void refetchDrivers();
+                                }}
+                            />
+                        )}
                         <button
                             onClick={() => setShowFilters(!showFilters)}
                             className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-black uppercase tracking-[0.22em] text-slate-700 shadow-sm transition hover:bg-slate-50"
@@ -644,7 +621,7 @@ export default function DriversPage() {
                     className="min-h-[420px]"
                     bodyClassName="flex min-h-[340px] flex-col justify-between gap-4 p-4"
                 >
-                    <Table columns={columns} data={filteredDrivers} loading={isLoading} />
+                    <Table columns={columns} data={drivers} loading={isLoading} />
                     <Pagination
                         page={page}
                         totalPages={totalPages}

@@ -21,6 +21,11 @@ import ValidationSummary from "./ValidationSummary";
 import { useImportExport, type ImportResult } from "@/hooks/useImportExport";
 import { generateSampleFile } from "@/utils/sampleFileGenerator";
 import { parseImportFile, type ParsedImportFile } from "@/utils/importExport/fileParser";
+import {
+  IMPORT_ACCEPT_ATTRIBUTE,
+  MAX_IMPORT_FILE_SIZE_BYTES,
+  MAX_IMPORT_FILE_SIZE_LABEL,
+} from "@/utils/importExport/contracts";
 import { useOrgContext } from "@/hooks/useOrgContext";
 import { useGetOrganizationsQuery } from "@/redux/api/organizationApi";
 
@@ -34,6 +39,8 @@ type ImportModalProps = {
   requiredFields: string[];
   filters?: Record<string, string | number | boolean | null | undefined>;
   onCompleted?: () => void;
+  organizationSelectionMode?: "standard" | "disabled";
+  organizationSelectionNote?: string;
 };
 
 type LocalRowIssue = {
@@ -49,8 +56,14 @@ type InvalidRowSummary = {
   messages: string[];
 };
 
-const MAX_FILE_SIZE = 25 * 1024 * 1024;
-const ACCEPTED_TYPES = ".csv,.xlsx,.xls";
+type ReadinessState = {
+  importReady: boolean;
+  importMessage: string;
+  mappingLabel: string;
+  mappingReady: boolean | null;
+  mappingMessage: string;
+};
+
 const PREVIEW_PAGE_SIZE = 5;
 const AUTO_ORG_FIELDS = new Set(["organizationId", "organization", "organizationName"]);
 const VEHICLE_STATUS = new Set(["active", "inactive", "maintenance", "decommissioned"]);
@@ -244,12 +257,17 @@ export default function ImportModal({
   requiredFields,
   filters,
   onCompleted,
+  organizationSelectionMode = "standard",
+  organizationSelectionNote,
 }: ImportModalProps) {
-  const { orgId, orgName, isSuperAdmin, isRootOrgAdmin } = useOrgContext();
+  const { orgId, orgName, role, user, isSuperAdmin } = useOrgContext();
   const { uploadFile, exportFile, loading, progress, error, reset } = useImportExport();
+  const isMainAdmin = role === "admin" && !user?.parentOrganizationId;
+  const canChooseOrganization = organizationSelectionMode === "standard" && (isSuperAdmin || isMainAdmin);
+  const shouldSendSelectedOrganization = organizationSelectionMode === "standard";
   const { data: organizationResponse } = useGetOrganizationsQuery(
     { page: 0, limit: 1000 },
-    { skip: !(isSuperAdmin || isRootOrgAdmin) },
+    { skip: !canChooseOrganization },
   );
 
   const [tab, setTab] = useState<"import" | "export">("import");
@@ -276,13 +294,6 @@ export default function ImportModal({
     setSelectedOrgId(orgId || "");
   }, [isOpen, orgId]);
 
-  useEffect(() => {
-    if (!(isSuperAdmin || isRootOrgAdmin)) return;
-    if (selectedOrgId) return;
-    if (!organizations.length) return;
-    setSelectedOrgId(String(organizations[0]._id));
-  }, [isRootOrgAdmin, isSuperAdmin, organizations, selectedOrgId]);
-
   const previewRows = useMemo(() => {
     if (!parsedFile) return [];
     return parsedFile.rows.map((row, index) => ({ __index: index, ...row }));
@@ -294,13 +305,22 @@ export default function ImportModal({
   }, [requiredFields, selectedOrgId]);
 
   const mappedFields = useMemo(() => new Set(Object.values(mapping).filter(Boolean)), [mapping]);
+  const hasOrganizationMapping = useMemo(
+    () => mappedFields.has("organizationId") || mappedFields.has("organizationName"),
+    [mappedFields],
+  );
   const missingRequiredFields = useMemo(() => {
     if (!parsedFile) return [];
-    return effectiveRequiredFields.filter((field) => !mappedFields.has(field));
-  }, [effectiveRequiredFields, mappedFields, parsedFile]);
+    return effectiveRequiredFields.filter((field) => {
+      if (AUTO_ORG_FIELDS.has(field)) {
+        return !hasOrganizationMapping;
+      }
+      return !mappedFields.has(field);
+    });
+  }, [effectiveRequiredFields, hasOrganizationMapping, mappedFields, parsedFile]);
   const mappedRequiredFields = useMemo(
-    () => effectiveRequiredFields.filter((field) => mappedFields.has(field)),
-    [effectiveRequiredFields, mappedFields],
+    () => effectiveRequiredFields.filter((field) => (AUTO_ORG_FIELDS.has(field) ? hasOrganizationMapping : mappedFields.has(field))),
+    [effectiveRequiredFields, hasOrganizationMapping, mappedFields],
   );
   const ignoredColumns = useMemo(() => {
     if (!parsedFile) return [];
@@ -330,6 +350,10 @@ export default function ImportModal({
     () => invalidRowSummaries.length > 0 && invalidRowSummaries.every((item) => excludedRows.has(item.rowIndex)),
     [excludedRows, invalidRowSummaries],
   );
+  const invalidRemainingCount = useMemo(
+    () => invalidRowSummaries.filter((item) => !excludedRows.has(item.rowIndex)).length,
+    [excludedRows, invalidRowSummaries],
+  );
   const previewValidRows = useMemo(() => {
     if (!parsedFile) return 0;
     if (missingRequiredFields.length > 0) return 0;
@@ -353,6 +377,70 @@ export default function ImportModal({
   useEffect(() => {
     setPreviewPage(1);
   }, [previewSearch, parsedFile]);
+
+  const readinessState = useMemo<ReadinessState | null>(() => {
+    if (!parsedFile) return null;
+
+    const importReady = missingRequiredFields.length === 0;
+    const matchedRequiredFields = mappedRequiredFields.join(", ") || "all required fields";
+    const missingRequiredMessage = missingRequiredFields.join(", ");
+
+    if (moduleName === "vehicles") {
+      const mappingReady = importReady && mappedFields.has("deviceImei");
+      return {
+        importReady,
+        importMessage: importReady
+          ? `Vehicle import ready. Required fields matched: ${matchedRequiredFields}.`
+          : `Vehicle import not ready. Required fields still missing: ${missingRequiredMessage}.`,
+        mappingLabel: "GPS Device Mapping Ready",
+        mappingReady,
+        mappingMessage: !importReady
+          ? "GPS device mapping readiness depends on import readiness first."
+          : mappingReady
+            ? "Vehicle import and GPS device mapping are both ready."
+            : "Vehicle import ready, but GPS device mapping is not ready. Map the deviceImei field to prepare device linkage.",
+      };
+    }
+
+    if (moduleName === "devices") {
+      const mappingReady = importReady && mappedFields.has("vehicleRegistrationNumber");
+      return {
+        importReady,
+        importMessage: importReady
+          ? `GPS device import ready. Required fields matched: ${matchedRequiredFields}.`
+          : `GPS device import not ready. Required fields still missing: ${missingRequiredMessage}.`,
+        mappingLabel: "Vehicle Mapping Ready",
+        mappingReady,
+        mappingMessage: !importReady
+          ? "Vehicle mapping readiness depends on import readiness first."
+          : mappingReady
+            ? "GPS device import and vehicle mapping are both ready."
+            : "GPS device import ready, but vehicle mapping is not ready. Map the vehicleRegistrationNumber field to prepare linkage.",
+      };
+    }
+
+    if (moduleName === "drivers") {
+      return {
+        importReady,
+        importMessage: importReady
+          ? `Driver import ready. Required driver and login fields matched: ${matchedRequiredFields}.`
+          : `Driver import not ready. Required fields still missing: ${missingRequiredMessage}.`,
+        mappingLabel: "Mapping Ready",
+        mappingReady: null,
+        mappingMessage: "No separate mapping step is required beyond the driver and linked user-account fields.",
+      };
+    }
+
+    return {
+      importReady,
+      importMessage: importReady
+        ? `Import ready. Required fields matched: ${matchedRequiredFields}.`
+        : `Import not ready. Required fields still missing: ${missingRequiredMessage}.`,
+      mappingLabel: "Mapping Ready",
+      mappingReady: null,
+      mappingMessage: "No separate relational mapping readiness is tracked for this import flow.",
+    };
+  }, [mappedFields, mappedRequiredFields, missingRequiredFields, moduleName, parsedFile]);
 
   const resetState = () => {
     setTab("import");
@@ -387,8 +475,8 @@ export default function ImportModal({
     setExcludedRows(new Set());
     setMapping({});
     if (!file) return;
-    if (file.size > MAX_FILE_SIZE) {
-      toast.error("File too large. Maximum allowed size is 25MB");
+    if (file.size > MAX_IMPORT_FILE_SIZE_BYTES) {
+      toast.error(`File too large. Maximum allowed size is ${MAX_IMPORT_FILE_SIZE_LABEL}`);
       return;
     }
     try {
@@ -406,8 +494,7 @@ export default function ImportModal({
       toast.error("Please map all required fields before importing");
       return;
     }
-    const invalidRemaining = [...invalidRowIds].filter((rowId) => !excludedRows.has(rowId));
-    if (invalidRemaining.length > 0) {
+    if (invalidRemainingCount > 0) {
       toast.error("Exclude invalid rows before importing");
       return;
     }
@@ -416,12 +503,16 @@ export default function ImportModal({
       const response = await uploadFile({
         importUrl,
         file: selectedFile,
-        organizationId: selectedOrgId || undefined,
+        organizationId: shouldSendSelectedOrganization ? selectedOrgId || undefined : undefined,
         mapping,
         excludedRows: [...excludedRows],
       });
       setResult(response);
-      if (response.status) onCompleted?.();
+      if (response.status) {
+        toast.success(response.message || "Import completed successfully");
+        onCompleted?.();
+        closeModal();
+      }
     } catch (uploadError) {
       setResult({
         success: false,
@@ -455,7 +546,7 @@ export default function ImportModal({
       exportUrl,
       filters: {
         ...filters,
-        organizationId: selectedOrgId || undefined,
+        organizationId: shouldSendSelectedOrganization ? selectedOrgId || undefined : undefined,
         from: exportScope === "customDate" ? exportFromDate : undefined,
         to: exportScope === "customDate" ? exportToDate : undefined,
       },
@@ -495,12 +586,15 @@ export default function ImportModal({
               <button type="button" onClick={() => setTab("export")} className={`rounded-xl px-4 py-2 ${tab === "export" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"}`}>Export</button>
             </div>
             <div className="min-w-[240px] flex-1 max-w-[340px]">
-              {(isSuperAdmin || isRootOrgAdmin) ? (
+              {canChooseOrganization ? (
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 px-2.5 py-2">
                   <div className="flex items-center gap-2">
                     <label className="whitespace-nowrap text-[9px] font-black uppercase tracking-[0.18em] text-slate-500">Organization Context</label>
                     <div className="relative min-w-0 flex-1">
                       <select className="w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-900" value={selectedOrgId} onChange={(event) => setSelectedOrgId(event.target.value)}>
+                        {isSuperAdmin && !orgId && (
+                          <option value="">Select organization</option>
+                        )}
                         {organizations.map((organization: any) => (
                           <option key={organization._id} value={organization._id}>
                             {organization.name} {organization.parentOrganizationId ? "(Sub Org)" : "(Main Org)"}
@@ -513,7 +607,11 @@ export default function ImportModal({
               ) : (
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 px-2.5 py-2 text-xs font-semibold text-slate-700">
                   <span className="text-[9px] font-black uppercase tracking-[0.18em] text-slate-500">Organization Context</span>
-                  <span className="ml-2 text-slate-900">{orgName}</span>
+                  <span className="ml-2 text-slate-900">
+                    {organizationSelectionMode === "disabled"
+                      ? organizationSelectionNote || "This import does not use the modal organization selector."
+                      : orgName}
+                  </span>
                 </div>
               )}
             </div>
@@ -552,10 +650,10 @@ export default function ImportModal({
                     <p className="text-sm font-black text-slate-900">Upload File</p>
                     <div className="mt-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
                       <p>Supported: .csv, .xlsx, .xls</p>
-                      <p className="mt-1">Max size: 25 MB</p>
+                      <p className="mt-1">Max size: {MAX_IMPORT_FILE_SIZE_LABEL}</p>
                     </div>
                     <label className="mt-3 flex cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-6 text-center hover:border-blue-400 hover:bg-blue-50/40">
-                      <input ref={fileInputRef} type="file" accept={ACCEPTED_TYPES} className="hidden" onChange={(event) => void handleFileSelection(event.target.files?.[0] || null)} />
+                      <input ref={fileInputRef} type="file" accept={IMPORT_ACCEPT_ATTRIBUTE} className="hidden" onChange={(event) => void handleFileSelection(event.target.files?.[0] || null)} />
                       <Upload className="mb-2 text-slate-400" size={24} />
                       <span className="text-sm font-black text-slate-900">Browse File</span>
                     </label>
@@ -588,17 +686,42 @@ export default function ImportModal({
                         <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
                           <p className="mb-2 text-[11px] font-black uppercase tracking-wide text-slate-500">Validation Summary</p>
                           <ValidationSummary totalRows={parsedFile?.totalRows ?? 0} validRows={previewValidRows} invalidRows={invalidRowIds.size} duplicateCount={0} missingRequiredFields={missingRequiredFields} />
-                          {parsedFile && (
+                          {parsedFile && readinessState && (
                             <div className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                              {missingRequiredFields.length === 0 ? (
-                                <span>
-                                  Mapping ready. Required fields matched: {mappedRequiredFields.join(", ") || "all required fields"}{ignoredColumns.length > 0 ? `. Ignored columns: ${ignoredColumns.join(", ")}` : "."}
-                                </span>
-                              ) : (
-                                <span>
-                                  Mapping not ready. Required fields still missing: {missingRequiredFields.join(", ")}. Add matching columns in the file or map them manually before import. Columns not present in the file are ignored automatically{ignoredColumns.length > 0 ? `, and these file columns are currently ignored: ${ignoredColumns.join(", ")}` : "."}
-                                </span>
-                              )}
+                              <div className="space-y-2">
+                                <div className="grid gap-2 sm:grid-cols-2">
+                                  <div className={`rounded-xl border px-3 py-2 ${readinessState.importReady ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-rose-200 bg-rose-50 text-rose-700"}`}>
+                                    <div className="text-[10px] font-black uppercase tracking-wide">Import Ready</div>
+                                    <div className="mt-1 text-[11px] font-semibold">
+                                      {readinessState.importReady ? "Yes" : "No"}
+                                    </div>
+                                  </div>
+                                  <div className={`rounded-xl border px-3 py-2 ${
+                                    readinessState.mappingReady === null
+                                      ? "border-slate-200 bg-white text-slate-700"
+                                      : readinessState.mappingReady
+                                        ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                                        : "border-amber-200 bg-amber-50 text-amber-800"
+                                  }`}>
+                                    <div className="text-[10px] font-black uppercase tracking-wide">{readinessState.mappingLabel}</div>
+                                    <div className="mt-1 text-[11px] font-semibold">
+                                      {readinessState.mappingReady === null
+                                        ? "Not separate"
+                                        : readinessState.mappingReady
+                                          ? "Yes"
+                                          : "No"}
+                                    </div>
+                                  </div>
+                                </div>
+                                <p>{readinessState.importMessage}</p>
+                                <p>{readinessState.mappingMessage}</p>
+                                {missingRequiredFields.length > 0 && (
+                                  <p>Add matching columns in the file or map them manually before import.</p>
+                                )}
+                                {ignoredColumns.length > 0 && (
+                                  <p>Ignored columns: {ignoredColumns.join(", ")}</p>
+                                )}
+                              </div>
                             </div>
                           )}
                         </div>
@@ -858,7 +981,7 @@ export default function ImportModal({
                 <>
                   <button type="button" onClick={closeModal} className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-black uppercase tracking-wide text-slate-600 hover:bg-slate-100">Cancel</button>
                   {tab === "import" ? (
-                    <button type="button" onClick={() => void handleImport()} disabled={loading || !selectedFile || !parsedFile || missingRequiredFields.length > 0} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50">
+                    <button type="button" onClick={() => void handleImport()} disabled={loading || !selectedFile || !parsedFile || missingRequiredFields.length > 0 || invalidRemainingCount > 0} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50">
                       <Upload size={14} />
                       Start Import
                     </button>

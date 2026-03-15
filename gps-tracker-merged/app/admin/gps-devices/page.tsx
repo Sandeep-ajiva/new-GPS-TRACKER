@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Table from "@/components/ui/Table";
@@ -34,6 +34,7 @@ import { InventoryLayer } from "@/components/gps-devices/InventoryLayer";
 import { InventoryStatusBadge } from "@/components/gps-devices/InventoryStatusBadge";
 import type { GpsDeviceRecord } from "@/components/gps-devices/inventoryTypes";
 import { INVENTORY_STATUS_OPTIONS } from "@/components/gps-devices/inventoryTypes";
+import { DEVICE_IMPORT_FIELDS } from "@/utils/importExport/contracts";
 
 import { Building2 } from "lucide-react";
 
@@ -88,17 +89,50 @@ export default function GpsDevicesPage() {
   const { openPopup, closePopup, isPopupOpen } = usePopups();
 
   // 🔐 ORG CONTEXT UPDATE
-  const { orgId, isSuperAdmin, isRootOrgAdmin, isSubOrgAdmin } = useOrgContext();
+  const { orgId, role, user, isSuperAdmin, isRootOrgAdmin, isSubOrgAdmin } = useOrgContext();
+  const canUseImportExport = role === "admin" || role === "superadmin";
+  const canSelectImportOrganization = isSuperAdmin || (role === "admin" && !user?.parentOrganizationId);
   const searchParams = useSearchParams();
   const searchQueryParam = searchParams.get("search");
   const [page, setPage] = useState(1);
   const [activeTab, setActiveTab] = useState<"overview" | "inventory" | "configuration" | "mapping">("overview");
   const LIMIT = 10;
+  const [showFilters, setShowFilters] = useState(!!searchQueryParam);
+  const [filters, setFilters] = useState({
+    imei: searchQueryParam || "",
+    model: "",
+    firmware: "",
+    simNumber: "",
+    connectionStatus: "",
+    status: "",
+    assigned: "",
+    vehicleNumber: "",
+    warrantyExpiry: "",
+    organizationId: "",
+  });
+
+  const deviceQueryParams = useMemo(
+    () => ({
+      page: page - 1,
+      limit: LIMIT,
+      imei: filters.imei || undefined,
+      model: filters.model || undefined,
+      firmware: filters.firmware || undefined,
+      simNumber: filters.simNumber || undefined,
+      connectionStatus: filters.connectionStatus || undefined,
+      status: filters.status || undefined,
+      assigned: filters.assigned || undefined,
+      vehicleNumber: filters.vehicleNumber || undefined,
+      warrantyExpiry: filters.warrantyExpiry || undefined,
+      organizationId: filters.organizationId || undefined,
+    }),
+    [LIMIT, page, filters],
+  );
 
   /* ================= API ================= */
 
   const { data: devData, isLoading: isDevLoading, refetch: refetchDevices } =
-    useGetGpsDevicesQuery({ page: page - 1, limit: LIMIT }, { refetchOnMountOrArgChange: true });
+    useGetGpsDevicesQuery(deviceQueryParams, { refetchOnMountOrArgChange: true });
 
   const { data: vehData, isLoading: isVehLoading } =
     useGetVehiclesQuery({ page: 0, limit: 1000 }, { refetchOnMountOrArgChange: true });
@@ -141,20 +175,6 @@ export default function GpsDevicesPage() {
 
   /* ================= STATE ================= */
 
-  const [showFilters, setShowFilters] = useState(!!searchQueryParam);
-  const [filters, setFilters] = useState({
-    imei: searchQueryParam || "",
-    model: "",
-    firmware: "",
-    simNumber: "",
-    connectionStatus: "",
-    status: "",
-    assigned: "",
-    vehicleNumber: "",
-    warrantyExpiry: "",
-    organizationId: "",
-  });
-
   // 🔐 ORG CONTEXT UPDATE
   const canCreateDevice = isSuperAdmin || isRootOrgAdmin || isSubOrgAdmin;
   const canEditDevice = isSuperAdmin || isRootOrgAdmin || isSubOrgAdmin;
@@ -163,97 +183,20 @@ export default function GpsDevicesPage() {
   const [editingDevice, setEditingDevice] = useState<GpsDeviceRecord | null>(null);
   /* ================= FILTER ================= */
 
-  const filteredDevices = useMemo(() => {
-    let filtered = devices;
-
-    if (filters.imei) {
-      filtered = filtered.filter((d) =>
-        d.imei.toLowerCase().includes(filters.imei.toLowerCase()),
-      );
-    }
-
-    if (filters.model) {
-      filtered = filtered.filter((d) =>
-        (d.deviceModel || "").toLowerCase().includes(filters.model.toLowerCase()),
-      );
-    }
-
-    if (filters.firmware) {
-      filtered = filtered.filter((d) =>
-        (d.firmwareVersion || d.softwareVersion || "")
-          .toLowerCase()
-          .includes(filters.firmware.toLowerCase()),
-      );
-    }
-
-    if (filters.simNumber) {
-      filtered = filtered.filter((d) =>
-        (d.simNumber || "").toLowerCase().includes(filters.simNumber.toLowerCase()),
-      );
-    }
-
-    if (filters.connectionStatus) {
-      filtered = filtered.filter(
-        (d) =>
-          (d.connectionStatus || (d.isOnline ? "online" : "offline")) ===
-          filters.connectionStatus,
-      );
-    }
-
-    if (filters.vehicleNumber) {
-      filtered = filtered.filter((d) => {
-        const fromDevice =
-          (typeof d.vehicleId === "object" ? d.vehicleId?.vehicleNumber : null) ||
-          d.vehicleNumber;
-
-        if (fromDevice) {
-          return fromDevice
-            .toLowerCase()
-            .includes(filters.vehicleNumber.toLowerCase());
-        }
-
-        const vehicleId =
-          typeof d.vehicleId === "object" ? d.vehicleId?._id : d.vehicleId;
-        const vehicle = vehiclesData.find((v) => v._id === vehicleId);
-        return !!vehicle?.vehicleNumber
-          && vehicle.vehicleNumber.toLowerCase().includes(filters.vehicleNumber.toLowerCase());
-      });
-    }
-
-    if (filters.warrantyExpiry) {
-      filtered = filtered.filter(
-        (d) => (d.warrantyExpiry || "").split("T")[0] === filters.warrantyExpiry,
-      );
-    }
-
-    if (filters.assigned === "assigned") {
-      filtered = filtered.filter((d) =>
-        vehiclesData.find((v) => v.deviceId === d._id),
-      );
-    }
-
-    if (filters.assigned === "unassigned") {
-      filtered = filtered.filter(
-        (d) => !vehiclesData.find((v) => v.deviceId === d._id),
-      );
-    }
-
-    if (filters.status) {
-      filtered = filtered.filter((d) => d.status === filters.status);
-    }
-
-    if (filters.organizationId) {
-      filtered = filtered.filter((d) => {
-        if (!d.organizationId) return false;
-        const orgId = typeof d.organizationId === "object"
-          ? d.organizationId._id
-          : d.organizationId;
-        return orgId === filters.organizationId;
-      });
-    }
-
-    return filtered;
-  }, [devices, vehiclesData, filters]);
+  useEffect(() => {
+    setPage(1);
+  }, [
+    filters.imei,
+    filters.model,
+    filters.firmware,
+    filters.simNumber,
+    filters.connectionStatus,
+    filters.status,
+    filters.assigned,
+    filters.vehicleNumber,
+    filters.warrantyExpiry,
+    filters.organizationId,
+  ]);
 
   /* ================= SUBMIT ================= */
 
@@ -653,41 +596,28 @@ export default function GpsDevicesPage() {
             </p>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row">
-            <ImportExportButton
-              moduleName="devices"
-              importUrl="/importexport/import/devices"
-              exportUrl="/importexport/export/devices"
-              allowedFields={[
-                "organizationId",
-                "organizationName",
-                "imei",
-                "softwareVersion",
-                "vendorId",
-                "deviceModel",
-                "manufacturer",
-                "simNumber",
-                "serialNumber",
-                "firmwareVersion",
-                "hardwareVersion",
-                "warrantyExpiry",
-                "status",
-                "vehicleRegistrationNumber",
-              ]}
-              requiredFields={[
-                ...(isSuperAdmin || isRootOrgAdmin ? ["organizationId"] : []),
-                "imei",
-                "softwareVersion",
-              ]}
-              filters={{
-                imei: filters.imei,
-                status: filters.status,
-                connectionStatus: filters.connectionStatus,
-                organizationId: filters.organizationId,
-              }}
-              onCompleted={() => {
-                void refetchDevices();
-              }}
-            />
+            {canUseImportExport && (
+              <ImportExportButton
+                moduleName="devices"
+                importUrl="/importexport/import/devices"
+                exportUrl="/importexport/export/devices"
+                allowedFields={[...DEVICE_IMPORT_FIELDS]}
+                requiredFields={[
+                  ...(canSelectImportOrganization ? ["organizationId"] : []),
+                  "imei",
+                  "softwareVersion",
+                ]}
+                filters={{
+                  imei: filters.imei,
+                  status: filters.status,
+                  connectionStatus: filters.connectionStatus,
+                  organizationId: filters.organizationId,
+                }}
+                onCompleted={() => {
+                  void refetchDevices();
+                }}
+              />
+            )}
             <button
               onClick={() => setShowFilters(!showFilters)}
               className="bg-slate-100 text-slate-900 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 hover:bg-slate-200 transition-colors"
@@ -988,7 +918,7 @@ export default function GpsDevicesPage() {
 
             {/* Table Section */}
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-              <Table columns={columns} data={filteredDevices as any} />
+              <Table columns={columns} data={devices as any} />
               <Pagination
                 page={page}
                 totalPages={totalPages}

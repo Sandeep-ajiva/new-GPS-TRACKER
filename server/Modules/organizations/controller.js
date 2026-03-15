@@ -909,7 +909,7 @@ exports.createSubAdmin = async (req, res) => {
 
 exports.getSubOrganizations = async (req, res) => {
   try {
-    const { page, limit, search, organizationType, status } = req.query;
+    const { page, limit, search, organizationType, status, name } = req.query;
 
     // 🔐 org scope from middleware
     if (!req.orgScope || req.orgScope === "ALL") {
@@ -927,6 +927,9 @@ exports.getSubOrganizations = async (req, res) => {
 
     if (organizationType) filter.organizationType = organizationType;
     if (status) filter.status = status;
+    if (name && String(name).trim()) {
+      filter.name = { $regex: String(name).trim(), $options: "i" };
+    }
 
     const result = await paginate(
       Organization,

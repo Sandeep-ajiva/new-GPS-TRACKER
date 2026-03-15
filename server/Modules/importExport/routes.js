@@ -5,6 +5,10 @@ const multer = require("multer");
 const verifyToken = require("../../middleware/verifyToken");
 const checkOrganization = require("../../middleware/checkOrganization");
 const Controller = require("./controller");
+const {
+  MAX_IMPORT_FILE_SIZE_BYTES,
+  ALLOWED_EXTENSIONS,
+} = require("./constants");
 
 const router = express.Router();
 
@@ -25,11 +29,11 @@ const storage = multer.diskStorage({
 const upload = multer({
   storage,
   limits: {
-    fileSize: 50 * 1024 * 1024, // 50MB
+    fileSize: MAX_IMPORT_FILE_SIZE_BYTES,
   },
   fileFilter: (req, file, cb) => {
     const ext = path.extname(file.originalname || "").toLowerCase();
-    if (![".csv", ".xlsx", ".xls"].includes(ext)) {
+    if (!ALLOWED_EXTENSIONS.has(ext)) {
       cb(new Error("Only CSV and Excel files are allowed"));
       return;
     }
@@ -43,7 +47,7 @@ const handleImportUpload = (req, res, next) => {
     if (err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE") {
       return res.status(400).json({
         status: false,
-        message: "File too large. Maximum allowed size is 50MB",
+        message: "File too large. Maximum allowed size is 25MB",
       });
     }
     return res.status(400).json({

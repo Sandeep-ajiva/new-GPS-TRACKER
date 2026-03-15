@@ -23,6 +23,31 @@ function escapeCsv(value) {
   return stringValue;
 }
 
+function escapeRegex(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function buildContainsRegex(value) {
+  const sanitized = sanitizeString(value);
+  if (!sanitized) return null;
+  return new RegExp(escapeRegex(sanitized), "i");
+}
+
+function buildDateRange(from, to) {
+  const range = {};
+  const fromDate = sanitizeString(from) ? new Date(from) : null;
+  const toDate = sanitizeString(to) ? new Date(to) : null;
+
+  if (fromDate && !Number.isNaN(fromDate.getTime())) {
+    range.$gte = fromDate;
+  }
+  if (toDate && !Number.isNaN(toDate.getTime())) {
+    range.$lte = toDate;
+  }
+
+  return Object.keys(range).length > 0 ? range : null;
+}
+
 function parseWorkbook(filePath, fileType) {
   const workbook = XLSX.readFile(filePath, {
     type: "file",
@@ -195,6 +220,9 @@ async function importData({ entity, file, req }) {
       seenVehicleKeys: new Set(),
       seenDeviceImeis: new Set(),
       seenDriverKeys: new Set(),
+      seenOrganizationEmails: new Set(),
+      seenOrganizationPhones: new Set(),
+      seenOrganizationPaths: new Set(),
     };
 
     for (let start = 0; start < mappedRows.length; start += CHUNK_SIZE) {
@@ -221,9 +249,21 @@ function buildExportFilter(entity, req) {
     if (req.user.role !== "superadmin" && req.orgScope !== "ALL") {
       filter._id = { $in: req.orgScope };
     }
-    if (req.query.organizationId) filter._id = req.query.organizationId;
+    if (req.query.organizationId) {
+      if (req.user.role !== "superadmin" && req.orgScope !== "ALL") {
+        if (req.orgScope.includes(String(req.query.organizationId))) {
+          filter._id = req.query.organizationId;
+        }
+      } else {
+        filter._id = req.query.organizationId;
+      }
+    }
     if (req.query.status) filter.status = req.query.status;
     if (req.query.organizationType) filter.organizationType = req.query.organizationType;
+    const nameRegex = buildContainsRegex(req.query.name);
+    if (nameRegex) {
+      filter.name = nameRegex;
+    }
     return filter;
   }
 
@@ -238,33 +278,60 @@ function buildExportFilter(entity, req) {
   }
 
   if (entity === "users") {
+    const nameRegex = buildContainsRegex(req.query.name);
+    const emailRegex = buildContainsRegex(req.query.email);
+    const mobileRegex = buildContainsRegex(req.query.mobile);
+
+    if (nameRegex) {
+      filter.$or = [
+        { firstName: nameRegex },
+        { lastName: nameRegex },
+      ];
+    }
+    if (emailRegex) filter.email = emailRegex;
+    if (mobileRegex) filter.mobile = mobileRegex;
     if (req.query.role) filter.role = req.query.role;
     if (req.query.status) filter.status = req.query.status;
-    if (req.query.from || req.query.to) {
-      filter.createdAt = {};
-      if (req.query.from) filter.createdAt.$gte = new Date(req.query.from);
-      if (req.query.to) filter.createdAt.$lte = new Date(req.query.to);
+    const dateRange = buildDateRange(req.query.from, req.query.to);
+    if (dateRange) {
+      filter.createdAt = dateRange;
     }
   }
 
   if (entity === "drivers") {
+    const nameRegex = buildContainsRegex(req.query.name);
+    const phoneRegex = buildContainsRegex(req.query.phone);
+    const licenseRegex = buildContainsRegex(req.query.licenseNumber);
+
+    if (nameRegex) {
+      filter.$or = [
+        { firstName: nameRegex },
+        { lastName: nameRegex },
+      ];
+    }
+    if (phoneRegex) filter.phone = phoneRegex;
+    if (licenseRegex) filter.licenseNumber = licenseRegex;
     if (req.query.status) filter.status = req.query.status;
-    if (req.query.from || req.query.to) {
-      filter.createdAt = {};
-      if (req.query.from) filter.createdAt.$gte = new Date(req.query.from);
-      if (req.query.to) filter.createdAt.$lte = new Date(req.query.to);
+    const dateRange = buildDateRange(req.query.from, req.query.to);
+    if (dateRange) {
+      filter.createdAt = dateRange;
     }
   }
 
   if (entity === "vehicles") {
+    const vehicleNumberRegex = buildContainsRegex(req.query.vehicleNumber);
+    if (vehicleNumberRegex) filter.vehicleNumber = vehicleNumberRegex;
     if (req.query.vehicleType) filter.vehicleType = req.query.vehicleType;
     if (req.query.status) filter.status = req.query.status;
     if (req.query.runningStatus) filter.runningStatus = req.query.runningStatus;
+    if (req.query.driverId) filter.driverId = req.query.driverId;
   }
 
   if (entity === "devices") {
     if (req.query.status) filter.status = req.query.status;
-    if (req.query.imei) filter.imei = req.query.imei;
+    const imeiRegex = buildContainsRegex(req.query.imei);
+    if (imeiRegex) filter.imei = imeiRegex;
+    if (req.query.connectionStatus) filter.connectionStatus = req.query.connectionStatus;
   }
 
   return filter;

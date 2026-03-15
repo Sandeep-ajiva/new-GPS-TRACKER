@@ -10,6 +10,144 @@ const paginate = require("../../helpers/limitoffset");
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
+const escapeRegex = (value = "") =>
+  String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const buildUserDateRange = (from, to) => {
+  const range = {};
+
+  if (from) {
+    const parsedFrom = new Date(String(from));
+    if (!Number.isNaN(parsedFrom.getTime())) {
+      range.$gte = parsedFrom;
+    }
+  }
+
+  if (to) {
+    const parsedTo = new Date(String(to));
+    if (!Number.isNaN(parsedTo.getTime())) {
+      parsedTo.setHours(23, 59, 59, 999);
+      range.$lte = parsedTo;
+    }
+  }
+
+  return Object.keys(range).length ? range : null;
+};
+
+const buildScopedOrgIdsForManagerView = (req) => {
+  if (req.orgScope === "ALL") return null;
+
+  const scopedOrgIds = req.orgScope.map((id) => id.toString());
+  const parentOrgId = req.user.organizationId
+    ? req.user.organizationId.toString()
+    : null;
+
+  return parentOrgId
+    ? scopedOrgIds.filter((id) => id !== parentOrgId)
+    : scopedOrgIds;
+};
+
+const buildUsersQuery = async (req, options = {}) => {
+  const {
+    organizationId,
+    organizationName,
+    role,
+    status,
+    name,
+    email,
+    mobile,
+    from,
+    to,
+    roles,
+    excludeUserId,
+  } = req.query;
+
+  const query = {};
+  const andClauses = [];
+
+  if (options.managerScoped) {
+    const scopedOrgIds = buildScopedOrgIdsForManagerView(req);
+    if (scopedOrgIds) {
+      query.organizationId = { $in: scopedOrgIds };
+    }
+  } else if (req.user.role === "superadmin") {
+    if (organizationId) {
+      query.organizationId = organizationId;
+    }
+  } else if (req.orgScope !== "ALL") {
+    query.organizationId = { $in: req.orgScope };
+  }
+
+  if (organizationId && options.managerScoped) {
+    const scopedOrgIds = buildScopedOrgIdsForManagerView(req);
+    if (!scopedOrgIds || scopedOrgIds.includes(String(organizationId))) {
+      query.organizationId = organizationId;
+    } else {
+      query.organizationId = { $in: [] };
+    }
+  }
+
+  if (organizationName) {
+    const orgQuery = {
+      name: { $regex: escapeRegex(organizationName), $options: "i" },
+    };
+
+    if (query.organizationId && query.organizationId.$in) {
+      orgQuery._id = { $in: query.organizationId.$in };
+    }
+
+    const matchingOrgIds = await Organization.find(orgQuery).distinct("_id");
+    query.organizationId =
+      matchingOrgIds.length > 0 ? { $in: matchingOrgIds } : { $in: [] };
+  }
+
+  if (role) query.role = role;
+  if (status) query.status = status;
+
+  if (roles) {
+    const parsedRoles = String(roles)
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+
+    if (parsedRoles.length) {
+      query.role = { $in: parsedRoles };
+    }
+  }
+
+  if (excludeUserId) {
+    query._id = { $ne: excludeUserId };
+  }
+
+  if (name) {
+    andClauses.push({
+      $or: [
+        { firstName: { $regex: escapeRegex(name), $options: "i" } },
+        { lastName: { $regex: escapeRegex(name), $options: "i" } },
+      ],
+    });
+  }
+
+  if (email) {
+    query.email = { $regex: escapeRegex(email), $options: "i" };
+  }
+
+  if (mobile) {
+    query.mobile = { $regex: escapeRegex(mobile), $options: "i" };
+  }
+
+  const createdAt = buildUserDateRange(from, to);
+  if (createdAt) {
+    query.createdAt = createdAt;
+  }
+
+  if (andClauses.length) {
+    query.$and = andClauses;
+  }
+
+  return query;
+};
+
 /* ======================================================
    VALIDATIONS
 ====================================================== */
@@ -125,29 +263,21 @@ exports.getMe = async (req, res) => {
 
 exports.getAll = async (req, res) => {
   try {
-    let query = {};
+    const { page, limit, search } = req.query;
+    const query = await buildUsersQuery(req, { managerScoped: false });
 
-    if (req.user.role === "superadmin") {
-      if (req.query.organizationId) {
-        query.organizationId = req.query.organizationId;
-      }
-    } else {
-      // 🔐 ORG SCOPE FIX
-      if (req.orgScope !== "ALL") {
-        query.organizationId = { $in: req.orgScope };
-      }
-    }
+    const result = await paginate(
+      User,
+      query,
+      page,
+      limit,
+      ["organizationId"],
+      ["firstName", "lastName", "email", "mobile"],
+      search,
+      { createdAt: -1 }
+    );
 
-    const users = await User.find(query)
-      .select("-passwordHash")
-      .populate("organizationId", "name email phone logo")
-      .sort({ createdAt: -1 });
-
-    return res.status(200).json({
-      status: true,
-      total: users.length,
-      data: users,
-    });
+    return res.status(200).json(result);
   } catch (error) {
     console.error("Get All Users Error:", error);
     return res.status(500).json({
@@ -159,36 +289,23 @@ exports.getAll = async (req, res) => {
 
 exports.getManagerByOrganization = async (req, res) => {
   try {
-    let usersQuery = {};
+    const { page, limit, search } = req.query;
+    const usersQuery = await buildUsersQuery(req, { managerScoped: true });
 
-    if (req.orgScope !== "ALL") {
-      const scopedOrgIds = req.orgScope.map((id) => id.toString());
-      const parentOrgId = req.user.organizationId
-        ? req.user.organizationId.toString()
-        : null;
-      const subOrgIdsOnly = parentOrgId
-        ? scopedOrgIds.filter((id) => id !== parentOrgId)
-        : scopedOrgIds;
-
-      console.log("--- getManagerByOrganization Diagnostics ---");
-      console.log("User Role:", req.user.role);
-      console.log("Parent Org ID:", parentOrgId);
-      console.log("Scoped Org IDs (Total):", scopedOrgIds.length);
-      console.log("Sub Org IDs Only (Total):", subOrgIdsOnly.length);
-
-      usersQuery.organizationId = { $in: subOrgIdsOnly };
-    }
-
-    const users = await User.find(usersQuery)
-      .select("-passwordHash")
-      .populate("organizationId", "name email phone logo")
-      .sort({ createdAt: -1 });
+    const result = await paginate(
+      User,
+      usersQuery,
+      page,
+      limit,
+      ["organizationId"],
+      ["firstName", "lastName", "email", "mobile"],
+      search,
+      { createdAt: -1 }
+    );
 
     return res.status(200).json({
-      status: true,
+      ...result,
       message: "Users fetched successfully",
-      total: users.length,
-      data: users,
     });
   } catch (error) {
     console.error("Get Users Error:", error);

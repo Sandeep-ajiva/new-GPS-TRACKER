@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { UploadCloud } from "lucide-react";
 import ImportModal from "./ImportModal";
+import { useOrgContext } from "@/hooks/useOrgContext";
 
 type ImportExportButtonProps = {
   moduleName: string;
@@ -12,10 +13,17 @@ type ImportExportButtonProps = {
   requiredFields: string[];
   filters?: Record<string, string | number | boolean | null | undefined>;
   onCompleted?: () => void;
+  organizationSelectionMode?: "standard" | "disabled";
+  organizationSelectionNote?: string;
 };
 
 export default function ImportExportButton(props: ImportExportButtonProps) {
+  const { role } = useOrgContext();
   const [open, setOpen] = useState(false);
+
+  if (role !== "admin" && role !== "superadmin") {
+    return null;
+  }
 
   return (
     <>
@@ -37,6 +45,8 @@ export default function ImportExportButton(props: ImportExportButtonProps) {
         requiredFields={props.requiredFields}
         filters={props.filters}
         onCompleted={props.onCompleted}
+        organizationSelectionMode={props.organizationSelectionMode}
+        organizationSelectionNote={props.organizationSelectionNote}
       />
     </>
   );

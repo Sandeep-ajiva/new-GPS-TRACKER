@@ -1,5 +1,6 @@
 const mongoose = require("mongoose");
 const VehicleModel = require("./model");
+const GpsDevice = require("../gpsDevice/model");
 const paginate = require("../../helpers/limitoffset");
 const Validator = require("../../helpers/validators");
 
@@ -17,7 +18,6 @@ const VEHICLE_RULES = {
   deviceId: "string",
   driverId: "string",
   status: "in:active,inactive,maintenance,decommissioned",
-  runningStatus: "in:running,idle,stopped,inactive",
 };
 
 /* -------------------------------------------------------------------------- */
@@ -26,6 +26,7 @@ const VEHICLE_RULES = {
 
 exports.create = async (req, res) => {
   try {
+    const { runningStatus, ...vehiclePayload } = req.body;
     const rules = {
       ...VEHICLE_RULES,
       vehicleType: "required|in:car,bus,truck,bike,other",
@@ -36,18 +37,18 @@ exports.create = async (req, res) => {
       rules.organizationId = "required|string";
     }
 
-    await new Validator(req.body, rules).validate();
+    await new Validator(vehiclePayload, rules).validate();
 
     // 🔐 ORG SCOPE FIX
     let organizationId;
     if (req.user.role === "superadmin") {
-      organizationId = req.body.organizationId || req.orgId;
+      organizationId = vehiclePayload.organizationId || req.orgId;
     } else if (
-      req.body.organizationId &&
+      vehiclePayload.organizationId &&
       req.orgScope !== "ALL" &&
-      req.orgScope.some(id => id.toString() === req.body.organizationId.toString())
+      req.orgScope.some(id => id.toString() === vehiclePayload.organizationId.toString())
     ) {
-      organizationId = req.body.organizationId;
+      organizationId = vehiclePayload.organizationId;
     } else {
       organizationId = req.orgId;
     }
@@ -75,9 +76,8 @@ exports.create = async (req, res) => {
 
     const vehicleData = {
       organizationId,
-      ...req.body,
+      ...vehiclePayload,
       vehicleNumber,
-      runningStatus: "inactive",
       createdBy: req.user._id,
     };
 
@@ -117,8 +117,9 @@ exports.create = async (req, res) => {
 
 exports.update = async (req, res) => {
   try {
+    const { runningStatus, ...vehiclePayload } = req.body;
     // SAME RULES, NO MODIFICATION
-    await new Validator(req.body, VEHICLE_RULES).validate();
+    await new Validator(vehiclePayload, VEHICLE_RULES).validate();
 
     // 🔐 ORG SCOPE FIX
     const orgFilter = req.orgScope === "ALL" ? {} : { organizationId: { $in: req.orgScope } };
@@ -131,8 +132,8 @@ exports.update = async (req, res) => {
       });
     }
 
-    if (req.body.vehicleNumber) {
-      const formattedVehicleNumber = req.body.vehicleNumber
+    if (vehiclePayload.vehicleNumber) {
+      const formattedVehicleNumber = vehiclePayload.vehicleNumber
         .toUpperCase()
         .trim();
 
@@ -149,14 +150,14 @@ exports.update = async (req, res) => {
         });
       }
 
-      req.body.vehicleNumber = formattedVehicleNumber;
+      vehiclePayload.vehicleNumber = formattedVehicleNumber;
     }
 
     // Clean up empty strings for IDs
-    if (req.body.deviceId === "") req.body.deviceId = null;
-    if (req.body.driverId === "") req.body.driverId = null;
+    if (vehiclePayload.deviceId === "") vehiclePayload.deviceId = null;
+    if (vehiclePayload.driverId === "") vehiclePayload.driverId = null;
 
-    Object.assign(vehicle, req.body);
+    Object.assign(vehicle, vehiclePayload);
     vehicle.updatedAt = new Date();
     await vehicle.save();
 
@@ -190,13 +191,65 @@ exports.update = async (req, res) => {
 
 exports.getAll = async (req, res) => {
   try {
-    const { page, limit, search } = req.query;
+    const {
+      page,
+      limit,
+      search,
+      organizationId,
+      vehicleNumber,
+      vehicleType,
+      status,
+      runningStatus,
+      driverId,
+      deviceAssigned,
+      connectionStatus,
+    } = req.query;
 
     const filter = {};
 
     // 🔐 orgScope filter
     if (req.user.role !== "superadmin" && req.orgScope !== "ALL") {
       filter.organizationId = { $in: req.orgScope };
+    }
+
+    if (organizationId) {
+      if (req.user.role === "superadmin" || req.orgScope === "ALL") {
+        filter.organizationId = organizationId;
+      } else if (
+        Array.isArray(req.orgScope) &&
+        req.orgScope.some((id) => id.toString() === String(organizationId))
+      ) {
+        filter.organizationId = organizationId;
+      }
+    }
+
+    if (vehicleNumber) {
+      filter.vehicleNumber = {
+        $regex: String(vehicleNumber).trim().toUpperCase(),
+        $options: "i",
+      };
+    }
+
+    if (vehicleType) filter.vehicleType = vehicleType;
+    if (status) filter.status = status;
+    if (runningStatus) filter.runningStatus = runningStatus;
+    if (driverId) filter.driverId = driverId;
+
+    if (deviceAssigned === "assigned") {
+      filter.deviceId = { $ne: null };
+    } else if (deviceAssigned === "unassigned") {
+      filter.$or = [{ deviceId: null }, { deviceId: { $exists: false } }];
+    }
+
+    if (connectionStatus === "online" || connectionStatus === "offline") {
+      const deviceQuery = { connectionStatus };
+      if (filter.organizationId) {
+        deviceQuery.organizationId = filter.organizationId;
+      }
+
+      const matchingDeviceIds = await GpsDevice.find(deviceQuery).distinct("_id");
+      filter.deviceId =
+        matchingDeviceIds.length > 0 ? { $in: matchingDeviceIds } : { $in: [] };
     }
 
     const result = await paginate(
