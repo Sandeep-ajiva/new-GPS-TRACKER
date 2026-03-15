@@ -43,6 +43,9 @@ export type Vehicle = {
   color?: string
   year?: string
   vehicleType?: string
+  brand?: string
+  vehicleBrand?: string
+  vehicleModel?: string
   ais140Compliant?: boolean
   ais140CertificateNumber?: string
   fuel?: number | null

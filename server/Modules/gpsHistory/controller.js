@@ -1,6 +1,29 @@
 const GpsHistory = require("./model");
 const paginate = require("../../helpers/limitoffset");
 const mongoose = require("mongoose");
+const Service = require("./service");
+
+function validateVehicleId(vehicleId) {
+  if (vehicleId === "all") return;
+  if (!mongoose.isValidObjectId(vehicleId)) {
+    const error = new Error("Invalid vehicleId");
+    error.status = 400;
+    throw error;
+  }
+}
+
+async function handleAnalyticsRequest(res, work) {
+  try {
+    const data = await work();
+    return res.status(200).json({ status: true, data });
+  } catch (error) {
+    const statusCode = error.status || 500;
+    return res.status(statusCode).json({
+      status: false,
+      message: error.message,
+    });
+  }
+}
 
 /* ==========================================================================
    GET ALL GPS HISTORY (REPLAY / FILTER)
@@ -164,3 +187,57 @@ exports.deleteHistory = async (req, res) => {
     });
   }
 };
+
+/* ==========================================================================
+   ANALYTICS ENDPOINTS
+   ========================================================================== */
+
+exports.getStatistics = async (req, res) =>
+  handleAnalyticsRequest(res, async () => {
+    validateVehicleId(req.params.vehicleId);
+    return Service.getStatistics(req.params.vehicleId, req.orgScope, req.query);
+  });
+
+exports.getVehicleStatus = async (req, res) =>
+  handleAnalyticsRequest(res, async () => {
+    validateVehicleId(req.params.vehicleId);
+    return Service.getVehicleStatus(req.params.vehicleId, req.orgScope);
+  });
+
+exports.getPlayback = async (req, res) =>
+  handleAnalyticsRequest(res, async () => {
+    validateVehicleId(req.params.vehicleId);
+    return Service.getPlayback(req.params.vehicleId, req.orgScope, req.query);
+  });
+
+exports.getTravelSummary = async (req, res) =>
+  handleAnalyticsRequest(res, async () => {
+    validateVehicleId(req.params.vehicleId);
+    return Service.getTravelSummary(
+      req.params.vehicleId,
+      req.orgScope,
+      req.query,
+    );
+  });
+
+exports.getTripSummary = async (req, res) =>
+  handleAnalyticsRequest(res, async () => {
+    validateVehicleId(req.params.vehicleId);
+    return Service.getTripSummary(req.params.vehicleId, req.orgScope, req.query);
+  });
+
+exports.getDaywiseDistance = async (req, res) =>
+  handleAnalyticsRequest(res, async () => {
+    validateVehicleId(req.params.vehicleId);
+    return Service.getDaywiseDistance(
+      req.params.vehicleId,
+      req.orgScope,
+      req.query,
+    );
+  });
+
+exports.getAlertSummary = async (req, res) =>
+  handleAnalyticsRequest(res, async () => {
+    validateVehicleId(req.params.vehicleId);
+    return Service.getAlertSummary(req.params.vehicleId, req.orgScope, req.query);
+  });

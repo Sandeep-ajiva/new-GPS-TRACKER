@@ -390,13 +390,13 @@ export default function UsersPage() {
   const columns = [
     {
       header: "Name",
-      accessor: (row: User) => `${row.firstName} ${row.lastName}`,
+      accessor: (row: any) => `${row.firstName} ${row.lastName}`,
     },
     { header: "Email", accessor: "email" },
     { header: "Mobile", accessor: "mobile" },
     {
       header: "Role",
-      accessor: (row: User) => (
+      accessor: (row: any) => (
         <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-slate-700">
           {capitalizeFirstLetter(row.role)}
         </span>
@@ -404,7 +404,7 @@ export default function UsersPage() {
     },
     {
       header: "Organization",
-      accessor: (row: User) => {
+      accessor: (row: any) => {
         if (!row.organizationId) return "Global";
         if (typeof row.organizationId === "object")
           return row.organizationId.name;
@@ -414,7 +414,7 @@ export default function UsersPage() {
     },
     {
       header: "Status",
-      accessor: (row: User) => (
+      accessor: (row: any) => (
         <span
           className={`px-2 py-1 rounded-lg text-xs font-bold uppercase ${row.status === "active" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}
         >
@@ -424,7 +424,7 @@ export default function UsersPage() {
     },
     {
       header: "Actions",
-      accessor: (row: User) => (
+      accessor: (row: any) => (
         <div className="flex gap-2">
           {canEditUser && (
             <button
@@ -574,7 +574,7 @@ export default function UsersPage() {
                   placeholder="Search mobile"
                 />
               </div>
-               {/* 🔐 ORG CONTEXT UPDATE */}
+              {/* 🔐 ORG CONTEXT UPDATE */}
               {/* Organization Name Text Search - visible for all admins */}
               {(isSuperAdmin || isRootOrgAdmin) && (
                 <div>

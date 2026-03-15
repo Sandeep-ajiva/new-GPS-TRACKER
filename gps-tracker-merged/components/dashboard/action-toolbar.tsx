@@ -1,6 +1,7 @@
-import { MapPin, FileText, Shield, Blocks, Settings } from "lucide-react"
+import { Blocks, FileText, MapPin, Settings, Shield } from "lucide-react"
 import { useAppDispatch, useAppSelector } from "@/redux/hooks"
 import { setActiveTab } from "@/redux/features/vehicleSlice"
+import { AnalyticsDropdown } from "./modules/analytics/AnalyticsDropdown"
 
 export function ActionToolbar({
     compact = false,
@@ -21,21 +22,26 @@ export function ActionToolbar({
     ]
 
     return (
-        <div className={`flex items-center justify-between bg-slate-950/80 shadow-sm border-b border-white/10 overflow-x-auto ${compact ? "px-3 py-1.5" : "px-4 py-2"} ${className}`}>
-            {actions.map((action) => (
-                <button
-                    key={action.label}
-                    onClick={() => dispatch(setActiveTab(action.label))}
-                    className={`flex flex-col items-center gap-1 min-w-17.5 transition-all group ${compact ? "min-w-14" : ""} ${activeTab === action.label ? "text-emerald-400" : "text-slate-400 hover:text-emerald-300"}`}
-                >
-                    <div className={`rounded-lg transition-colors ${compact ? "p-1.5" : "p-2"} ${activeTab === action.label ? "bg-emerald-500/10" : "group-hover:bg-white/10"}`}>
-                        <action.icon className={`${compact ? "h-4 w-4" : "h-5 w-5"} ${activeTab === action.label ? "text-emerald-400" : "text-slate-400 group-hover:text-emerald-300"}`} />
-                    </div>
-                    <span className={`font-black uppercase tracking-tighter truncate max-w-full ${compact ? "text-[8px]" : "text-[9px]"} ${activeTab === action.label ? "text-emerald-400" : "text-slate-500 group-hover:text-emerald-300"}`}>
-                        {action.label}
-                    </span>
-                </button>
-            ))}
+        <div className={`flex items-center gap-2 overflow-x-auto border-b border-[#dbe7d4] bg-white px-4 ${compact ? "py-3" : "py-4"} ${className}`}>
+            {actions.map((action) => {
+                const isActive = activeTab === action.label
+                return (
+                    <button
+                        key={action.label}
+                        type="button"
+                        onClick={() => dispatch(setActiveTab(action.label))}
+                        className={`group relative flex shrink-0 items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition-colors ${isActive
+                            ? "bg-[#ecf8ea] text-[#2f8d35]"
+                            : "text-slate-500 hover:bg-[#f4faf2] hover:text-[#2f8d35]"
+                            }`}
+                    >
+                        <action.icon className={`h-4 w-4 ${isActive ? "text-[#2f8d35]" : "text-slate-400 group-hover:text-[#2f8d35]"}`} />
+                        <span className="whitespace-nowrap">{action.label}</span>
+                        <span className={`absolute inset-x-3 -bottom-3 h-0.5 rounded-full transition-opacity ${isActive ? "bg-[#2f8d35] opacity-100" : "opacity-0"}`} />
+                    </button>
+                )
+            })}
+            <AnalyticsDropdown />
         </div>
     )
 }

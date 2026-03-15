@@ -49,7 +49,7 @@ export function DynamicModal({
     if (isOpen) {
       setFieldErrors({});
     }
-  }, [initialData, isOpen]);
+  }, [fields, initialData, isOpen]);
 
   if (!isOpen) return null;
 
@@ -102,19 +102,31 @@ export function DynamicModal({
       }
       await onSubmit(formData);
       onClose();
-    } catch (err: any) {
+    } catch (err: unknown) {
       // Step 1: Extract nested validation errors (Mongoose style)
-      const errorData = err?.data;
+      const errorData =
+        typeof err === "object" && err !== null && "data" in err
+          ? (err as { data?: { errors?: Record<string, unknown>; message?: string } }).data
+          : undefined;
       if (errorData?.errors && typeof errorData.errors === 'object') {
         try {
-          const messages = Object.values(errorData.errors).map((fieldErr: any) =>
-            typeof fieldErr === 'string' ? fieldErr : fieldErr?.message || "Invalid value"
-          );
+          const messages = Object.values(errorData.errors).map((fieldErr) => {
+            if (typeof fieldErr === "string") return fieldErr;
+            if (
+              typeof fieldErr === "object" &&
+              fieldErr !== null &&
+              "message" in fieldErr &&
+              typeof (fieldErr as { message?: string }).message === "string"
+            ) {
+              return (fieldErr as { message: string }).message;
+            }
+            return "Invalid value";
+          });
           if (messages.length > 0) {
             setApiError(messages.join(" | "));
             return;
           }
-        } catch (innerErr) {
+        } catch {
           // ignore parsing error
         }
       }
@@ -122,7 +134,7 @@ export function DynamicModal({
       // Step 2: Fallback to top-level message or plain Error
       const message =
         errorData?.message ||
-        err?.message ||
+        (err instanceof Error ? err.message : undefined) ||
         "Something went wrong. Please try again.";
       setApiError(message);
     } finally {
@@ -222,9 +234,27 @@ export function DynamicModal({
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 
-            {fields.map((field) => (
+            {fields.map((field, index) => {
+              const previousSection = index > 0 ? fields[index - 1]?.section : undefined;
+              const showSectionHeading = !!field.section && field.section !== previousSection;
+
+              return (
+              <React.Fragment key={field.name}>
+              {showSectionHeading && (
+                <div className="sm:col-span-2 pt-2">
+                  <div className={cn("mb-3 border-t pt-4", isDark ? "border-slate-800" : "border-slate-200")}>
+                    <p
+                      className={cn(
+                        "text-[11px] font-black uppercase tracking-[0.28em]",
+                        isDark ? "text-slate-300" : "text-slate-700",
+                      )}
+                    >
+                      {field.section}
+                    </p>
+                  </div>
+                </div>
+              )}
               <div
-                key={field.name}
                 className={cn(field.type === "textarea" ? "sm:col-span-2" : "")}
               >
                 <label
@@ -416,7 +446,8 @@ export function DynamicModal({
                   </p>
                 )}
               </div>
-            ))}
+              </React.Fragment>
+            )})}
           </div>
 
           {/* Footer */}

@@ -32,6 +32,30 @@ router.get(
 );
 
 router.get(
+  "/inventory",
+  verifyToken,
+  checkAuthorization(["admin", "superadmin"], "gpsDevice", "read"),
+  checkOrganization,
+  Controller.getInventory
+);
+
+router.get(
+  "/inventory/:id",
+  verifyToken,
+  checkAuthorization(["admin", "superadmin"], "gpsDevice", "read"),
+  checkOrganization,
+  Controller.getInventoryById
+);
+
+router.patch(
+  "/inventory/:id",
+  verifyToken,
+  checkAuthorization(["admin", "superadmin"], "gpsDevice", "update"),
+  checkOrganization,
+  Controller.updateInventory
+);
+
+router.get(
   "/:id",
   verifyToken,
   checkAuthorization(["admin", "driver"], "gpsDevice", "read"),

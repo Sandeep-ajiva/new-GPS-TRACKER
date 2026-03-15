@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CheckCircle2, Gauge, Timer, Activity, Clock3, Bell, Trash2, X } from "lucide-react";
+import { useMemo } from "react";
+import { CheckCircle2, Gauge, Navigation, User } from "lucide-react";
 import type { Vehicle } from "@/lib/vehicles";
 import type { VehiclePositions } from "@/lib/use-vehicle-positions";
-import { TelemetryGrid } from "./telemetry-grid";
 
 type DailyStats = {
     totalDistance?: number
@@ -36,6 +35,29 @@ const toRelativeTime = (value?: string) => {
     return `${days} d ago`;
 };
 
+const DetailRow = ({ label, value }: { label: string; value: React.ReactNode }) => (
+    <div className="flex items-start justify-between gap-3 border-b border-[#edf3e8] py-1.5 last:border-b-0">
+        <span className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">{label}</span>
+        <span className="text-sm font-semibold text-slate-800 text-right">{value}</span>
+    </div>
+)
+
+const MetricBox = ({ label, value }: { label: string; value: React.ReactNode }) => (
+    <div className="rounded-2xl border border-[#dbe7d4] bg-white px-3 py-2.5">
+        <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">{label}</div>
+        <div className="mt-1.5 text-xl font-black tracking-tight text-slate-900">{value}</div>
+    </div>
+)
+
+const SectionPill = ({ color, title }: { color: string; title: string }) => (
+    <span
+        className="inline-flex rounded-full px-4 py-1.5 text-xs font-black tracking-[0.08em] text-white"
+        style={{ backgroundColor: color }}
+    >
+        {title}
+    </span>
+)
+
 export function VehicleDetails({
     vehicleId,
     positions,
@@ -51,284 +73,207 @@ export function VehicleDetails({
     dailyStats?: DailyStats | null;
     alerts?: AlertItem[];
 }) {
-    if (!vehicleId && !selectedVehicleObj) return null;
-    const vehicle = selectedVehicleObj || vehicles.find((item) => item.id === vehicleId);
-    if (!vehicle) return null;
-
-    const [isAlertModalOpen, setIsAlertModalOpen] = useState(false);
-    const [alertItems, setAlertItems] = useState<AlertItem[]>(alerts);
-
-    useEffect(() => {
-        setAlertItems(alerts);
-    }, [alerts]);
+    const vehicle = useMemo(
+        () => selectedVehicleObj || vehicles.find((item) => item.id === vehicleId) || null,
+        [selectedVehicleObj, vehicles, vehicleId]
+    );
 
     const orderedAlerts = useMemo(
         () =>
-            [...alertItems].sort((a, b) => {
+            [...alerts].sort((a, b) => {
                 const at = new Date(a.gpsTimestamp || 0).getTime();
                 const bt = new Date(b.gpsTimestamp || 0).getTime();
                 return bt - at;
             }),
-        [alertItems]
+        [alerts]
     );
 
     const recentAlert = orderedAlerts.length > 0 ? orderedAlerts[0] : null;
-    const fleet = vehicles.reduce(
-        (acc, item) => {
-            acc.total += 1;
-            if (item.status === "running") acc.running += 1;
-            if (item.status === "idle") acc.idle += 1;
-            return acc;
-        },
-        { total: 0, running: 0, idle: 0 }
-    );
+
+    if (!vehicleId && !selectedVehicleObj) return null;
+    if (!vehicle) return null;
+
+    const currentPosition = positions[vehicle.id];
+    const coordinates = currentPosition
+        ? `${currentPosition.lat.toFixed(6)}, ${currentPosition.lng.toFixed(6)}`
+        : "N/A";
+    const latestStatusLabel =
+        vehicle.status === "running"
+            ? "Running"
+            : vehicle.status === "idle"
+                ? "Idle"
+                : vehicle.status === "inactive"
+                    ? "Inactive"
+                    : vehicle.status === "nodata"
+                        ? "No Data"
+                        : "Stopped";
 
     return (
-        <div className="rounded-2xl bg-[#0d1524] p-4 space-y-6 border border-white/5">
-            <div className="rounded-2xl border border-white/10 bg-gradient-to-r from-slate-900 to-slate-800/90 p-5 shadow-2xl shadow-black/30">
-                <div className="flex flex-wrap items-start gap-4 justify-between">
-                    <div className="flex-1 min-w-[200px] space-y-1">
-                        <div className="text-[11px] uppercase tracking-[0.18em] text-emerald-300/80">Live Vehicle</div>
-                        <h3 className="truncate text-2xl font-black text-white">{vehicle.vehicleNumber}</h3>
-                        <div className="text-xs text-gray-300/80">{(vehicle as any).vehicleType || `${vehicle.make || ""} ${vehicle.model || ""}`.trim() || "Vehicle"}</div>
-                        <div className="text-[11px] text-gray-400">Updated: {vehicle.date || "N/A"}</div>
-                        <div className="flex flex-wrap gap-2 text-[11px] text-gray-300">
-                            {vehicle.driver && <span className="rounded-full bg-white/5 px-3 py-1 border border-white/10">Driver: {vehicle.driver}</span>}
-                            {vehicle.imei && <span className="rounded-full bg-white/5 px-3 py-1 border border-white/10">IMEI: {vehicle.imei}</span>}
-                            {vehicle.registrationNumber && <span className="rounded-full bg-white/5 px-3 py-1 border border-white/10">Reg: {vehicle.registrationNumber}</span>}
-                        </div>
+        <div className="space-y-3 rounded-[26px] border border-[#dbe7d4] bg-white p-4 shadow-sm">
+            <div className="grid gap-3 xl:grid-cols-4 md:grid-cols-2">
+                <div className="rounded-[22px] border border-[#dbe7d4] bg-white p-4 shadow-sm">
+                    <div className="mb-4 flex items-start justify-between">
+                        <SectionPill color="#0b5c8e" title="Speed" />
+                        <Gauge className="h-8 w-8 text-[#0b5c8e]" />
                     </div>
-                    <div className="flex items-start gap-3">
-                        <span
-                            className={`inline-flex items-center rounded-full px-4 py-2 text-xs font-semibold uppercase shadow-inner shadow-black/30 ${vehicle.status === "running"
-                                ? "bg-green-500/15 text-green-300 border border-green-500/30"
-                                : vehicle.status === "idle"
-                                    ? "bg-yellow-500/15 text-yellow-200 border border-yellow-400/40"
-                                    : vehicle.status === "inactive"
-                                        ? "bg-red-500/15 text-red-300 border border-red-500/30"
-                                        : "bg-gray-500/15 text-gray-200 border border-gray-500/30"
-                                }`}
-                        >
-                            {vehicle.status}
-                        </span>
+                    <div className="space-y-2.5">
+                        <div className="flex items-center justify-between text-sm">
+                            <span className="font-medium text-slate-600">Avg Speed</span>
+                            <span className="text-xl font-black text-[#0b5c8e]">{dailyStats?.avgSpeed ?? 0}<span className="ml-1 text-sm font-semibold">km/h</span></span>
+                        </div>
+                        <div className="flex items-center justify-between text-sm">
+                            <span className="font-medium text-red-500">Max Speed</span>
+                            <span className="text-xl font-black text-red-400">{dailyStats?.maxSpeed ?? 0}<span className="ml-1 text-sm font-semibold">km/h</span></span>
+                        </div>
                     </div>
                 </div>
 
-                <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4">
-                    <div className="rounded-xl bg-[#0d1422] p-3 text-center border border-white/5">
-                        <div className="text-[10px] uppercase tracking-wide text-gray-400">Total Fleet</div>
-                        <div className="mt-1 text-2xl font-bold text-white">{fleet.total}</div>
+                <div className="rounded-[22px] border border-[#dbe7d4] bg-white p-4 shadow-sm">
+                    <div className="mb-4 flex items-center justify-between">
+                        <SectionPill color="#3e8d11" title="Today Activity" />
+                        <span className="text-lg font-black text-[#3e8d11]">{dailyStats?.totalDistance ?? 0} km</span>
                     </div>
-                    <div className="rounded-xl bg-[#0d1422] p-3 text-center border border-white/5">
-                        <div className="text-[10px] uppercase tracking-wide text-gray-400">Running</div>
-                        <div className="mt-1 text-2xl font-bold text-green-400">{fleet.running}</div>
+                    <div className="space-y-1.5 text-sm">
+                        <div className="flex items-center justify-between">
+                            <span className="text-slate-700">Running</span>
+                            <span className="font-semibold text-[#3e8d11]">{dailyStats?.runningTime ?? "0"}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                            <span className="text-slate-700">Idle</span>
+                            <span className="font-semibold text-[#ef8a22]">{dailyStats?.idleTime ?? "0"}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                            <span className="text-slate-700">Stop</span>
+                            <span className="font-semibold text-[#ef5b4d]">{dailyStats?.stoppedTime ?? "0"}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                            <span className="text-slate-700">Inactive</span>
+                            <span className="font-semibold text-[#4da2e9]">{dailyStats?.inactiveTime ?? "0"}</span>
+                        </div>
                     </div>
-                    <div className="rounded-xl bg-[#0d1422] p-3 text-center border border-white/5">
-                        <div className="text-[10px] uppercase tracking-wide text-gray-400">Idle</div>
-                        <div className="mt-1 text-2xl font-bold text-yellow-300">{fleet.idle}</div>
+                </div>
+
+                <div className="rounded-[22px] border border-[#dbe7d4] bg-white p-4 shadow-sm">
+                    <div className="mb-4 flex items-center justify-between">
+                        <SectionPill color="#ef5b4d" title="Alert" />
+                        <span className="text-xl font-black text-[#3e8d11]">{orderedAlerts.length}</span>
                     </div>
-                    <div className="rounded-xl bg-[#0d1422] p-3 text-center border border-white/5">
-                        <div className="text-[10px] uppercase tracking-wide text-gray-400">Alerts</div>
-                        <div className="mt-1 text-2xl font-bold text-red-400">{orderedAlerts.length}</div>
+
+                    {recentAlert ? (
+                        <div className="space-y-1.5 text-sm">
+                            <div className="flex items-center justify-between gap-3">
+                                <span className="truncate text-slate-700">Recent alerts</span>
+                                <span className="font-semibold text-red-500">{toRelativeTime(recentAlert.gpsTimestamp || "")}</span>
+                            </div>
+                            <div className="text-[#0b5c8e]">{recentAlert.alertName || "N/A"}</div>
+                            <div className="text-red-500">{recentAlert.severity || "Status unavailable"}</div>
+                        </div>
+                    ) : (
+                        <div className="space-y-2">
+                            <div className="flex items-center gap-2 text-[#2f8d35]">
+                                <CheckCircle2 size={16} />
+                                <span className="text-sm font-bold text-slate-900">No recent alert</span>
+                            </div>
+                            <p className="text-sm font-medium text-slate-500">System normal</p>
+                        </div>
+                    )}
+                </div>
+
+                <div className="rounded-[22px] border border-[#dbe7d4] bg-white p-4 shadow-sm">
+                    <div className="mb-4">
+                        <SectionPill color="#0b5c8e" title="GPS Device Parameters" />
+                    </div>
+                    <div className="space-y-2">
+                        <DetailRow label="Int Battery" value={vehicle.batteryVoltage != null ? vehicle.batteryVoltage : "N/A"} />
+                        <DetailRow label="Satellite" value={vehicle.satelliteCount != null ? vehicle.satelliteCount : "N/A"} />
+                        <DetailRow label="Int Battery %" value={vehicle.batteryPercent != null ? vehicle.batteryPercent : "N/A"} />
+                        <DetailRow label="GSM Signal" value={vehicle.gsmSignal != null ? vehicle.gsmSignal : "N/A"} />
+                        <DetailRow label="Fuel" value={vehicle.fuel != null ? `${vehicle.fuel}%` : "N/A"} />
                     </div>
                 </div>
             </div>
 
-            <div className="grid gap-5 md:grid-cols-5">
-                <div className="space-y-5 md:col-span-3">
-                    <div className="bg-[#1C2533] rounded-2xl p-4 shadow-lg shadow-black/20 border border-white/5">
-                        <div className="mb-3 flex items-center justify-between text-sm font-semibold text-white">
-                            <span>Daily Performance</span>
-                            <span className="text-[10px] uppercase tracking-[0.18em] text-gray-400">Today</span>
+            <div className="grid gap-3 xl:grid-cols-[1.05fr_0.95fr_1.2fr_0.95fr]">
+                <div className="rounded-[22px] border border-[#dbe7d4] bg-white p-4 shadow-sm">
+                    <div className="grid gap-3 md:grid-cols-[auto_1fr_auto]">
+                        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#0b78b8] text-white shadow-sm">
+                            <User className="h-6 w-6" />
                         </div>
-                        <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-                            <div className="rounded-xl bg-[#111827] p-3 border border-white/5">
-                                <div className="flex items-center justify-between">
-                                    <span className="text-[10px] uppercase tracking-wide text-gray-400">Avg Speed</span>
-                                    <Gauge size={13} className="text-gray-500" />
-                                </div>
-                                <div className="mt-1 text-lg font-bold text-white">
-                                    {dailyStats?.avgSpeed || 0} <span className="text-xs text-gray-400">km/h</span>
-                                </div>
+                        <div>
+                            <p className="text-base font-medium text-slate-800">{vehicle.driver || "Unassigned"}</p>
+                            <p className="text-sm text-slate-500">Driver</p>
+                            <div className="mt-3 h-1.5 w-full rounded-full bg-slate-200">
+                                <div className="h-1.5 rounded-full bg-[#3e8d11]" style={{ width: vehicle.gps ? "50%" : "10%" }} />
                             </div>
-                            <div className="rounded-xl bg-[#111827] p-3 border border-white/5">
-                                <div className="flex items-center justify-between">
-                                    <span className="text-[10px] uppercase tracking-wide text-gray-400">Max Speed</span>
-                                    <Activity size={13} className="text-gray-500" />
-                                </div>
-                                <div className="mt-1 text-lg font-bold text-white">
-                                    {dailyStats?.maxSpeed || 0} <span className="text-xs text-gray-400">km/h</span>
-                                </div>
-                            </div>
-                            <div className="rounded-xl bg-[#111827] p-3 border border-white/5">
-                                <div className="flex items-center justify-between">
-                                    <span className="text-[10px] uppercase tracking-wide text-gray-400">Run Time</span>
-                                    <Timer size={13} className="text-gray-500" />
-                                </div>
-                                <div className="mt-1 text-lg font-bold text-white">{dailyStats?.runningTime || 0}</div>
-                            </div>
-                            <div className="rounded-xl bg-[#111827] p-3 border border-white/5">
-                                <div className="flex items-center justify-between">
-                                    <span className="text-[10px] uppercase tracking-wide text-gray-400">Idle Time</span>
-                                    <Clock3 size={13} className="text-gray-500" />
-                                </div>
-                                <div className="mt-1 text-lg font-bold text-white">{dailyStats?.idleTime || 0}</div>
-                            </div>
+                        </div>
+                        <div className="text-right">
+                            <p className="text-xs font-black uppercase tracking-[0.12em] text-[#0b78b8]">{vehicle.registrationNumber || vehicle.vehicleNumber || "N/A"}</p>
+                            <span className={`mt-2 inline-flex rounded-md px-2.5 py-1 text-[11px] font-bold text-white ${vehicle.status === "stopped" ? "bg-[#ef5b4d]" : vehicle.status === "running" ? "bg-[#3e8d11]" : vehicle.status === "idle" ? "bg-[#ef8a22]" : "bg-[#4da2e9]"}`}>
+                                {latestStatusLabel}
+                            </span>
+                            <p className="mt-2 text-xs text-slate-500">{vehicle.date || "N/A"}</p>
                         </div>
                     </div>
-
-                    <div className={`bg-[#1C2533] rounded-2xl p-4 shadow-lg shadow-black/20 border border-white/5 ${recentAlert ? "ring-1 ring-red-500/40" : "ring-1 ring-emerald-500/20"}`}>
-                        <div className="flex items-center justify-between gap-3">
-                            <div className="text-sm font-semibold text-white">Recent Alert</div>
-                            <button
-                                type="button"
-                                onClick={() => setIsAlertModalOpen(true)}
-                                className="inline-flex items-center gap-1 rounded-lg bg-[#111827] px-2 py-1 text-xs text-gray-200 transition-colors hover:bg-[#0b1220]"
-                            >
-                                <Bell size={12} />
-                                Notifications
-                            </button>
-                        </div>
-                        {recentAlert ? (
-                            <div className="mt-2 space-y-1">
-                                <div className="flex items-center gap-2 text-red-400">
-                                    <AlertTriangle size={14} />
-                                    <span className="text-sm font-medium text-white">{recentAlert.alertName || "N/A"}</span>
-                                </div>
-                                <div className="text-xs text-gray-400 uppercase">{recentAlert.severity || "N/A"}</div>
-                                <div className="text-xs text-gray-400">{toRelativeTime(recentAlert.gpsTimestamp || "")}</div>
-                            </div>
-                        ) : (
-                            <div className="mt-2 space-y-1">
-                                <div className="flex items-center gap-2 text-green-400 text-sm">
-                                    <CheckCircle2 size={14} />
-                                    <span className="text-white">No recent alert</span>
-                                </div>
-                                <div className="text-xs text-gray-400">System normal</div>
-                            </div>
-                        )}
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                        <MetricBox label="Current Trip" value={dailyStats?.totalDistance != null ? `${dailyStats.totalDistance} km` : "N/A"} />
+                        <MetricBox label="Speed" value={`${vehicle.speed || 0} km/h`} />
                     </div>
+                </div>
 
-                    <div className="bg-[#1C2533] rounded-2xl p-4 shadow-lg shadow-black/20 border border-white/5">
-                        <div className="mb-3 text-sm font-semibold text-white">Vehicle Specifications</div>
-                        <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
-                            <div className="flex justify-between gap-3">
-                                <span className="text-gray-400">Make & Model</span>
-                                <span className="text-white text-right">{vehicle.make} {vehicle.model}</span>
-                            </div>
-                            <div className="flex justify-between gap-3">
-                                <span className="text-gray-400">Year</span>
-                                <span className="text-white text-right">{vehicle.year || "N/A"}</span>
-                            </div>
-                            <div className="flex justify-between gap-3">
-                                <span className="text-gray-400">Color</span>
-                                <span className="text-white text-right capitalize">{vehicle.color || "N/A"}</span>
-                            </div>
-                            <div className="flex justify-between gap-3">
-                                <span className="text-gray-400">Registration No.</span>
-                                <span className="text-white text-right">{vehicle.vehicleNumber || "N/A"}</span>
-                            </div>
-                            <div className="flex justify-between gap-3 col-span-2">
-                                <span className="text-gray-400">AIS-140 Status</span>
-                                <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${vehicle.ais140Compliant ? "bg-green-500/20 text-green-400" : "bg-gray-500/20 text-gray-300"}`}>
-                                    {vehicle.ais140Compliant ? "Compliant" : "Standard"}
+                <div className="rounded-[22px] border border-[#dbe7d4] bg-white p-4 shadow-sm">
+                    <div className="mb-3 flex items-center gap-2">
+                        <Navigation className="h-4 w-4 text-[#0b5c8e]" />
+                        <div className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Location</div>
+                    </div>
+                    <p className="text-sm font-medium leading-6 text-slate-600">{vehicle.location || "Unknown"}</p>
+                    <p className="mt-3 font-mono text-sm text-slate-500">{coordinates}</p>
+                </div>
+
+                <div className="rounded-[22px] border border-[#dbe7d4] bg-white p-4 shadow-sm">
+                    <div className="mb-4">
+                        <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Vehicle Specification</p>
+                        <h4 className="mt-1 text-lg font-black text-slate-900">Master Information</h4>
+                    </div>
+                    <div className="space-y-1">
+                        <DetailRow label="Make / Model" value={`${vehicle.make || "N/A"} ${vehicle.model || ""}`.trim()} />
+                        <DetailRow label="Year" value={vehicle.year || "N/A"} />
+                        <DetailRow label="Color" value={vehicle.color || "N/A"} />
+                        <DetailRow label="Registration No" value={vehicle.registrationNumber || vehicle.vehicleNumber || "N/A"} />
+                        <DetailRow
+                            label="AIS Status"
+                            value={
+                                <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${vehicle.ais140Compliant ? "bg-[#ecf8ea] text-[#2f8d35]" : "bg-slate-100 text-slate-600"}`}>
+                                    {vehicle.ais140Compliant ? "Compliant" : "N/A"}
                                 </span>
-                            </div>
-                        </div>
+                            }
+                        />
                     </div>
                 </div>
 
-                <div className="space-y-5 md:col-span-2">
-                    <div className="bg-[#1C2533] rounded-2xl p-4 shadow-lg shadow-black/20 border border-white/5">
-                        <div className="mb-2 text-sm font-semibold text-white">Live Telemetry</div>
-                        <TelemetryGrid vehicle={vehicle} />
+                <div className="rounded-[22px] border border-[#dbe7d4] bg-white p-4 shadow-sm">
+                    <div className="mb-3">
+                        <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Location Details</p>
+                        <h4 className="mt-1 text-lg font-black text-slate-900">Current coordinates</h4>
                     </div>
-
-                    <div className="bg-[#1C2533] rounded-2xl p-4 shadow-lg shadow-black/20 border border-white/5">
-                        <div className="mb-2 text-sm font-semibold text-white">Location Details</div>
-                        <div className="space-y-2 text-sm">
-                            <div className="flex justify-between gap-3">
-                                <span className="text-gray-400">Address</span>
-                                <span className="text-white text-right">{vehicle.location || "N/A"}</span>
-                            </div>
-                            <div className="flex justify-between gap-3">
-                                <span className="text-gray-400">Coordinates</span>
-                                <span className="font-mono text-white text-right">
-                                    {positions[vehicle.id]
-                                        ? `${positions[vehicle.id]?.lat.toFixed(6)}, ${positions[vehicle.id]?.lng.toFixed(6)}`
-                                        : "N/A"}
-                                </span> 
-                            </div>
-                            <div className="flex justify-between gap-3">
-                                <span className="text-gray-400">POI</span>
-                                <span className="text-gray-300 text-right">{vehicle.poi || "No Landmark Near"}</span>
-                            </div>
-                        </div>
+                    <div className="grid gap-3">
+                        <MetricBox label="Address" value={vehicle.location || "Unknown"} />
+                        <MetricBox label="Coordinates" value={coordinates} />
+                        <MetricBox label="POI" value={vehicle.poi || "-"} />
                     </div>
                 </div>
             </div>
 
-            {isAlertModalOpen && (
-                <div
-                    className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 p-4"
-                    onClick={() => setIsAlertModalOpen(false)}
-                >
-                    <div
-                        className="w-full max-w-2xl rounded-2xl bg-[#1C2533] shadow-2xl shadow-black/40"
-                        onClick={(e) => e.stopPropagation()}
-                    >
-                        <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
-                            <div className="flex items-center gap-2 text-white">
-                                <Bell size={16} className="text-red-400" />
-                                <h4 className="text-sm font-semibold">Notifications</h4>
-                            </div>
-                            <button
-                                type="button"
-                                onClick={() => setIsAlertModalOpen(false)}
-                                className="rounded-md p-1 text-gray-300 transition-colors hover:bg-[#111827] hover:text-white"
-                            >
-                                <X size={16} />
-                            </button>
-                        </div>
-
-                        <div className="max-h-[420px] overflow-y-auto p-4 space-y-2">
-                            {orderedAlerts.length > 0 ? (
-                                orderedAlerts.map((item, index) => (
-                                    <div key={item._id || `${item.alertName || "alert"}-${index}`} className="rounded-xl bg-[#111827] p-3">
-                                        <div className="flex items-start justify-between gap-3">
-                                            <div className="min-w-0">
-                                                <div className="truncate text-sm font-semibold text-white">{item.alertName || "Unknown Alert"}</div>
-                                                <div className="mt-1 text-xs uppercase text-gray-400">{item.severity || "N/A"}</div>
-                                                <div className="mt-1 text-xs text-gray-400">{toRelativeTime(item.gpsTimestamp || "")}</div>
-                                            </div>
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    const key = item._id || `${item.alertName || "alert"}-${index}`;
-                                                    setAlertItems((prev) =>
-                                                        prev.filter((entry, entryIndex) => {
-                                                            const entryKey = entry._id || `${entry.alertName || "alert"}-${entryIndex}`;
-                                                            return entryKey !== key;
-                                                        })
-                                                    );
-                                                }}
-                                                className="inline-flex items-center gap-1 rounded-md bg-red-500/20 px-2 py-1 text-xs text-red-300 transition-colors hover:bg-red-500/30"
-                                            >
-                                                <Trash2 size={12} />
-                                                Delete
-                                            </button>
-                                        </div>
-                                    </div>
-                                ))
-                            ) : (
-                                <div className="rounded-xl bg-[#111827] p-4 text-sm text-gray-300">
-                                    No notifications available.
-                                </div>
-                            )}
-                        </div>
-                    </div>
+            <div className="rounded-[22px] border border-[#dbe7d4] bg-white p-4 shadow-sm xl:hidden">
+                <div className="mb-3">
+                    <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Location Details</p>
+                    <h4 className="mt-1 text-lg font-black text-slate-900">Current coordinates</h4>
                 </div>
-            )}
+                <div className="grid gap-3 md:grid-cols-3">
+                    <MetricBox label="Address" value={vehicle.location || "Unknown"} />
+                    <MetricBox label="Coordinates" value={coordinates} />
+                    <MetricBox label="POI" value={vehicle.poi || "-"} />
+                </div>
+            </div>
         </div>
     );
 }

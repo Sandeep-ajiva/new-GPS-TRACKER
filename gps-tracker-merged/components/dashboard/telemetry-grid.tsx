@@ -1,16 +1,38 @@
 "use client";
 
 import { useState } from "react";
-import { Power, Fan, Zap, Signal, Navigation, User, MapPin, Fuel, Thermometer, Phone, Mail, FileText, X } from "lucide-react";
+import { Fan, FileText, Fuel, Mail, MapPin, Navigation, Phone, Power, Signal, Thermometer, User, X, Zap } from "lucide-react";
 import type { Vehicle } from "@/lib/vehicles";
+
+const booleanTone = (value?: boolean) => (value ? "text-[#38a63c]" : "text-slate-300")
+
+const InfoTile = ({
+    label,
+    value,
+    icon: Icon,
+    compact = false,
+}: {
+    label: string
+    value: React.ReactNode
+    icon: typeof Navigation
+    compact?: boolean
+}) => (
+    <div className={`rounded-2xl border border-[#dbe7d4] bg-[#f8fcf7] ${compact ? "p-3" : "p-4"}`}>
+        <div className="flex items-center justify-between gap-2">
+            <span className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">{label}</span>
+            <Icon className="h-4 w-4 text-[#38a63c]" />
+        </div>
+        <div className="mt-2 text-sm font-semibold text-slate-800">{value}</div>
+    </div>
+)
 
 export function TelemetryGrid({ vehicle, compact = false }: { vehicle: Vehicle; compact?: boolean }) {
     const [isDriverModalOpen, setIsDriverModalOpen] = useState(false);
     const fullDriverName = [vehicle.driverDetails?.firstName, vehicle.driverDetails?.lastName]
-    .filter(Boolean)
-    .filter(name => name !== "N/A")
-    .join(" ")
-    .trim() || vehicle.driver || "Unassigned";
+        .filter(Boolean)
+        .filter((name) => name !== "N/A")
+        .join(" ")
+        .trim() || vehicle.driver || "Unassigned";
     const driverPhone = vehicle.driverDetails?.phone || "N/A";
     const driverEmail = vehicle.driverDetails?.email || "N/A";
     const driverLicense = vehicle.driverDetails?.licenseNumber || "N/A";
@@ -18,159 +40,79 @@ export function TelemetryGrid({ vehicle, compact = false }: { vehicle: Vehicle; 
     const hasDriverData = vehicle.driverDetails?.hasData || false;
 
     const fields = [
-        { label: "IGN", value: vehicle.ign, icon: Power },
-        { label: "AC", value: vehicle.ac, icon: Fan },
-        { label: "PW", value: vehicle.pw, icon: Zap },
-        { label: "GPS", value: vehicle.gps, icon: Signal },
+        { label: "Ignition", value: vehicle.ign ? "On" : "Off", icon: Power },
+        { label: "AC", value: vehicle.ac ? "On" : "Off", icon: Fan },
+        { label: "Power", value: vehicle.pw ? "On" : "Off", icon: Zap },
+        { label: "GPS", value: vehicle.gps ? "Live" : "Offline", icon: Signal },
+        { label: "Fuel", value: vehicle.fuel != null ? `${vehicle.fuel}%` : "N/A", icon: Fuel },
+        { label: "Temp", value: vehicle.temperature || "N/A", icon: Thermometer },
+        { label: "Speed", value: `${vehicle.speed || 0} km/h`, icon: Navigation },
+        { label: "POI", value: vehicle.poi || "N/A", icon: MapPin },
     ];
 
     return (
         <div className="w-full">
-            <div className={`grid gap-3 text-sm ${compact ? "grid-cols-3" : "grid-cols-3 md:grid-cols-4 lg:grid-cols-5"}`}>
-                <div className="rounded-md bg-[#111827] p-2 text-center transition-all duration-200 hover:bg-[#374151]">
-                    <span className="block text-xs text-gray-400">Vehicle</span>
-                    <div className="mt-1 flex items-center justify-center gap-1 text-white">
-                        <Navigation size={14} className="text-green-500" />
-                        <span className="truncate text-xs" title={vehicle.vehicleNumber || vehicle.id}>
-                            {vehicle.vehicleNumber || vehicle.id}
-                        </span>
-                    </div>
-                </div>
-
+            <div className={`grid gap-3 ${compact ? "grid-cols-2" : "grid-cols-1 sm:grid-cols-2 xl:grid-cols-3"}`}>
+                <InfoTile label="Vehicle" value={vehicle.vehicleNumber || vehicle.id || "N/A"} icon={Navigation} compact={compact} />
                 <button
+                    type="button"
                     onClick={() => setIsDriverModalOpen(true)}
-                    className="rounded-md bg-[#111827] p-2 text-center transition-all duration-200 hover:bg-[#374151]"
+                    className="text-left"
                 >
-                    <span className="block text-xs text-gray-400">Driver</span>
-                    <div className="mt-1 flex items-center justify-center gap-1 text-white">
-                        <User size={14} className={hasDriverData ? "text-green-500" : "text-gray-500"} />
-                        <span className="truncate text-xs">{vehicle.driver || "Unassigned"}</span>
-                    </div>
+                    <InfoTile label="Driver" value={fullDriverName} icon={User} compact={compact} />
                 </button>
 
                 {fields.map((field) => (
-                    <div key={field.label} className="rounded-md bg-[#111827] p-2 text-center transition-all duration-200 hover:bg-[#374151]">
-                        <span className="block text-xs text-gray-400">{field.label}</span>
-                        <div className="mt-1 flex justify-center">
-                            <field.icon className={`h-4 w-4 ${field.value ? "text-green-500" : "text-gray-500"}`} />
+                    <div key={field.label} className="rounded-2xl border border-[#dbe7d4] bg-[#f8fcf7] p-4">
+                        <div className="flex items-center justify-between gap-2">
+                            <span className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">{field.label}</span>
+                            <field.icon className={`h-4 w-4 ${["Ignition", "AC", "Power", "GPS"].includes(field.label) ? booleanTone(field.value === "On" || field.value === "Live") : "text-[#38a63c]"}`} />
                         </div>
+                        <div className="mt-2 text-sm font-semibold text-slate-800">{field.value}</div>
                     </div>
                 ))}
 
-                <div className="rounded-md bg-[#111827] p-2 text-center transition-all duration-200 hover:bg-[#374151]">
-                    <span className="block text-xs text-gray-400">Fuel</span>
-                    <div className="mt-1 flex items-center justify-center gap-1 text-white">
-                        <Fuel size={14} className="text-amber-400" />
-                        <span className="text-xs">{vehicle.fuel != null ? `${vehicle.fuel}%` : "NA"}</span>
+                <div className="rounded-2xl border border-[#dbe7d4] bg-[#f8fcf7] p-4 sm:col-span-2 xl:col-span-3">
+                    <div className="flex items-center justify-between gap-2">
+                        <span className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Location</span>
+                        <MapPin className="h-4 w-4 text-[#38a63c]" />
                     </div>
-                </div>
-
-                <div className="rounded-md bg-[#111827] p-2 text-center transition-all duration-200 hover:bg-[#374151]">
-                    <span className="block text-xs text-gray-400">Temp</span>
-                    <div className="mt-1 flex items-center justify-center gap-1 text-white">
-                        <Thermometer size={14} className="text-sky-400" />
-                        <span className="text-xs">{vehicle.temperature || "NA"}</span>
-                    </div>
-                </div>
-
-                <div className="rounded-md bg-[#111827] p-2 text-center transition-all duration-200 hover:bg-[#374151]">
-                    <span className="block text-xs text-gray-400">Speed</span>
-                    <div className="mt-1 text-sm font-semibold text-white">
-                        {vehicle.speed} <span className="text-xs text-gray-400">KM/H</span>
-                    </div>
-                </div>
-
-                <div className="rounded-md bg-[#111827] p-2 text-center transition-all duration-200 hover:bg-[#374151]">
-                    <span className="block text-xs text-gray-400">Location</span>
-                    <div className="mt-1 flex items-center justify-center gap-1 text-white">
-                        <MapPin size={14} className="text-red-400" />
-                        <span className="truncate text-xs" title={vehicle.location || "Unknown"}>
-                            {vehicle.location || "Unknown"}
-                        </span>
-                    </div>
-                </div>
-
-                <div className="rounded-md bg-[#111827] p-2 text-center transition-all duration-200 hover:bg-[#374151]">
-                    <span className="block text-xs text-gray-400">POI</span>
-                    <div className="mt-1 flex items-center justify-center gap-1 text-white">
-                        <Navigation size={14} className="text-blue-400" />
-                        <span className="truncate text-xs" title={vehicle.poi || "No POI"}>
-                            {vehicle.poi || "No POI"}
-                        </span>
-                    </div>
+                    <div className="mt-2 text-sm font-semibold leading-6 text-slate-800">{vehicle.location || "N/A"}</div>
                 </div>
             </div>
 
             {isDriverModalOpen && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setIsDriverModalOpen(false)}>
-                    <div className="relative w-full max-w-sm bg-slate-900 border border-white/10 rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-center justify-between px-5 py-4 border-b border-white/5 bg-slate-800/60">
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/30 p-4 backdrop-blur-sm" onClick={() => setIsDriverModalOpen(false)}>
+                    <div className="relative w-full max-w-sm overflow-hidden rounded-3xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-between border-b border-[#e6efe0] px-5 py-4">
                             <div className="flex items-center gap-3">
-                                <div className="rounded-full bg-emerald-500/20 p-2">
-                                    <User size={20} className="text-emerald-400" />
+                                <div className="rounded-full bg-[#ecf8ea] p-2">
+                                    <User size={20} className="text-[#38a63c]" />
                                 </div>
                                 <div className="min-w-0">
-                                    <h4 className="text-sm font-black text-slate-100 uppercase tracking-widest truncate">Driver Profile</h4>
-                                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tight truncate">{vehicle.vehicleNumber}</p>
+                                    <h4 className="truncate text-sm font-black uppercase tracking-[0.2em] text-slate-800">Driver Profile</h4>
+                                    <p className="truncate text-[10px] font-bold uppercase tracking-wide text-slate-400">{vehicle.vehicleNumber || "N/A"}</p>
                                 </div>
                             </div>
-                            <button onClick={() => setIsDriverModalOpen(false)} className="p-2 text-slate-400 hover:text-white transition-colors">
-                                <X size={20} />
+                            <button onClick={() => setIsDriverModalOpen(false)} className="rounded-full p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700">
+                                <X size={18} />
                             </button>
                         </div>
 
-                        <div className="p-5 space-y-4">
+                        <div className="space-y-4 p-5">
                             {!hasDriverData && (
-                                <div className="rounded-xl bg-amber-500/10 border border-amber-500/20 p-3">
-                                    <div className="flex items-center gap-2 text-amber-400 text-xs">
-                                        <User size={14} />
-                                        <span>Driver details not available. Contact admin to assign driver to this vehicle.</span>
-                                    </div>
+                                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs font-medium text-amber-700">
+                                    Driver details are not available for this vehicle.
                                 </div>
                             )}
-                            
-                            <div className="flex flex-col gap-1">
-                                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Full Name</span>
-                                <div className="text-base font-black text-slate-100">{fullDriverName}</div>
-                            </div>
 
-                            <div className="grid grid-cols-1 gap-3">
-                                <div className="flex items-center gap-3 rounded-xl bg-white/5 p-3 border border-white/5">
-                                    <Phone size={16} className="text-emerald-400" />
-                                    <div>
-                                        <div className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Phone Number</div>
-                                        <div className="text-xs font-bold text-slate-200">{driverPhone}</div>
-                                    </div>
-                                </div>
+                            <InfoTile label="Full Name" value={fullDriverName} icon={User} />
+                            <InfoTile label="Phone Number" value={driverPhone} icon={Phone} />
+                            <InfoTile label="Email Address" value={driverEmail} icon={Mail} />
+                            <InfoTile label="License Number" value={driverLicense} icon={FileText} />
+                            <InfoTile label="Address" value={driverAddress} icon={MapPin} />
 
-                                <div className="flex items-center gap-3 rounded-xl bg-white/5 p-3 border border-white/5">
-                                    <Mail size={16} className="text-blue-400" />
-                                    <div>
-                                        <div className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Email Address</div>
-                                        <div className="text-xs font-bold text-slate-200">{driverEmail}</div>
-                                    </div>
-                                </div>
-
-                                <div className="flex items-center gap-3 rounded-xl bg-white/5 p-3 border border-white/5">
-                                    <FileText size={16} className="text-amber-400" />
-                                    <div>
-                                        <div className="text-[9px] font-black text-slate-500 uppercase tracking-widest">License Number</div>
-                                        <div className="text-xs font-bold text-slate-200">{driverLicense}</div>
-                                    </div>
-                                </div>
-
-                                <div className="flex items-start gap-3 rounded-xl bg-white/5 p-3 border border-white/5">
-                                    <MapPin size={16} className="text-red-400 mt-0.5" />
-                                    <div>
-                                        <div className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Address</div>
-                                        <div className="text-xs font-bold text-slate-200 leading-tight">
-                                            {driverAddress}
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <button onClick={() => setIsDriverModalOpen(false)} className="w-full rounded-xl bg-emerald-500 py-3 text-xs font-black text-slate-900 uppercase tracking-widest transition-transform hover:scale-[1.02] active:scale-95 shadow-lg shadow-emerald-500/20">
+                            <button onClick={() => setIsDriverModalOpen(false)} className="w-full rounded-2xl bg-[#38a63c] py-3 text-xs font-black uppercase tracking-[0.2em] text-white transition hover:bg-[#2f8d35]">
                                 Close Details
                             </button>
                         </div>

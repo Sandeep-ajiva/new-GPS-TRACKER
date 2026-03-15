@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 import Table from "@/components/ui/Table";
 import Pagination from "@/components/ui/Pagination";
 import ApiErrorBoundary from "@/components/admin/ErrorBoundary/ApiErrorBoundary";
@@ -18,7 +19,6 @@ import {
 
 import {
   useGetVehiclesQuery,
-  useUpdateVehicleMutation,
 } from "@/redux/api/vehicleApi";
 
 import { useGetOrganizationsQuery } from "@/redux/api/organizationApi";
@@ -30,36 +30,57 @@ import { FormField } from "@/lib/formTypes";
 // 🔐 ORG CONTEXT UPDATE
 import { useOrgContext } from "@/hooks/useOrgContext";
 import ImportExportButton from "@/components/admin/import-export/ImportExportButton";
+import { InventoryLayer } from "@/components/gps-devices/InventoryLayer";
+import { InventoryStatusBadge } from "@/components/gps-devices/InventoryStatusBadge";
+import type { GpsDeviceRecord } from "@/components/gps-devices/inventoryTypes";
+import { INVENTORY_STATUS_OPTIONS } from "@/components/gps-devices/inventoryTypes";
 
-import {
-  Cpu,
-  Smartphone,
-  Layout,
-  Activity,
-  ToggleLeft,
-  Building2,
-} from "lucide-react";
+import { Building2 } from "lucide-react";
 
-/* ================= TYPES ================= */
-
-export interface GPSDevice {
-  _id: string;
-  organizationId: string | { _id: string; name: string };
-  vehicleId?: string | { _id: string; vehicleNumber?: string };
-  vehicleNumber?: string;
+type DeviceFormValues = {
+  organizationId?: string | { _id: string };
   imei: string;
-  deviceModel?: string;
-  manufacturer?: string;
   simNumber?: string;
+  deviceModel: string;
+  manufacturer?: string;
   serialNumber?: string;
   firmwareVersion?: string;
-  softwareVersion?: string;
   hardwareVersion?: string;
-  connectionStatus?: "online" | "offline";
-  isOnline?: boolean;
   warrantyExpiry?: string;
   status: "active" | "inactive";
-}
+  purchaseDate?: string;
+  purchasePrice?: string | number;
+  supplierName?: string;
+  invoiceNumber?: string;
+  stockLocation?: string;
+  rackNumber?: string;
+  inventoryStatus?: string;
+};
+
+type PaginatedDeviceResponse = {
+  pagination?: {
+    totalrecords?: number;
+    totalPages?: number;
+  };
+  total?: number;
+};
+
+const getApiErrorMessage = (error: unknown, fallback: string) => {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "data" in error &&
+    typeof (error as { data?: { message?: string } }).data?.message === "string"
+  ) {
+    return (error as { data: { message: string } }).data.message;
+  }
+
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  return fallback;
+};
 
 /* ================= PAGE ================= */
 
@@ -71,6 +92,7 @@ export default function GpsDevicesPage() {
   const searchParams = useSearchParams();
   const searchQueryParam = searchParams.get("search");
   const [page, setPage] = useState(1);
+  const [activeTab, setActiveTab] = useState<"overview" | "inventory" | "configuration" | "mapping">("overview");
   const LIMIT = 10;
 
   /* ================= API ================= */
@@ -87,21 +109,16 @@ export default function GpsDevicesPage() {
       refetchOnMountOrArgChange: true,
     });
 
-  const [createGpsDevice, { isLoading: isCreating }] =
-    useCreateGpsDeviceMutation();
+  const [createGpsDevice] = useCreateGpsDeviceMutation();
 
-  const [updateGpsDevice, { isLoading: isUpdating }] =
-    useUpdateGpsDeviceMutation();
+  const [updateGpsDevice] = useUpdateGpsDeviceMutation();
 
-  const [deleteGpsDevice, { isLoading: isDeleting }] =
-    useDeleteGpsDeviceMutation();
-
-  const [updateVehicle] = useUpdateVehicleMutation();
+  const [deleteGpsDevice] = useDeleteGpsDeviceMutation();
 
   /* ================= DATA ================= */
 
   const devices = useMemo(
-    () => (devData?.data as GPSDevice[]) || [],
+    () => (devData?.data as GpsDeviceRecord[]) || [],
     [devData],
   );
 
@@ -143,10 +160,7 @@ export default function GpsDevicesPage() {
   const canEditDevice = isSuperAdmin || isRootOrgAdmin || isSubOrgAdmin;
   const canDeleteDevice = isSuperAdmin || isRootOrgAdmin;
 
-  const [editingDevice, setEditingDevice] = useState<GPSDevice | null>(null);
-  const [selectedDeviceForAssignment, setSelectedDeviceForAssignment] =
-    useState<GPSDevice | null>(null);
-
+  const [editingDevice, setEditingDevice] = useState<GpsDeviceRecord | null>(null);
   /* ================= FILTER ================= */
 
   const filteredDevices = useMemo(() => {
@@ -230,6 +244,7 @@ export default function GpsDevicesPage() {
 
     if (filters.organizationId) {
       filtered = filtered.filter((d) => {
+        if (!d.organizationId) return false;
         const orgId = typeof d.organizationId === "object"
           ? d.organizationId._id
           : d.organizationId;
@@ -242,16 +257,16 @@ export default function GpsDevicesPage() {
 
   /* ================= SUBMIT ================= */
 
-  const handleSubmit = async (data: Record<string, any>) => {
+  const handleSubmit = async (data: DeviceFormValues) => {
     try {
       if (editingDevice) {
-        const { _id, ...payloadData } = data;
+        const { organizationId: submittedOrgId, ...payloadData } = data;
         const payload = {
           ...payloadData,
           organizationId:
-            typeof data.organizationId === "object"
-              ? data.organizationId._id
-              : data.organizationId,
+            typeof submittedOrgId === "object"
+              ? submittedOrgId._id
+              : submittedOrgId,
         };
 
         await updateGpsDevice({
@@ -261,25 +276,45 @@ export default function GpsDevicesPage() {
 
         toast.success("Device updated successfully");
       } else {
+        const {
+          purchaseDate,
+          purchasePrice,
+          supplierName,
+          invoiceNumber,
+          stockLocation,
+          rackNumber,
+          inventoryStatus,
+          ...technicalData
+        } = data;
         // 🔐 ORG CONTEXT UPDATE
         // If user is NOT superadmin or root-org-admin, lock organization from context
-        const finalData = { ...data };
+        const finalData: Record<string, unknown> = {
+          ...technicalData,
+          inventory: {
+            status: inventoryStatus || "in_stock",
+            purchaseDate: purchaseDate || null,
+            purchasePrice: purchasePrice === "" || purchasePrice === undefined ? null : Number(purchasePrice),
+            supplierName: supplierName || "",
+            invoiceNumber: invoiceNumber || "",
+            stockLocation: stockLocation || "",
+            rackNumber: rackNumber || "",
+          },
+        };
         if (!(isSuperAdmin || isRootOrgAdmin)) {
           finalData.organizationId = orgId || "";
         }
         await createGpsDevice(finalData).unwrap();
         toast.success("Device created successfully");
       }
-    } catch (err: any) {
-      toast.error(err?.data?.message || "Operation failed");
-      throw err; // re-throw so DynamicModal keeps the form open and shows inline error
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, "Operation failed"));
+      throw err;
     }
   };
 
   /* ================= FORM FIELDS (FIXED) ================= */
 
   const deviceFormFields: FormField[] = useMemo(() => [
-    // 🔐 ORG CONTEXT UPDATE
     ...(isSuperAdmin || isRootOrgAdmin ? [
       {
         name: "organizationId",
@@ -336,7 +371,49 @@ export default function GpsDevicesPage() {
         { label: "Inactive", value: "inactive" },
       ],
     },
-  ], [organizations]);
+    ...(!editingDevice ? [
+      {
+        name: "purchaseDate",
+        label: "Purchase Date",
+        type: "date" as const,
+        section: "Inventory Information",
+      },
+      {
+        name: "purchasePrice",
+        label: "Purchase Price",
+        type: "number" as const,
+      },
+      {
+        name: "supplierName",
+        label: "Supplier Name",
+        type: "text" as const,
+      },
+      {
+        name: "invoiceNumber",
+        label: "Invoice Number",
+        type: "text" as const,
+      },
+      {
+        name: "stockLocation",
+        label: "Stock Location",
+        type: "text" as const,
+      },
+      {
+        name: "rackNumber",
+        label: "Rack Number",
+        type: "text" as const,
+      },
+      {
+        name: "inventoryStatus",
+        label: "Inventory Status",
+        type: "select" as const,
+        options: INVENTORY_STATUS_OPTIONS.map((value) => ({
+          label: value.replace("_", " ").replace(/\b\w/g, (char) => char.toUpperCase()),
+          value,
+        })),
+      },
+    ] : []),
+  ], [editingDevice, isRootOrgAdmin, isSuperAdmin, organizations]);
 
   const deviceSchema = useMemo(() => {
     const base = z.object({
@@ -350,6 +427,13 @@ export default function GpsDevicesPage() {
       hardwareVersion: z.string().optional(),
       warrantyExpiry: z.string().optional(),
       status: z.enum(["active", "inactive"]),
+      purchaseDate: z.string().optional(),
+      purchasePrice: z.union([z.string(), z.number()]).optional(),
+      supplierName: z.string().optional(),
+      invoiceNumber: z.string().optional(),
+      stockLocation: z.string().optional(),
+      rackNumber: z.string().optional(),
+      inventoryStatus: z.string().optional(),
     });
 
     return base.superRefine((val, ctx) => {
@@ -367,8 +451,8 @@ export default function GpsDevicesPage() {
     openPopup("deviceModal");
   };
 
-  const openEditModal = (device: GPSDevice) => {
-    const orgId = typeof device.organizationId === "object"
+  const openEditModal = (device: GpsDeviceRecord) => {
+    const orgId = device.organizationId && typeof device.organizationId === "object"
       ? device.organizationId._id
       : device.organizationId;
 
@@ -413,38 +497,73 @@ export default function GpsDevicesPage() {
     try {
       await deleteGpsDevice(id).unwrap();
       toast.success("Device deleted");
-    } catch (err: any) {
-      toast.error(err?.data?.message || "Delete failed");
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, "Delete failed"));
     }
   };
 
   /* ================= TABLE ================= */
 
-  const columns = [
+  const columns: any[] = [
     {
       header: "IMEI",
-      accessor: "imei",
+      headerClassName: "min-w-[190px]",
+      cellClassName: "min-w-[190px]",
+      accessor: (row: GpsDeviceRecord) => (
+        <span className="block max-w-[190px] break-all font-mono text-xs text-slate-700">
+          {row.imei}
+        </span>
+      ),
     },
     {
       header: "Model",
-      accessor: (row: GPSDevice) => row.deviceModel || row.manufacturer || "-",
+      headerClassName: "min-w-[120px]",
+      cellClassName: "min-w-[120px] whitespace-nowrap",
+      accessor: (row: GpsDeviceRecord) => (
+        <span className="block whitespace-nowrap text-sm font-semibold text-slate-800">
+          {row.deviceModel || row.manufacturer || "-"}
+        </span>
+      ),
     },
     {
       header: "Firmware",
-      accessor: (row: GPSDevice) => row.firmwareVersion || row.softwareVersion || "-",
+      headerClassName: "min-w-[120px]",
+      cellClassName: "min-w-[120px] whitespace-nowrap",
+      accessor: (row: GpsDeviceRecord) => row.firmwareVersion || row.softwareVersion || "-",
     },
-    { header: "SIM", accessor: "simNumber" },
+    {
+      header: "SIM",
+      headerClassName: "min-w-[120px]",
+      cellClassName: "min-w-[120px] whitespace-nowrap",
+      accessor: (row: GpsDeviceRecord) => row.simNumber || "-",
+    },
+    {
+      header: "Inventory",
+      headerClassName: "min-w-[120px]",
+      cellClassName: "min-w-[120px]",
+      accessor: (row: GpsDeviceRecord) => (
+        <InventoryStatusBadge device={row} compact />
+      ),
+    },
     {
       header: "Organization",
-      accessor: (row: GPSDevice) => {
+      headerClassName: "min-w-[140px]",
+      cellClassName: "min-w-[140px]",
+      accessor: (row: GpsDeviceRecord) => {
         const org =
           typeof row.organizationId === "object" ? row.organizationId : null;
-        return org?.name || "-";
+        return (
+          <span className="block max-w-[140px] break-words leading-5 text-slate-700">
+            {org?.name || "-"}
+          </span>
+        );
       },
     },
     {
       header: "Vehicle",
-      accessor: (row: GPSDevice) => {
+      headerClassName: "min-w-[120px]",
+      cellClassName: "min-w-[120px] whitespace-nowrap",
+      accessor: (row: GpsDeviceRecord) => {
         const fromDevice =
           (typeof row.vehicleId === "object" ? row.vehicleId?.vehicleNumber : null) ||
           row.vehicleNumber;
@@ -458,7 +577,9 @@ export default function GpsDevicesPage() {
     },
     {
       header: "Connection",
-      accessor: (row: GPSDevice) => (
+      headerClassName: "min-w-[100px]",
+      cellClassName: "min-w-[100px] whitespace-nowrap",
+      accessor: (row: GpsDeviceRecord) => (
         <span
           className={`capitalize text-xs font-semibold ${(row.connectionStatus || (row.isOnline ? "online" : "offline")) === "online"
             ? "text-green-600"
@@ -471,12 +592,16 @@ export default function GpsDevicesPage() {
     },
     {
       header: "Warranty",
-      accessor: (row: GPSDevice) =>
+      headerClassName: "min-w-[110px]",
+      cellClassName: "min-w-[110px] whitespace-nowrap",
+      accessor: (row: GpsDeviceRecord) =>
         row.warrantyExpiry ? row.warrantyExpiry.split("T")[0] : "-",
     },
     {
       header: "Status",
-      accessor: (row: GPSDevice) => (
+      headerClassName: "min-w-[90px]",
+      cellClassName: "min-w-[90px] whitespace-nowrap",
+      accessor: (row: GpsDeviceRecord) => (
         <span
           className={`capitalize text-xs font-semibold ${row.status === "active" ? "text-green-600" : "text-red-600"
             }`}
@@ -487,7 +612,9 @@ export default function GpsDevicesPage() {
     },
     {
       header: "Actions",
-      accessor: (row: GPSDevice) => (
+      headerClassName: "min-w-[80px]",
+      cellClassName: "min-w-[80px] whitespace-nowrap",
+      accessor: (row: GpsDeviceRecord) => (
         <div className="flex gap-2">
           {canEditDevice && <Edit onClick={() => openEditModal(row)} size={16} />}
           {canDeleteDevice && <Trash2 onClick={() => handleDelete(row._id)} size={16} />}
@@ -497,12 +624,13 @@ export default function GpsDevicesPage() {
   ];
 
   const isLoading = isDevLoading || isVehLoading || isOrgLoading;
+  const paginatedData = devData as PaginatedDeviceResponse | undefined;
   const totalRecords =
-    (devData as any)?.pagination?.totalrecords ??
-    (devData as any)?.total ??
+    paginatedData?.pagination?.totalrecords ??
+    paginatedData?.total ??
     devices.length;
   const totalPages =
-    (devData as any)?.pagination?.totalPages ??
+    paginatedData?.pagination?.totalPages ??
     Math.max(1, Math.ceil(totalRecords / LIMIT));
 
   if (isLoading) {
@@ -577,194 +705,300 @@ export default function GpsDevicesPage() {
           </div>
         </div>
 
-        {/* Filter Section */}
-        {showFilters && (
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div>
-                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
-                  IMEI
-                </label>
-                <input
-                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 outline-none"
-                  value={filters.imei}
-                  onChange={(e) =>
-                    setFilters({ ...filters, imei: e.target.value })
-                  }
-                  placeholder="Search IMEI"
-                />
-              </div>
-              <div>
-                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
-                  Model
-                </label>
-                <input
-                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 outline-none"
-                  value={filters.model}
-                  onChange={(e) =>
-                    setFilters({ ...filters, model: e.target.value })
-                  }
-                  placeholder="Search model"
-                />
-              </div>
-              <div>
-                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
-                  Firmware
-                </label>
-                <input
-                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 outline-none"
-                  value={filters.firmware}
-                  onChange={(e) =>
-                    setFilters({ ...filters, firmware: e.target.value })
-                  }
-                  placeholder="Search firmware"
-                />
-              </div>
-              <div>
-                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
-                  SIM Number
-                </label>
-                <input
-                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 outline-none"
-                  value={filters.simNumber}
-                  onChange={(e) =>
-                    setFilters({ ...filters, simNumber: e.target.value })
-                  }
-                  placeholder="Search SIM"
-                />
-              </div>
-              <div>
-                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
-                  Assignment
-                </label>
-                <select
-                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 outline-none"
-                  value={filters.assigned}
-                  onChange={(e) =>
-                    setFilters({ ...filters, assigned: e.target.value })
-                  }
-                >
-                  <option value="">All Devices</option>
-                  <option value="assigned">Assigned to Vehicle</option>
-                  <option value="unassigned">Unassigned</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
-                  Status
-                </label>
-                <select
-                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 outline-none"
-                  value={filters.status}
-                  onChange={(e) =>
-                    setFilters({ ...filters, status: e.target.value })
-                  }
-                >
-                  <option value="">All Status</option>
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
-                  Connection
-                </label>
-                <select
-                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 outline-none"
-                  value={filters.connectionStatus}
-                  onChange={(e) =>
-                    setFilters({ ...filters, connectionStatus: e.target.value })
-                  }
-                >
-                  <option value="">All</option>
-                  <option value="online">Online</option>
-                  <option value="offline">Offline</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
-                  Vehicle Number
-                </label>
-                <input
-                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 outline-none"
-                  value={filters.vehicleNumber}
-                  onChange={(e) =>
-                    setFilters({ ...filters, vehicleNumber: e.target.value })
-                  }
-                  placeholder="Search vehicle"
-                />
-              </div>
-              <div>
-                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
-                  Warranty
-                </label>
-                <input
-                  type="date"
-                  className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 outline-none"
-                  value={filters.warrantyExpiry}
-                  onChange={(e) =>
-                    setFilters({ ...filters, warrantyExpiry: e.target.value })
-                  }
-                />
-              </div>
-              {/* 🔐 ORG CONTEXT UPDATE */}
-              {(isSuperAdmin || isRootOrgAdmin) && (
-                <div>
-                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
-                    Organization
-                  </label>
-                  <select
-                    className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 outline-none"
-                    value={filters.organizationId}
-                    onChange={(e) =>
-                      setFilters({ ...filters, organizationId: e.target.value })
-                    }
-                  >
-                    <option value="">All Organizations</option>
-                    <optgroup label="Organizations">
-                      {organizations
-                        .filter((org) => !org.parentOrganizationId)
-                        .map((org) => (
-                          <option key={org._id} value={org._id}>
-                            {org.name}
-                          </option>
-                        ))}
-                    </optgroup>
-                    <optgroup label="Sub-Organizations">
-                      {organizations
-                        .filter((org) => org.parentOrganizationId)
-                        .map((org) => (
-                          <option key={org._id} value={org._id}>
-                            {org.name}
-                          </option>
-                        ))}
-                    </optgroup>
-                  </select>
+        <div className="flex flex-wrap items-center gap-2">
+          {([
+            { key: "overview", label: "Overview" },
+            { key: "inventory", label: "Inventory" },
+            { key: "configuration", label: "Configuration" },
+            { key: "mapping", label: "Mapping" },
+          ] as const).map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setActiveTab(tab.key)}
+              className={`rounded-full px-4 py-2 text-[11px] font-black uppercase tracking-[0.22em] transition-colors ${activeTab === tab.key
+                ? "bg-slate-900 text-white"
+                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {activeTab === "inventory" ? (
+          <InventoryLayer variant="light" canEdit={canEditDevice} />
+        ) : activeTab === "configuration" ? (
+          <div className="grid gap-4 lg:grid-cols-[1.35fr_0.65fr]">
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <p className="text-[11px] font-black uppercase tracking-[0.32em] text-slate-500">Configuration</p>
+              <h2 className="mt-2 text-2xl font-black text-slate-900">Current device configuration flow stays unchanged</h2>
+              <p className="mt-3 text-sm text-slate-600">
+                Device configuration continues to live in the existing Add/Edit Device modal. Firmware, hardware version,
+                warranty, SIM, and core technical properties remain managed there so current CRUD behavior is not disturbed.
+              </p>
+              <div className="mt-5 grid gap-3 md:grid-cols-2">
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-500">Managed in Overview</p>
+                  <ul className="mt-3 space-y-2 text-sm font-semibold text-slate-700">
+                    <li>IMEI and SIM details</li>
+                    <li>Device model and manufacturer</li>
+                    <li>Firmware and hardware versions</li>
+                    <li>Warranty expiry and active status</li>
+                  </ul>
                 </div>
-              )}
-              <div className="flex items-end">
-                <button
-                  onClick={clearFilters}
-                  className="w-full bg-slate-100 text-slate-700 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-slate-200 transition-colors"
-                >
-                  Clear Filters
-                </button>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-500">Inventory handled separately</p>
+                  <ul className="mt-3 space-y-2 text-sm font-semibold text-slate-700">
+                    <li>Inventory status lifecycle</li>
+                    <li>Purchase and supplier metadata</li>
+                    <li>Fault and repair notes</li>
+                    <li>Audit timestamps and updater</li>
+                  </ul>
+                </div>
               </div>
             </div>
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <p className="text-[11px] font-black uppercase tracking-[0.32em] text-slate-500">Quick Actions</p>
+              <h3 className="mt-2 text-xl font-black text-slate-900">Jump back to device CRUD</h3>
+              <p className="mt-3 text-sm text-slate-600">
+                Open the Overview tab to continue using the current device forms without any inventory payload mixed in.
+              </p>
+              <button
+                type="button"
+                onClick={() => setActiveTab("overview")}
+                className="mt-5 rounded-xl bg-blue-600 px-4 py-2 text-xs font-black uppercase tracking-widest text-white transition-colors hover:bg-blue-700"
+              >
+                Open Overview
+              </button>
+            </div>
           </div>
-        )}
+        ) : activeTab === "mapping" ? (
+          <div className="grid gap-4 lg:grid-cols-[1.25fr_0.75fr]">
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <p className="text-[11px] font-black uppercase tracking-[0.32em] text-slate-500">Mapping</p>
+              <h2 className="mt-2 text-2xl font-black text-slate-900">Device mapping stays in the existing mapping module</h2>
+              <p className="mt-3 text-sm text-slate-600">
+                Inventory status is display-only here. Assignment and installation state continue to come from the backend
+                mapping and TCP flows. No frontend inventory sync is performed.
+              </p>
+              <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-500">What stays untouched</p>
+                <ul className="mt-3 space-y-2 text-sm font-semibold text-slate-700">
+                  <li>Vehicle-to-device assignment</li>
+                  <li>Driver mapping screens</li>
+                  <li>Live tracking and packet flow</li>
+                  <li>Current mapping backend contracts</li>
+                </ul>
+              </div>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <p className="text-[11px] font-black uppercase tracking-[0.32em] text-slate-500">Open Mapping</p>
+              <h3 className="mt-2 text-xl font-black text-slate-900">Go to Device Mapping</h3>
+              <p className="mt-3 text-sm text-slate-600">
+                Use the existing mapping page for assignment and unassignment. Inventory badges here will reflect backend state automatically.
+              </p>
+              <Link
+                href="/admin/device-mapping"
+                className="mt-5 inline-flex rounded-xl bg-slate-900 px-4 py-2 text-xs font-black uppercase tracking-widest text-white transition-colors hover:bg-slate-800"
+              >
+                Open Device Mapping
+              </Link>
+            </div>
+          </div>
+        ) : (
+          <>
 
-        {/* Table Section */}
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-          <Table columns={columns} data={filteredDevices} />
-          <Pagination
-            page={page}
-            totalPages={totalPages}
-            totalItems={totalRecords}
-            onPageChange={setPage}
-            disabled={isDevLoading}
-          />
-        </div>
+            {/* Filter Section */}
+            {showFilters && (
+              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
+                      IMEI
+                    </label>
+                    <input
+                      className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 outline-none"
+                      value={filters.imei}
+                      onChange={(e) =>
+                        setFilters({ ...filters, imei: e.target.value })
+                      }
+                      placeholder="Search IMEI"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
+                      Model
+                    </label>
+                    <input
+                      className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 outline-none"
+                      value={filters.model}
+                      onChange={(e) =>
+                        setFilters({ ...filters, model: e.target.value })
+                      }
+                      placeholder="Search model"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
+                      Firmware
+                    </label>
+                    <input
+                      className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 outline-none"
+                      value={filters.firmware}
+                      onChange={(e) =>
+                        setFilters({ ...filters, firmware: e.target.value })
+                      }
+                      placeholder="Search firmware"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
+                      SIM Number
+                    </label>
+                    <input
+                      className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 outline-none"
+                      value={filters.simNumber}
+                      onChange={(e) =>
+                        setFilters({ ...filters, simNumber: e.target.value })
+                      }
+                      placeholder="Search SIM"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
+                      Assignment
+                    </label>
+                    <select
+                      className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 outline-none"
+                      value={filters.assigned}
+                      onChange={(e) =>
+                        setFilters({ ...filters, assigned: e.target.value })
+                      }
+                    >
+                      <option value="">All Devices</option>
+                      <option value="assigned">Assigned to Vehicle</option>
+                      <option value="unassigned">Unassigned</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
+                      Status
+                    </label>
+                    <select
+                      className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 outline-none"
+                      value={filters.status}
+                      onChange={(e) =>
+                        setFilters({ ...filters, status: e.target.value })
+                      }
+                    >
+                      <option value="">All Status</option>
+                      <option value="active">Active</option>
+                      <option value="inactive">Inactive</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
+                      Connection
+                    </label>
+                    <select
+                      className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 outline-none"
+                      value={filters.connectionStatus}
+                      onChange={(e) =>
+                        setFilters({ ...filters, connectionStatus: e.target.value })
+                      }
+                    >
+                      <option value="">All</option>
+                      <option value="online">Online</option>
+                      <option value="offline">Offline</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
+                      Vehicle Number
+                    </label>
+                    <input
+                      className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 outline-none"
+                      value={filters.vehicleNumber}
+                      onChange={(e) =>
+                        setFilters({ ...filters, vehicleNumber: e.target.value })
+                      }
+                      placeholder="Search vehicle"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
+                      Warranty
+                    </label>
+                    <input
+                      type="date"
+                      className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 outline-none"
+                      value={filters.warrantyExpiry}
+                      onChange={(e) =>
+                        setFilters({ ...filters, warrantyExpiry: e.target.value })
+                      }
+                    />
+                  </div>
+                  {/* 🔐 ORG CONTEXT UPDATE */}
+                  {(isSuperAdmin || isRootOrgAdmin) && (
+                    <div>
+                      <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
+                        Organization
+                      </label>
+                      <select
+                        className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 outline-none"
+                        value={filters.organizationId}
+                        onChange={(e) =>
+                          setFilters({ ...filters, organizationId: e.target.value })
+                        }
+                      >
+                        <option value="">All Organizations</option>
+                        <optgroup label="Organizations">
+                          {organizations
+                            .filter((org) => !org.parentOrganizationId)
+                            .map((org) => (
+                              <option key={org._id} value={org._id}>
+                                {org.name}
+                              </option>
+                            ))}
+                        </optgroup>
+                        <optgroup label="Sub-Organizations">
+                          {organizations
+                            .filter((org) => org.parentOrganizationId)
+                            .map((org) => (
+                              <option key={org._id} value={org._id}>
+                                {org.name}
+                              </option>
+                            ))}
+                        </optgroup>
+                      </select>
+                    </div>
+                  )}
+                  <div className="flex items-end">
+                    <button
+                      onClick={clearFilters}
+                      className="w-full bg-slate-100 text-slate-700 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-slate-200 transition-colors"
+                    >
+                      Clear Filters
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Table Section */}
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+              <Table columns={columns} data={filteredDevices as any} />
+              <Pagination
+                page={page}
+                totalPages={totalPages}
+                totalItems={totalRecords}
+                onPageChange={setPage}
+                disabled={isDevLoading}
+              />
+            </div>
+          </>
+        )}
       </div>
 
       {canCreateDevice && (
@@ -793,7 +1027,25 @@ export default function GpsDevicesPage() {
                   : "",
                 status: editingDevice.status,
               }
-              : undefined
+              : {
+                organizationId: "",
+                imei: "",
+                simNumber: "",
+                deviceModel: "",
+                manufacturer: "",
+                serialNumber: "",
+                firmwareVersion: "",
+                hardwareVersion: "",
+                warrantyExpiry: "",
+                status: "active",
+                purchaseDate: "",
+                purchasePrice: "",
+                supplierName: "",
+                invoiceNumber: "",
+                stockLocation: "",
+                rackNumber: "",
+                inventoryStatus: "in_stock",
+              }
           }
           onSubmit={handleSubmit}
         />

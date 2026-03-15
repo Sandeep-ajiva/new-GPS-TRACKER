@@ -2,17 +2,28 @@
 
 import { ReactNode } from "react";
 
-interface TableProps {
-  columns: {
-    header: string;
-    accessor: string | ((row: any) => ReactNode);
-  }[];
-  data: any[];
+type TableRow = Record<string, unknown>;
+
+interface TableColumn<T extends TableRow> {
+  header: string;
+  accessor: keyof T | ((row: T) => ReactNode);
+  headerClassName?: string;
+  cellClassName?: string;
+}
+
+interface TableProps<T extends TableRow> {
+  columns: TableColumn<T>[];
+  data: T[];
   loading?: boolean;
   variant?: "light" | "dark";
 }
 
-export default function Table({ columns, data, loading, variant = "light" }: TableProps) {
+export default function Table<T extends TableRow>({
+  columns,
+  data,
+  loading,
+  variant = "light",
+}: TableProps<T>) {
   const isDark = variant === "dark";
   const containerClass = isDark
     ? "rounded-xl border border-[#1E293B] bg-[#111827] shadow-[0_8px_24px_rgba(0,0,0,0.4)]"
@@ -48,13 +59,13 @@ export default function Table({ columns, data, loading, variant = "light" }: Tab
   return (
     <div className={`${containerClass} overflow-hidden`}>
       <div className="overflow-x-auto">
-        <table className="w-full table-fixed text-sm">
+        <table className="w-full min-w-max table-auto text-sm">
         <thead>
           <tr className={headerClass}>
             {columns.map((col, idx) => (
               <th
                 key={idx}
-                className="px-4 py-3 sm:px-6 sm:py-4 text-left text-[10px] font-black uppercase tracking-[0.32em]"
+                className={`whitespace-nowrap px-4 py-3 sm:px-6 sm:py-4 text-left text-[10px] font-black uppercase tracking-[0.32em] ${col.headerClassName || ""}`}
               >
                 {col.header}
               </th>
@@ -70,11 +81,11 @@ export default function Table({ columns, data, loading, variant = "light" }: Tab
               {columns.map((col, colIdx) => (
                 <td
                   key={colIdx}
-                  className={`px-4 py-3 sm:px-6 sm:py-4 font-medium ${cellTextClass}`}
+                  className={`px-4 py-3 align-top sm:px-6 sm:py-4 font-medium ${cellTextClass} ${col.cellClassName || ""}`}
                 >
                   {typeof col.accessor === "function"
                     ? col.accessor(row)
-                    : row[col.accessor] || "-"}
+                    : (row[col.accessor] ?? "-") as ReactNode}
                 </td>
               ))}
             </tr>

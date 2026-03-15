@@ -90,6 +90,13 @@ const Service = {
       }
 
       const timestamp = new Date();
+      const parsedGpsTimestamp = data.gpsTimestamp
+        ? new Date(data.gpsTimestamp)
+        : null;
+      const packetTimestamp =
+        parsedGpsTimestamp && !Number.isNaN(parsedGpsTimestamp.getTime())
+          ? parsedGpsTimestamp
+          : timestamp;
 
       /* ------------------------------------------------------------------ */
       /* 3️⃣ MOVEMENT STATUS (STANDARDIZED)                                   */
@@ -123,7 +130,7 @@ const Service = {
         speed,
         ignition,
         movementStatus,
-        gpsTimestamp: data.gpsTimestamp ?? timestamp,
+        gpsTimestamp: packetTimestamp,
         mainPowerStatus: data.mainPowerStatus ?? null,
         acStatus: data.acStatus ?? null,
         internalBatteryVoltage: data.internalBatteryVoltage ?? null,
@@ -202,7 +209,7 @@ const Service = {
 
       await GpsLiveData.findOneAndUpdate(
         { gpsDeviceId },
-        { $set: { ...liveUpdate, gpsTimestamp: timestamp } },
+        { $set: { ...liveUpdate, gpsTimestamp: packetTimestamp } },
         { upsert: true, new: true },
       );
 
@@ -212,7 +219,7 @@ const Service = {
 
       const historyKey = `gps_history:${imei}`;
       const lastSavedRaw = await redisClient.get(historyKey);
-      const packetMs = timestamp.getTime();
+      const packetMs = packetTimestamp.getTime();
       const heading = data.heading ?? null;
 
       // Determine if this packet should be saved
@@ -286,7 +293,7 @@ const Service = {
             latitude,
             longitude,
             speed,
-            gpsTimestamp: timestamp,
+            gpsTimestamp: packetTimestamp,
 
             // Additional fields
             heading,
@@ -329,7 +336,7 @@ const Service = {
       /* ------------------------------------------------------------------ */
 
       // 7a — Normalize date to UTC midnight
-      const statsDate = new Date(timestamp);
+      const statsDate = new Date(packetTimestamp);
       statsDate.setUTCHours(0, 0, 0, 0);
 
       // 7b — Calculate distance from previous live position (haversine)
@@ -468,7 +475,7 @@ const Service = {
             latitude,
             longitude,
             locationCoordinates: [longitude, latitude],
-            gpsTimestamp: timestamp,
+            gpsTimestamp: packetTimestamp,
             speed,
             heading: data.heading ?? null,
             ignitionStatus: ignition,
@@ -508,6 +515,21 @@ const Service = {
             "warning",
           );
         }
+
+        // Ignition Alerts (based on transition)
+        if (ignition && !(prev && prev.ignitionStatus)) {
+          await createAlertAndCount(
+            "ignition_on",
+            "Vehicle Ignition Turned ON",
+            "info",
+          );
+        } else if (!ignition && prev && prev.ignitionStatus) {
+          await createAlertAndCount(
+            "ignition_off",
+            "Vehicle Ignition Turned OFF",
+            "info",
+          );
+        }
       } catch (e) {
         console.error("Alert error:", e);
       }
@@ -535,7 +557,7 @@ const Service = {
               latitude,
               longitude,
               locationCoordinates: [longitude, latitude],
-              gpsTimestamp: timestamp,
+              gpsTimestamp: packetTimestamp,
               speed,
               heading: data.heading ?? null,
               altitude: data.altitude ?? null,
