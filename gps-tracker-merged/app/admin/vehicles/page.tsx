@@ -471,6 +471,13 @@ export default function VehiclesPage() {
       icon: <Hash size={14} className="text-slate-500" />,
     },
     {
+      name: "make",
+      label: "Make",
+      type: "text",
+      placeholder: "e.g. Toyota / Ashok Leyland",
+      icon: <Info size={14} className="text-slate-500" />,
+    },
+    {
       name: "model",
       label: "Model",
       type: "text",
@@ -553,6 +560,7 @@ export default function VehiclesPage() {
       organizationId: z.string().optional(),
       vehicleType: z.enum(["car", "truck", "bus", "bike", "other"]),
       vehicleNumber: z.string().min(1, "Vehicle number is required"),
+      make: z.string().optional(),
       model: z.string().optional(),
       year: z.string().optional(),
       color: z.string().optional(),

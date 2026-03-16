@@ -4,10 +4,11 @@ import React, { useEffect, useRef, useState, useMemo } from "react";
 import {
     X, Play, Pause, SkipBack, SkipForward, Clock, Gauge,
     Navigation, MapPin, Loader2, Maximize, ZoomIn, Info, Activity,
-    RotateCcw, User, Phone, Mail, FileText, Zap, Square, Moon
+    RotateCcw, User, Phone, Mail, FileText, Zap, Square, Moon, CornerUpRight
 } from "lucide-react";
 import { useGetGpsHistoryQuery } from "@/redux/api/gpsHistoryApi";
-import { MapContainer, Marker, Polyline, Popup, useMap, TileLayer } from "react-leaflet";
+import { MapContainer, Marker, Polyline, Popup, useMap } from "react-leaflet";
+import { MapTileLayer } from "../admin/Map/MapTileLayer";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import "leaflet-defaulticon-compatibility/dist/leaflet-defaulticon-compatibility.css";
@@ -32,6 +33,8 @@ interface TravelPlaybackInlineProps {
     to: string;
     onClose: () => void;
     metadata?: any;
+    initialDay?: string;
+    isTripPlayback?: boolean;
 }
 
 function MapInstanceAccessor({ onMap }: { onMap: (map: L.Map) => void }) {
@@ -48,20 +51,36 @@ const TravelPlaybackInline: React.FC<TravelPlaybackInlineProps> = ({
     from,
     to,
     onClose,
-    metadata
+    metadata,
+    initialDay,
+    isTripPlayback = false
 }) => {
     const [currentIndex, setCurrentIndex] = useState(0);
     const [isPlaying, setIsPlaying] = useState(false);
     const [playbackSpeed, setPlaybackSpeed] = useState(1);
-    const [followVehicle, setFollowVehicle] = useState(false);
-    const [selectedDay, setSelectedDay] = useState<string | null>(null);
-    const [animatedPos, setAnimatedPos] = useState<{ lat: number; lng: number } | null>(null);
+    const [followVehicle, setFollowVehicle] = useState(true);
+    const [selectedDay, setSelectedDay] = useState<string | null>(initialDay || null);
+    const [animatedPos, setAnimatedPos] = useState<{ lat: number; lng: number; heading: number } | null>(null);
 
     const leafletMapRef = useRef<L.Map | null>(null);
     const animationFrameRef = useRef<number | null>(null);
     const lastIndexRef = useRef(0);
 
-    const [visibleStatuses, setVisibleStatuses] = useState<Set<string>>(new Set(['stopped', 'idle']));
+    useEffect(() => {
+        // Reset state for new playback session (new range or vehicle)
+        setCurrentIndex(0);
+        setIsPlaying(false);
+        setAnimatedPos(null);
+        if (lastIndexRef.current !== undefined) lastIndexRef.current = 0;
+
+        if (initialDay) {
+            setSelectedDay(initialDay);
+        } else {
+            setSelectedDay(null);
+        }
+    }, [initialDay, from, to, vehicleId]);
+
+    const [visibleStatuses, setVisibleStatuses] = useState<Set<string>>(new Set(['stopped', 'idle', 'arrows', 'turns']));
 
     const toggleStatus = (status: string) => {
         const next = new Set(visibleStatuses);
@@ -96,10 +115,92 @@ const TravelPlaybackInline: React.FC<TravelPlaybackInlineProps> = ({
         return Array.from(set).sort();
     }, [points]);
 
-    const activeDayPoints = useMemo<HistoryPoint[]>(() => {
+    const [snappedPoints, setSnappedPoints] = useState<HistoryPoint[]>([])
+    const [roadGeometry, setRoadGeometry] = useState<[number, number][]>([])
+    const [isSnapping, setIsSnapping] = useState(false)
+
+    const rawDayPoints = useMemo<HistoryPoint[]>(() => {
         if (!selectedDay) return points;
         return points.filter((p) => new Date(p.timestamp).toLocaleDateString("en-CA") === selectedDay);
     }, [points, selectedDay]);
+
+    // OSRM Road Snapping Logic
+    useEffect(() => {
+        const snapToRoads = async () => {
+            if (rawDayPoints.length < 2) {
+                setSnappedPoints(rawDayPoints);
+                setRoadGeometry(rawDayPoints.map(p => [p.lat, p.lng]));
+                return;
+            }
+
+            setIsSnapping(true);
+            try {
+                const chunkSize = 40;
+                const chunks = [];
+                for (let i = 0; i < rawDayPoints.length; i += chunkSize) {
+                    chunks.push(rawDayPoints.slice(i, i + chunkSize + 1));
+                }
+
+                const allSnapped: HistoryPoint[] = [];
+                const fullRoadPath: [number, number][] = [];
+
+                for (const chunk of chunks) {
+                    const coords = chunk.map(p => `${p.lng},${p.lat}`).join(';');
+                    const url = `https://router.project-osrm.org/match/v1/driving/${coords}?overview=full&geometries=geojson&annotations=true`;
+
+                    const res = await fetch(url);
+                    if (!res.ok) {
+                        allSnapped.push(...chunk);
+                        chunk.forEach(p => fullRoadPath.push([p.lat, p.lng]));
+                        continue;
+                    }
+                    const data = await res.json();
+
+                    if (data.code === 'Ok') {
+                        // 1. Capture Tracepoints (for markers)
+                        if (data.tracepoints) {
+                            chunk.forEach((p, idx) => {
+                                const tp = data.tracepoints[idx];
+                                if (tp && tp.location) {
+                                    allSnapped.push({ ...p, lat: tp.location[1], lng: tp.location[0] });
+                                } else {
+                                    allSnapped.push(p);
+                                }
+                            });
+                        }
+
+                        // 2. Capture High-Res Path (for smoothness)
+                        if (data.matchings && data.matchings[0].geometry) {
+                            const coords = data.matchings[0].geometry.coordinates;
+                            coords.forEach((c: any) => fullRoadPath.push([c[1], c[0]]));
+                        }
+                    } else {
+                        allSnapped.push(...chunk);
+                        chunk.forEach(p => fullRoadPath.push([p.lat, p.lng]));
+                    }
+                }
+
+                setSnappedPoints(allSnapped.filter((p, i, self) => i === self.findIndex((t) => t.timestamp === p.timestamp)));
+
+                // Deduplicate consecutive identical points in road geometry
+                const cleanGeometry = fullRoadPath.filter((p, i, self) =>
+                    i === 0 || (p[0] !== self[i - 1][0] || p[1] !== self[i - 1][1])
+                );
+                setRoadGeometry(cleanGeometry);
+
+            } catch (err) {
+                console.error("Snapping failed:", err);
+                setSnappedPoints(rawDayPoints);
+                setRoadGeometry(rawDayPoints.map(p => [p.lat, p.lng]));
+            } finally {
+                setIsSnapping(false);
+            }
+        };
+
+        snapToRoads();
+    }, [rawDayPoints]);
+
+    const activeDayPoints = snappedPoints.length > 0 ? snappedPoints : rawDayPoints;
 
     const currentPoint = activeDayPoints[Math.min(currentIndex, activeDayPoints.length - 1)] ?? null;
 
@@ -113,13 +214,41 @@ const TravelPlaybackInline: React.FC<TravelPlaybackInlineProps> = ({
         return (currentIndex / (activeDayPoints.length - 1)) * 100;
     }, [currentIndex, activeDayPoints.length]);
 
-    // Handle Animation
+    // Handle Animation & Slider Smoothing
     useEffect(() => {
         if (activeDayPoints.length === 0) return;
 
+        const toPoint = activeDayPoints[currentIndex];
+
+        // 🟢 INSTANT SNAPPING FOR SLIDER JUMPS (Smooth like video)
+        if (!isPlaying) {
+            // Cancel any pending animations
+            if (animationFrameRef.current !== null) {
+                cancelAnimationFrame(animationFrameRef.current);
+                animationFrameRef.current = null;
+            }
+
+            const fromPoint = currentIndex > 0 ? activeDayPoints[currentIndex - 1] : toPoint;
+            const snapHeading = currentIndex > 0
+                ? (Math.atan2(toPoint.lng - fromPoint.lng, toPoint.lat - fromPoint.lat) * (180 / Math.PI) + 360) % 360
+                : (toPoint.heading || 0);
+
+            setAnimatedPos({ lat: toPoint.lat, lng: toPoint.lng, heading: snapHeading });
+            lastIndexRef.current = currentIndex;
+
+            if (followVehicle && leafletMapRef.current) {
+                leafletMapRef.current.setView([toPoint.lat, toPoint.lng], leafletMapRef.current.getZoom(), { animate: false });
+            }
+            return;
+        }
+
+        // 🟠 CINEMATIC ANIMATION FOR PLAYBACK (Standard smooth movement)
         if (currentIndex === 0 || lastIndexRef.current >= activeDayPoints.length) {
-            const start = activeDayPoints[0];
-            setAnimatedPos({ lat: start.lat, lng: start.lng });
+            const startPoint = activeDayPoints[0];
+            const initialHeading = activeDayPoints.length > 1
+                ? (Math.atan2(activeDayPoints[1].lng - startPoint.lng, activeDayPoints[1].lat - startPoint.lat) * (180 / Math.PI)) % 360
+                : (startPoint.heading || 0);
+            setAnimatedPos({ lat: startPoint.lat, lng: startPoint.lng, heading: initialHeading });
             lastIndexRef.current = 0;
             return;
         }
@@ -130,20 +259,38 @@ const TravelPlaybackInline: React.FC<TravelPlaybackInlineProps> = ({
         }
 
         const fromPoint = activeDayPoints[lastIndexRef.current];
-        const toPoint = activeDayPoints[currentIndex];
-        const duration = Math.max(100, 400 / playbackSpeed);
+
+        // Ensure constant physical speed on screen
+        const dist = Math.sqrt(Math.pow(toPoint.lat - fromPoint.lat, 2) + Math.pow(toPoint.lng - fromPoint.lng, 2));
+        const baseDuration = Math.max(100, 400 / playbackSpeed);
+        const duration = baseDuration * Math.min(3, Math.max(0.4, dist * 6000));
+
+        // ALWAYS calculate heading from path for visual consistency
+        const targetHeading = (Math.atan2(toPoint.lng - fromPoint.lng, toPoint.lat - fromPoint.lat) * (180 / Math.PI) + 360) % 360;
+
         const startedAt = performance.now();
 
         const animate = (now: number) => {
             const elapsed = now - startedAt;
             const t = Math.min(elapsed / duration, 1);
-            const lat = fromPoint.lat + (toPoint.lat - fromPoint.lat) * t;
-            const lng = fromPoint.lng + (toPoint.lng - fromPoint.lng) * t;
 
-            setAnimatedPos({ lat, lng });
+            // Cubic Ease-in-out for ultimate smoothness
+            const easedT = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+
+            const lat = fromPoint.lat + (toPoint.lat - fromPoint.lat) * easedT;
+            const lng = fromPoint.lng + (toPoint.lng - fromPoint.lng) * easedT;
+
+            // Smoothly rotate the marker using shortest path
+            const startH = animatedPos?.heading ?? targetHeading;
+            let diff = targetHeading - startH;
+            while (diff < -180) diff += 360;
+            while (diff > 180) diff -= 360;
+            const h = startH + diff * easedT;
+
+            setAnimatedPos({ lat, lng, heading: h });
 
             if (followVehicle && leafletMapRef.current) {
-                leafletMapRef.current.panTo([lat, lng], { animate: true, duration: 0.1 });
+                leafletMapRef.current.setView([lat, lng], leafletMapRef.current.getZoom(), { animate: false });
             }
 
             if (t < 1) {
@@ -157,7 +304,7 @@ const TravelPlaybackInline: React.FC<TravelPlaybackInlineProps> = ({
         return () => {
             if (animationFrameRef.current !== null) cancelAnimationFrame(animationFrameRef.current);
         };
-    }, [currentIndex, followVehicle, playbackSpeed, activeDayPoints]);
+    }, [currentIndex, isPlaying, followVehicle, playbackSpeed, activeDayPoints]);
 
     // Handle Playback Interval
     useEffect(() => {
@@ -210,55 +357,76 @@ const TravelPlaybackInline: React.FC<TravelPlaybackInlineProps> = ({
         return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
     };
 
-    // Grouping consecutive points into status events
+    // Grouping consecutive points into status events + Turn Detection
     const eventMarkers = useMemo(() => {
         if (activeDayPoints.length === 0) return [];
         const markers: any[] = [];
-        let currentType: string | null = null;
+        let currentStatus: string | null = null;
         let group: any = null;
 
         activeDayPoints.forEach((p, idx) => {
-            let type = 'stopped';
-            if (p.speed > 2) type = 'running';
-            else if (p.ignition) type = 'idle';
+            // 1. Status Detection
+            let status = 'stopped';
+            if (p.speed > 5) status = 'running';
+            else if (p.ignition) status = 'idle';
 
-            // Detect Inactive/Gap
-            if (idx > 0) {
+            // 2. Turn & U-Turn Detection (Only if running)
+            if (idx > 2 && status === 'running') {
                 const prev = activeDayPoints[idx - 1];
-                const gap = (new Date(p.timestamp).getTime() - new Date(prev.timestamp).getTime()) / 1000;
-                if (gap > 600) { // 10 minute gap
-                    markers.push({
-                        type: 'inactive',
-                        lat: prev.lat,
-                        lng: prev.lng,
-                        start: prev.timestamp,
-                        end: p.timestamp,
-                        duration: gap
-                    });
+                const pPrev = activeDayPoints[idx - 2];
+
+                // Visual bearing calculation
+                const b1 = Math.atan2(prev.lng - pPrev.lng, prev.lat - pPrev.lat) * 180 / Math.PI;
+                const b2 = Math.atan2(p.lng - prev.lng, p.lat - prev.lat) * 180 / Math.PI;
+                const turnAngle = (b2 - b1 + 540) % 360 - 180;
+                const absTurn = Math.abs(turnAngle);
+
+                if (absTurn > 140) { // U-Turn
+                    if (!markers.some(m => m.type === 'uturn' && (idx - activeDayPoints.findIndex(ap => ap.timestamp === m.timestamp)) < 10)) {
+                        markers.push({ type: 'uturn', lat: p.lat, lng: p.lng, timestamp: p.timestamp });
+                    }
+                } else if (absTurn > 65) { // Significant Turn
+                    const isRight = turnAngle > 0;
+                    if (!markers.some(m => (m.type === 'left' || m.type === 'right') && (idx - activeDayPoints.findIndex(ap => ap.timestamp === m.timestamp)) < 10)) {
+                        markers.push({ type: isRight ? 'right' : 'left', lat: p.lat, lng: p.lng, timestamp: p.timestamp });
+                    }
                 }
             }
 
-            if (type !== currentType) {
-                if (group && (group.type === 'stopped' || group.type === 'idle')) {
-                    markers.push(group);
+            // 3. Connection Gap Detection
+            if (idx > 0) {
+                const prev = activeDayPoints[idx - 1];
+                const gap = (new Date(p.timestamp).getTime() - new Date(prev.timestamp).getTime()) / 1000;
+                if (gap > 600) {
+                    markers.push({ type: 'inactive', lat: prev.lat, lng: prev.lng, start: prev.timestamp, end: p.timestamp, duration: gap });
                 }
-                currentType = type;
-                group = {
-                    type,
-                    lat: p.lat,
-                    lng: p.lng,
-                    start: p.timestamp,
-                    end: p.timestamp,
-                    points: [p]
-                };
+            }
+
+            // 4. Start/Stop Clustering
+            if (status !== currentStatus) {
+                if (group) {
+                    const duration = (new Date(group.end).getTime() - new Date(group.start).getTime()) / 1000;
+                    if ((group.type === 'stopped' || group.type === 'idle') && duration > 20) {
+                        markers.push({ ...group, isStop: true });
+                    }
+                    if (group.type === 'running' && idx > 0) {
+                        markers.push({ type: 'start', lat: activeDayPoints[Math.max(0, idx - group.points.length)].lat, lng: activeDayPoints[Math.max(0, idx - group.points.length)].lng, timestamp: group.start });
+                    }
+                }
+                currentStatus = status;
+                group = { type: status, lat: p.lat, lng: p.lng, start: p.timestamp, end: p.timestamp, points: [p] };
             } else if (group) {
                 group.end = p.timestamp;
                 group.points.push(p);
             }
         });
-        if (group && (group.type === 'stopped' || group.type === 'idle')) {
-            markers.push(group);
+
+        // Add start/end of route indicators
+        if (activeDayPoints.length > 0) {
+            markers.push({ type: 'origin', lat: activeDayPoints[0].lat, lng: activeDayPoints[0].lng, timestamp: activeDayPoints[0].timestamp });
+            markers.push({ type: 'destination', lat: activeDayPoints[activeDayPoints.length - 1].lat, lng: activeDayPoints[activeDayPoints.length - 1].lng, timestamp: activeDayPoints[activeDayPoints.length - 1].timestamp });
         }
+
         return markers;
     }, [activeDayPoints]);
 
@@ -398,7 +566,13 @@ const TravelPlaybackInline: React.FC<TravelPlaybackInlineProps> = ({
                     </div>
 
                     {/* Timeline Slider */}
-                    <div className="px-6 py-4 border-b border-gray-100">
+                    <div className="px-6 py-4 border-b border-gray-100 relative">
+                        {isSnapping && (
+                            <div className="absolute top-0 right-6 text-[9px] font-black text-blue-500 uppercase flex items-center gap-1.5 animate-pulse">
+                                <Activity size={10} />
+                                Snapping to roads...
+                            </div>
+                        )}
                         <input
                             type="range"
                             min={0}
@@ -421,14 +595,41 @@ const TravelPlaybackInline: React.FC<TravelPlaybackInlineProps> = ({
                             className="h-full w-full z-0"
                             scrollWheelZoom={true}
                         >
-                            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                            <MapTileLayer />
                             <MapInstanceAccessor onMap={(map) => { leafletMapRef.current = map; }} />
 
                             {routePositions.length > 1 && (
-                                <Polyline
-                                    positions={routePositions}
-                                    pathOptions={{ color: "#2563eb", weight: 4, opacity: 0.8 }}
-                                />
+                                <>
+                                    <Polyline
+                                        positions={roadGeometry.length > 0 ? roadGeometry : routePositions}
+                                        pathOptions={{ color: "#2563eb", weight: 5, opacity: 0.8 }}
+                                    />
+                                    {/* Direction Arrows on the path */}
+                                    {visibleStatuses.has('arrows') && activeDayPoints.length > 2 && activeDayPoints.map((p, i) => {
+                                        const step = Math.max(10, Math.floor(activeDayPoints.length / 15));
+                                        if (i % step !== 0 || i >= activeDayPoints.length - 1) return null;
+                                        const pNext = activeDayPoints[i + 1];
+                                        const bearing = Math.atan2(pNext.lng - p.lng, pNext.lat - p.lat) * 180 / Math.PI;
+
+                                        return (
+                                            <Marker
+                                                key={`arrow-${i}`}
+                                                position={[p.lat, p.lng]}
+                                                interactive={false}
+                                                icon={L.divIcon({
+                                                    className: "direction-arrow-marker",
+                                                    html: `<div style="transform: rotate(${bearing}deg); color: #22c55e; filter: drop-shadow(0 0 2px rgba(0,0,0,0.4));">
+                                                        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                                                            <path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/>
+                                                        </svg>
+                                                    </div>`,
+                                                    iconSize: [20, 20],
+                                                    iconAnchor: [10, 10]
+                                                })}
+                                            />
+                                        )
+                                    })}
+                                </>
                             )}
 
                             {(animatedPos || currentPoint) && (
@@ -436,13 +637,14 @@ const TravelPlaybackInline: React.FC<TravelPlaybackInlineProps> = ({
                                     position={[animatedPos?.lat ?? currentPoint.lat, animatedPos?.lng ?? currentPoint.lng]}
                                     icon={L.divIcon({
                                         className: "animated-vehicle-marker",
-                                        html: `<div class="vehicle-icon-wrapper" style="transform: rotate(${(currentPoint?.heading || 0)}deg)">
-                                            <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="#2563eb" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                                                <path d="M5 12h14M12 5l7 7-7 7"/>
+                                        html: `<div class="vehicle-icon-wrapper" style="transform: rotate(${(animatedPos?.heading ?? 0)}deg)">
+                                            <div class="pulse-ring"></div>
+                                            <svg viewBox="0 0 24 24" width="36" height="36" fill="#2563eb" stroke="white" stroke-width="1.5">
+                                                <path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/>
                                             </svg>
                                         </div>`,
-                                        iconSize: [32, 32],
-                                        iconAnchor: [16, 16]
+                                        iconSize: [40, 40],
+                                        iconAnchor: [20, 20]
                                     })}
                                 >
                                     <Popup>
@@ -469,13 +671,48 @@ const TravelPlaybackInline: React.FC<TravelPlaybackInlineProps> = ({
                                 </Marker>
                             )}
 
-                            {/* Event Markers (Stops, Idles, Inactive) */}
+                            {/* Event Markers (Stops, Idles, Inactive, Turns, Starts) */}
                             {eventMarkers.map((marker, idx) => {
-                                if (!visibleStatuses.has(marker.type)) return null;
-                                let color = "#ef4444"; // stopped
-                                let iconStr = "S";
-                                if (marker.type === 'idle') { color = "#f97316"; iconStr = "I"; }
-                                if (marker.type === 'inactive') { color = "#64748b"; iconStr = "?"; }
+                                // Filtering based on toggles
+                                if (['left', 'right', 'uturn'].includes(marker.type) && !visibleStatuses.has('turns')) return null;
+                                if (['stopped', 'idle', 'inactive', 'start'].includes(marker.type) && !visibleStatuses.has(marker.type)) return null;
+
+                                let html = "";
+                                let size: [number, number] = [24, 24];
+
+                                switch (marker.type) {
+                                    case 'stopped':
+                                        html = `<div style="background: #ef4444; width: 24px; height: 24px; border: 2px solid white; border-radius: 4px; display: flex; align-items: center; justify-content: center; color: white; font-size: 8px; font-weight: 900; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);">STOP</div>`;
+                                        break;
+                                    case 'idle':
+                                        html = `<div style="background: #f97316; width: 22px; height: 22px; border: 2px solid white; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 10px; font-weight: 900;">I</div>`;
+                                        break;
+                                    case 'uturn':
+                                        html = `<div style="background: #f97316; width: 28px; height: 28px; border: 2px solid white; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);">
+                                                     <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                                                 </div>`;
+                                        size = [28, 28];
+                                        break;
+                                    case 'left':
+                                    case 'right':
+                                        const rot = marker.type === 'left' ? -90 : 90;
+                                        html = `<div style="background: #2563eb; width: 24px; height: 24px; border: 2px solid white; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; transform: rotate(${rot}deg); box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);">
+                                                     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
+                                                 </div>`;
+                                        break;
+                                    case 'start':
+                                        html = `<div style="background: #2f8d35; width: 24px; height: 24px; border: 2px solid white; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12h14M12 5l7 7-7 7"/></svg></div>`;
+                                        break;
+                                    case 'origin':
+                                        html = `<div style="background: #22c55e; width: 12px; height: 12px; border: 2px solid white; border-radius: 50%;"></div>`;
+                                        size = [12, 12];
+                                        break;
+                                    case 'destination':
+                                        html = `<div style="background: #ef4444; width: 12px; height: 12px; border: 2px solid white; border-radius: 50%;"></div>`;
+                                        size = [12, 12];
+                                        break;
+                                    default: return null;
+                                }
 
                                 return (
                                     <Marker
@@ -483,32 +720,19 @@ const TravelPlaybackInline: React.FC<TravelPlaybackInlineProps> = ({
                                         position={[marker.lat, marker.lng]}
                                         icon={L.divIcon({
                                             className: `status-event-marker ${marker.type}`,
-                                            html: `<div style="background: ${color}; width: 22px; height: 22px; border: 2px solid white; border-radius: 50%; display: flex; items-center; justify-content: center; color: white; font-size: 10px; font-weight: 900; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);">${iconStr}</div>`,
-                                            iconSize: [22, 22],
-                                            iconAnchor: [11, 11]
+                                            html: html,
+                                            iconSize: size,
+                                            iconAnchor: [size[0] / 2, size[1] / 2]
                                         })}
                                     >
                                         <Popup>
-                                            <div className="p-1 min-w-[160px]">
-                                                <h4 className="text-[10px] font-black uppercase tracking-[0.2em] mb-2" style={{ color }}>
-                                                    {marker.type === 'inactive' ? 'Connection Gap' : (marker.type === 'idle' ? 'Idle Time' : 'Vehicle Stop')}
+                                            <div className="p-1 min-w-[140px]">
+                                                <h4 className="text-[10px] font-black uppercase tracking-[0.2em] mb-2 text-slate-800">
+                                                    {marker.type.replace('_', ' ')} Event
                                                 </h4>
-                                                <div className="space-y-1.5">
-                                                    <div className="flex justify-between text-[10px]">
-                                                        <span className="text-gray-400">Arrived</span>
-                                                        <span className="font-bold">{new Date(marker.start).toLocaleTimeString()}</span>
-                                                    </div>
-                                                    <div className="flex justify-between text-[10px]">
-                                                        <span className="text-gray-400">Departed</span>
-                                                        <span className="font-bold">{new Date(marker.end).toLocaleTimeString()}</span>
-                                                    </div>
-                                                    <div className="pt-1.5 mt-1.5 border-t border-gray-100 flex justify-between text-[10px]">
-                                                        <span className="text-gray-400">Duration</span>
-                                                        <span className="font-black text-gray-900">
-                                                            {formatSeconds(Math.max(0, (new Date(marker.end).getTime() - new Date(marker.start).getTime()) / 1000))}
-                                                        </span>
-                                                    </div>
-                                                </div>
+                                                <p className="text-[10px] font-bold text-slate-500">
+                                                    {new Date(marker.timestamp || marker.start).toLocaleTimeString()}
+                                                </p>
                                             </div>
                                         </Popup>
                                     </Marker>
@@ -590,6 +814,58 @@ const TravelPlaybackInline: React.FC<TravelPlaybackInlineProps> = ({
                         </div>
                     </div>
 
+                    {/* Trip Summary (When playing specific range) */}
+                    {isTripPlayback && (
+                        <div className="px-5 py-6 bg-[#0f172a] text-white border-b border-white/5 relative overflow-hidden group">
+                            {/* Decorative background element */}
+                            <div className="absolute -right-4 -top-4 w-24 h-24 bg-[#2f8d35]/10 rounded-full blur-2xl group-hover:bg-[#2f8d35]/20 transition-all duration-700"></div>
+
+                            <div className="relative z-10">
+                                <h3 className="text-[10px] font-black uppercase tracking-[0.25em] text-[#4ade80] mb-5 flex items-center gap-2.5">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-[#4ade80] animate-pulse"></div>
+                                    Trip Segment Focus
+                                </h3>
+
+                                <div className="flex gap-4">
+                                    <div className="w-1 rounded-full bg-gradient-to-b from-[#4ade80] via-[#fbbf24] to-[#f87171] shadow-[0_0_10px_rgba(74,222,128,0.3)]"></div>
+                                    <div className="flex-1 space-y-5">
+                                        <div className="relative">
+                                            <p className="text-[9px] font-black uppercase text-white/40 tracking-widest mb-1.5 flex items-center gap-2">
+                                                <div className="w-1 h-1 rounded-full bg-white/20"></div>
+                                                Start Phase
+                                            </p>
+                                            <p className="text-xs font-bold text-white tracking-tight">
+                                                {activeDayPoints[0] ? new Date(activeDayPoints[0].timestamp).toLocaleString('en-IN', {
+                                                    day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true
+                                                }) : "-"}
+                                            </p>
+                                            <p className="text-[10px] text-white/50 leading-relaxed mt-1 line-clamp-2 italic font-medium" title={activeDayPoints[0]?.address}>
+                                                {activeDayPoints[0]?.address || "Origin point detected"}
+                                            </p>
+                                        </div>
+
+                                        <div className="h-px w-full bg-gradient-to-r from-white/10 to-transparent"></div>
+
+                                        <div className="relative">
+                                            <p className="text-[9px] font-black uppercase text-white/40 tracking-widest mb-1.5 flex items-center gap-2">
+                                                <div className="w-1 h-1 rounded-full bg-white/20"></div>
+                                                End Phase
+                                            </p>
+                                            <p className="text-xs font-bold text-white tracking-tight">
+                                                {activeDayPoints[activeDayPoints.length - 1] ? new Date(activeDayPoints[activeDayPoints.length - 1].timestamp).toLocaleString('en-IN', {
+                                                    day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true
+                                                }) : "-"}
+                                            </p>
+                                            <p className="text-[10px] text-white/50 leading-relaxed mt-1 line-clamp-2 italic font-medium" title={activeDayPoints[activeDayPoints.length - 1]?.address}>
+                                                {activeDayPoints[activeDayPoints.length - 1]?.address || "Destination point detected"}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Playback Snapshot */}
                     <div className="p-6 bg-gray-50/30 flex-1">
                         <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 mb-4">Playback Snapshot</h3>
@@ -641,6 +917,27 @@ const TravelPlaybackInline: React.FC<TravelPlaybackInlineProps> = ({
                             </div>
                         </div>
 
+                        {/* Layer Toggles */}
+                        <div className="mt-6">
+                            <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 mb-4">Map Layers</h3>
+                            <div className="flex flex-wrap gap-2">
+                                <button
+                                    onClick={() => toggleStatus('arrows')}
+                                    className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase transition-all flex items-center gap-1.5 shadow-sm border ${visibleStatuses.has('arrows') ? 'bg-blue-600 text-white border-blue-500' : 'bg-white text-gray-400 border-gray-100'}`}
+                                >
+                                    <Navigation size={12} className={visibleStatuses.has('arrows') ? 'rotate-45' : ''} />
+                                    Arrows
+                                </button>
+                                <button
+                                    onClick={() => toggleStatus('turns')}
+                                    className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase transition-all flex items-center gap-1.5 shadow-sm border ${visibleStatuses.has('turns') ? 'bg-blue-600 text-white border-blue-500' : 'bg-white text-gray-400 border-gray-100'}`}
+                                >
+                                    <CornerUpRight size={12} />
+                                    Turns
+                                </button>
+                            </div>
+                        </div>
+
                         {/* Summary Block */}
                         <div className="mt-6 grid grid-cols-2 gap-2">
                             <div className="p-3 bg-blue-600 rounded-xl text-white shadow-md shadow-blue-200">
@@ -679,12 +976,29 @@ const TravelPlaybackInline: React.FC<TravelPlaybackInlineProps> = ({
                     display: flex;
                     align-items: center;
                     justify-content: center;
-                    filter: drop-shadow(0 0 8px rgba(37, 99, 235, 0.4));
+                    filter: drop-shadow(0 0 12px rgba(37, 99, 235, 0.4));
                     background: white;
                     border-radius: 50%;
-                    width: 32px;
-                    height: 32px;
-                    border: 2px solid #2563eb;
+                    width: 40px;
+                    height: 40px;
+                    border: 3px solid #2563eb;
+                    position: relative;
+                }
+                .pulse-ring {
+                    position: absolute;
+                    width: 100%;
+                    height: 100%;
+                    background: rgba(37, 99, 235, 0.4);
+                    border-radius: 50%;
+                    animation: pulse 2s infinite;
+                }
+                @keyframes pulse {
+                    0% { transform: scale(1); opacity: 0.8; }
+                    100% { transform: scale(2.5); opacity: 0; }
+                }
+                .direction-arrow-marker {
+                    background: none !important;
+                    border: none !important;
                 }
             `}</style>
         </div>

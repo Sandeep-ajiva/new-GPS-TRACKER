@@ -21,6 +21,7 @@ function buildOrgScopeFilter(orgScope) {
 function parseBoundaryDate(value, endOfDay = false) {
   if (!value) return null;
 
+  // If it's strictly YYYY-MM-DD, apply start/end of day
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
     return new Date(
       `${value}T${endOfDay ? "23:59:59.999" : "00:00:00.000"}Z`,
@@ -30,10 +31,16 @@ function parseBoundaryDate(value, endOfDay = false) {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return null;
 
-  if (endOfDay) {
-    parsed.setUTCHours(23, 59, 59, 999);
-  } else {
-    parsed.setUTCHours(0, 0, 0, 0);
+  // If the input string contains a 'T' or ' ' (likely has time), preserve it
+  // otherwise default to start/end of day
+  const hasTime = value.includes("T") || value.includes(":") || value.includes(" ");
+
+  if (!hasTime) {
+    if (endOfDay) {
+      parsed.setUTCHours(23, 59, 59, 999);
+    } else {
+      parsed.setUTCHours(0, 0, 0, 0);
+    }
   }
 
   return parsed;
@@ -236,7 +243,8 @@ async function getTravelSummary(vehicleId, orgScope, query = {}) {
       vehicleId: vId,
       vehicleNumber: vehicle?.vehicleNumber || "N/A",
       imei: vehicle?.deviceImei || vPoints[0]?.imei || "N/A",
-      brand: vehicle?.brand || "-",
+      brand: vehicle?.make || "-",
+      make: vehicle?.make || "-",
       model: vehicle?.model || "-",
       branchName,
       driverName,
@@ -308,7 +316,8 @@ async function getTripSummary(vehicleId, orgScope, query = {}) {
       vehicleId: vId,
       vehicleNumber: vehicle?.vehicleNumber || "N/A",
       imei: vehicle?.deviceImei || vPoints[0]?.imei || "N/A",
-      brand: vehicle?.brand || "-",
+      brand: vehicle?.make || "-",
+      make: vehicle?.make || "-",
       model: vehicle?.model || "-",
       branchName,
       driverName,

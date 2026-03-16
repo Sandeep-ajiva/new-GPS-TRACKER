@@ -122,7 +122,7 @@ function finalizeTrip(points, endedByIgnitionOff) {
     duration,
     runningTime,
     idleTime,
-    stopTime: duration - runningTime, // Time not moving
+    stopTime: Math.max(0, duration - runningTime - idleTime), // Time not moving and engine off
     inactiveTime: 0,
     avgSpeed: runningTime > 0 ? Number((distance / (runningTime / 3600)).toFixed(2)) : 0,
     maxSpeed: Number(maxSpeed.toFixed(2)),
@@ -182,29 +182,32 @@ function buildTrips(historyPoints = []) {
     const ignitionOn = Boolean(point.ignitionStatus);
     const speed = point.speed || 0;
 
-    if (ignitionOn) {
-      if (currentGroup.length > 0) {
-        const lastPoint = currentGroup[currentGroup.length - 1];
-        const gap = getDurationSeconds(lastPoint.gpsTimestamp, point.gpsTimestamp);
+    if (currentGroup.length > 0) {
+      const lastPoint = currentGroup[currentGroup.length - 1];
+      const gap = getDurationSeconds(lastPoint.gpsTimestamp, point.gpsTimestamp);
 
-        // If stopped/idle for > 5 mins while ignition is ON, split the trip
-        if (gap > STOP_THRESHOLD_SECONDS && speed <= 5) {
-          const trip = finalizeTrip(currentGroup, false);
-          if (trip) {
-            if (lastEndTime) trip.inactiveTime = getDurationSeconds(lastEndTime, trip.startTime);
-            trips.push(trip);
-            lastEndTime = trip.endTime;
-          }
-          currentGroup = [point];
-          return;
+      // Find last ignition ON point to check how long it has been OFF
+      let lastOnPoint = null;
+      for (let i = currentGroup.length - 1; i >= 0; i--) {
+        if (currentGroup[i].ignitionStatus) {
+          lastOnPoint = currentGroup[i];
+          break;
         }
       }
-      currentGroup.push(point);
-    } else {
-      // Ignition OFF - Finalize the current active trip
-      if (currentGroup.length > 0) {
-        currentGroup.push(point);
-        const trip = finalizeTrip(currentGroup, true);
+      const offDuration = lastOnPoint ? getDurationSeconds(lastOnPoint.gpsTimestamp, point.gpsTimestamp) : 0;
+
+      // Logic to split trips:
+      // 1. Large gap between data points (> 5 mins)
+      // 2. Ignition OFF for > 5 mins
+      // 3. Stopped/Idle with Ignition ON for > 5 mins
+      const isGapTooLarge = gap > STOP_THRESHOLD_SECONDS;
+      const isOffTooLong = !ignitionOn && offDuration > STOP_THRESHOLD_SECONDS;
+      const isIdleTooLong = ignitionOn && gap > STOP_THRESHOLD_SECONDS && speed <= 5;
+
+      if (isGapTooLarge || isOffTooLong || isIdleTooLong) {
+        // Finalize what we have so far
+        // If it was an ignition-off split, the trip ended with the previous point
+        const trip = finalizeTrip(currentGroup, !lastPoint.ignitionStatus);
         if (trip) {
           if (lastEndTime) trip.inactiveTime = getDurationSeconds(lastEndTime, trip.startTime);
           trips.push(trip);
@@ -212,6 +215,15 @@ function buildTrips(historyPoints = []) {
         }
         currentGroup = [];
       }
+    }
+
+    if (currentGroup.length === 0) {
+      // Start a new trip only on Ignition ON or significant movement
+      if (ignitionOn || speed > 5) {
+        currentGroup = [point];
+      }
+    } else {
+      currentGroup.push(point);
     }
   });
 

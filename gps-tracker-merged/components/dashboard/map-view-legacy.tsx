@@ -2,7 +2,8 @@
 
 import { useMemo } from "react";
 import { DivIcon, latLngBounds } from "leaflet";
-import { MapContainer, Marker, TileLayer, useMap, Popup } from "react-leaflet";
+import { MapContainer, Marker, useMap, Popup } from "react-leaflet";
+import { MapTileLayer } from "../admin/Map/MapTileLayer";
 import { TelemetryGrid } from "./telemetry-grid";
 import { useDashboardContext } from "./DashboardContext";
 import { useGetLiveVehicleByDeviceIdQuery } from "@/redux/api/gpsLiveApi";
@@ -77,10 +78,7 @@ export function MapView() {
   return (
     <div className="relative h-full w-full bg-slate-950">
       <MapContainer center={center} zoom={12} className="h-full w-full">
-        <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        />
+        <MapTileLayer />
         <FitBounds points={pointsForBounds} />
 
         {currentPos && (

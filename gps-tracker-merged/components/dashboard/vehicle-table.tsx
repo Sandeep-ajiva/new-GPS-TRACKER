@@ -68,6 +68,7 @@ function normalizeRecord(raw: Record<string, unknown>): VehicleRecord {
         currentLocation: raw.currentLocation as VehicleRecord["currentLocation"],
         organizationId: raw.organizationId as VehicleRecord["organizationId"],
         driverName: raw.driverName as string | undefined,
+        make: raw.make as string | undefined,
         model: raw.model as string | undefined,
         vehicleType: raw.vehicleType as string | undefined,
         color: raw.color as string | undefined,
@@ -232,7 +233,7 @@ export function VehicleTable() {
                                 <th
                                     key={col}
                                     className={`px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-400 ${col === "IMEI" || col === "Plate Number" ? "hidden sm:table-cell" :
-                                            col === "Driver" ? "hidden md:table-cell" : ""
+                                        col === "Driver" ? "hidden md:table-cell" : ""
                                         }`}
                                 >
                                     {col}

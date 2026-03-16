@@ -74,6 +74,8 @@ export function TravelSummaryPage({
     const [filters, setFilters] = useState<ReportFilterState>(getDefaultReportFilter())
     const [expandedVehicleId, setExpandedVehicleId] = useState<string | null>(null)
     const [playbackVehicleId, setPlaybackVehicleId] = useState<string | null>(null)
+    const [playbackDate, setPlaybackDate] = useState<string | null>(null)
+    const [playbackRange, setPlaybackRange] = useState<{ from: string; to: string } | null>(null)
 
     const isValidVehicle = filters.vehicleId !== ""
 
@@ -158,7 +160,7 @@ export function TravelSummaryPage({
                                             <th className="border border-white/10 p-2 font-bold whitespace-nowrap text-center">Branch</th>
                                             <th className="border border-white/10 p-2 font-bold whitespace-nowrap text-center">Vehicle</th>
                                             <th className="border border-white/10 p-2 font-bold whitespace-normal text-center max-w-[100px] break-words">
-                                                Vehicle Brand
+                                                Vehicle Make
                                             </th>
                                             <th className="border border-white/10 p-2 font-bold whitespace-normal text-center max-w-[100px] break-words">Vehicle Model</th>
                                             <th className="border border-white/10 p-2 font-bold whitespace-normal text-center max-w-[100px] break-words">Driver</th>
@@ -191,7 +193,7 @@ export function TravelSummaryPage({
                                                         <td className="p-2 text-center"><button onClick={() => setExpandedVehicleId(isExpanded ? null : row.vehicleId)} className={`transition-transform duration-200 ${isExpanded ? "rotate-90 text-slate-800" : "text-[#2f8d35]"}`}><Navigation size={10} fill="currentColor" /></button></td>
                                                         <td className="p-2 uppercase text-center">{row.branchName}</td>
                                                         <td className="p-2 font-bold text-center">{row.vehicleNumber}</td>
-                                                        <td className="p-2 text-center">{row.brand}</td>
+                                                        <td className="p-2 text-center">{row.make}</td>
                                                         <td className="p-2 text-center">{row.model}</td>
                                                         <td className="p-2 text-center text-slate-400">{row.driverName}</td>
                                                         <td className="p-2 text-center">{row.imei}</td>
@@ -213,13 +215,20 @@ export function TravelSummaryPage({
                                                         <td className="p-2 text-center max-w-[80px] break-words" title={formatLocation(row.endLocation)}>{formatLocation(row.endLocation)}</td>
                                                         <td className="p-2 text-center">
                                                             <button
-                                                                onClick={() => setPlaybackVehicleId(playbackVehicleId === row.vehicleId ? null : row.vehicleId)}
+                                                                onClick={() => {
+                                                                    if (playbackVehicleId === row.vehicleId && !playbackDate) {
+                                                                        setPlaybackVehicleId(null);
+                                                                    } else {
+                                                                        setPlaybackVehicleId(row.vehicleId);
+                                                                        setPlaybackDate(null);
+                                                                    }
+                                                                }}
                                                                 className="text-[#2f8d35] hover:scale-110 transition-transform"
                                                             >
                                                                 <PlayCircle
                                                                     size={14}
-                                                                    fill={playbackVehicleId === row.vehicleId ? "#2f8d35" : "none"}
-                                                                    className={playbackVehicleId === row.vehicleId ? "text-[#2f8d35]" : "text-[#2f8d35]"}
+                                                                    fill={playbackVehicleId === row.vehicleId && !playbackDate ? "#2f8d35" : "none"}
+                                                                    className={playbackVehicleId === row.vehicleId && !playbackDate ? "text-[#2f8d35]" : "text-[#2f8d35]"}
                                                                 />
                                                             </button>
                                                         </td>
@@ -270,7 +279,23 @@ export function TravelSummaryPage({
                                                                                 <td className="p-2 text-center text-[#ea4335]">{formatDateTime(day.lastIgnitionOff?.time)}</td>
                                                                                 <td className="p-2 text-center max-w-[100px] break-words" title={formatLocation(day.endLocation)}>{formatLocation(day.endLocation)}</td>
                                                                                 <td className="p-2 text-center"><button className="text-[#2f8d35] hover:scale-110"><History size={12} /></button></td>
-                                                                                <td className="p-2 text-center"><button onClick={() => setPlaybackVehicleId(playbackVehicleId === row.vehicleId ? null : row.vehicleId)} className="text-[#2f8d35] hover:scale-110"><PlayCircle size={12} fill="currentColor" className="text-[#2f8d35] fill-[#2f8d35]/20" /></button></td>
+                                                                                <td className="p-2 text-center">
+                                                                                    <button
+                                                                                        onClick={() => {
+                                                                                            const parts = day.date.split("-");
+                                                                                            const formatted = `${parts[2]}-${parts[1]}-${parts[0]}`;
+                                                                                            setPlaybackVehicleId(row.vehicleId);
+                                                                                            setPlaybackDate(formatted);
+                                                                                        }}
+                                                                                        className="text-[#2f8d35] hover:scale-110"
+                                                                                    >
+                                                                                        <PlayCircle
+                                                                                            size={12}
+                                                                                            fill={playbackVehicleId === row.vehicleId && playbackDate === (day.date.split("-").reverse().join("-")) ? "currentColor" : "none"}
+                                                                                            className="text-[#2f8d35] fill-[#2f8d35]/20"
+                                                                                        />
+                                                                                    </button>
+                                                                                </td>
                                                                             </tr>
                                                                         ))}
                                                                     </tbody>
@@ -284,10 +309,10 @@ export function TravelSummaryPage({
                                                                 <TravelPlaybackInline
                                                                     vehicleId={row.vehicleId}
                                                                     vehicleNumber={row.vehicleNumber}
-                                                                    from={filters.from}
-                                                                    to={filters.to}
+                                                                    from={playbackRange?.from || filters.from}
+                                                                    to={playbackRange?.to || filters.to}
                                                                     metadata={{
-                                                                        brand: row.brand,
+                                                                        brand: row.make,
                                                                         model: row.model,
                                                                         driverName: row.driverName,
                                                                         imei: row.imei,
@@ -296,7 +321,12 @@ export function TravelSummaryPage({
                                                                         avgSpeed: Number(row.avgSpeed || 0),
                                                                         vehicleType: row.model
                                                                     }}
-                                                                    onClose={() => setPlaybackVehicleId(null)}
+                                                                    onClose={() => {
+                                                                        setPlaybackVehicleId(null);
+                                                                        setPlaybackRange(null);
+                                                                    }}
+                                                                    initialDay={playbackDate || undefined}
+                                                                     isTripPlayback={!!playbackRange}
                                                                 />
                                                             </td>
                                                         </tr>
@@ -313,7 +343,7 @@ export function TravelSummaryPage({
                                             <th rowSpan={2} className="border border-white/10 p-2 text-center w-6"><FilterIcon size={10} /></th>
                                             <th rowSpan={2} className="border border-white/10 p-2 font-bold whitespace-nowrap text-center">Branch</th>
                                             <th rowSpan={2} className="border border-white/10 p-2 font-bold whitespace-nowrap text-center">Vehicle</th>
-                                            <th rowSpan={2} className="border border-white/10 p-2 font-bold whitespace-normal text-center max-w-[100px] break-words">Vehicle Brand</th>
+                                            <th rowSpan={2} className="border border-white/10 p-2 font-bold whitespace-normal text-center max-w-[100px] break-words">Vehicle Make</th>
                                             <th rowSpan={2} className="border border-white/10 p-2 font-bold whitespace-normal text-center max-w-[100px] break-words">Vehicle Model</th>
                                             <th rowSpan={2} className="border border-white/10 p-2 font-bold whitespace-nowrap text-center">Driver</th>
                                             <th rowSpan={2} className="border border-white/10 p-2 font-bold whitespace-nowrap text-center">IMEI No</th>
@@ -350,7 +380,7 @@ export function TravelSummaryPage({
                                                         <td className="p-2 text-center"><button onClick={() => setExpandedVehicleId(isExpanded ? null : row.vehicleId)} className={`transition-transform duration-200 ${isExpanded ? "rotate-90 text-slate-800" : "text-[#2f8d35]"}`}><Navigation size={10} fill="currentColor" /></button></td>
                                                         <td className="p-2 uppercase text-center">{row.branchName}</td>
                                                         <td className="p-2 font-bold text-center">{row.vehicleNumber}</td>
-                                                        <td className="p-2 text-center">{row.brand}</td>
+                                                        <td className="p-2 text-center">{row.make}</td>
                                                         <td className="p-2 text-center">{row.model}</td>
                                                         <td className="p-2 text-center text-slate-400">{row.driverName}</td>
                                                         <td className="p-2 text-center">{row.imei}</td>
@@ -376,13 +406,21 @@ export function TravelSummaryPage({
                                                         <td className="p-2 font-bold text-center text-[#2f8d35]">{row.tripCount || 0}</td>
                                                         <td className="p-2 text-center">
                                                             <button
-                                                                onClick={() => setPlaybackVehicleId(playbackVehicleId === row.vehicleId ? null : row.vehicleId)}
+                                                                onClick={() => {
+                                                                    if (playbackVehicleId === row.vehicleId && !playbackDate && !playbackRange) {
+                                                                        setPlaybackVehicleId(null);
+                                                                    } else {
+                                                                        setPlaybackVehicleId(row.vehicleId);
+                                                                        setPlaybackDate(null);
+                                                                        setPlaybackRange(null);
+                                                                    }
+                                                                }}
                                                                 className="text-[#2f8d35] hover:scale-110 transition-transform"
                                                             >
                                                                 <PlayCircle
                                                                     size={14}
-                                                                    fill={playbackVehicleId === row.vehicleId ? "#2f8d35" : "none"}
-                                                                    className={playbackVehicleId === row.vehicleId ? "text-[#2f8d35]" : "text-[#2f8d35]"}
+                                                                    fill={playbackVehicleId === row.vehicleId && !playbackDate && !playbackRange ? "#2f8d35" : "none"}
+                                                                    className={playbackVehicleId === row.vehicleId && !playbackDate && !playbackRange ? "text-[#2f8d35]" : "text-[#2f8d35]"}
                                                                 />
                                                             </button>
                                                         </td>
@@ -446,7 +484,18 @@ export function TravelSummaryPage({
                                                                                 <td className="p-2 text-center">{it.overSpeed}</td>
                                                                                 <td className="p-2 text-center">{it.immobilize}</td>
                                                                                 <td className="p-2 text-center text-[#ea4335] font-bold">{it.alerts || 0}</td>
-                                                                                <td className="p-2 text-center"><button className="text-[#2f8d35] hover:scale-125 transition-transform"><MapPin size={12} /></button></td>
+                                                                                <td className="p-2 text-center">
+                                                                                    <button
+                                                                                        onClick={() => {
+                                                                                            setPlaybackVehicleId(row.vehicleId);
+                                                                                            setPlaybackRange({ from: it.startTime, to: it.endTime });
+                                                                                            setPlaybackDate(null);
+                                                                                        }}
+                                                                                        className="text-[#2f8d35] hover:scale-125 transition-transform"
+                                                                                    >
+                                                                                        <PlayCircle size={12} fill={playbackVehicleId === row.vehicleId && playbackRange?.from === it.startTime ? "currentColor" : "none"} />
+                                                                                    </button>
+                                                                                </td>
                                                                             </tr>
                                                                         ))}
                                                                     </tbody>
@@ -460,10 +509,10 @@ export function TravelSummaryPage({
                                                                 <TravelPlaybackInline
                                                                     vehicleId={row.vehicleId}
                                                                     vehicleNumber={row.vehicleNumber}
-                                                                    from={filters.from}
-                                                                    to={filters.to}
+                                                                    from={playbackRange?.from || filters.from}
+                                                                    to={playbackRange?.to || filters.to}
                                                                     metadata={{
-                                                                        brand: row.brand,
+                                                                        brand: row.make,
                                                                         model: row.model,
                                                                         driverName: row.driverName,
                                                                         imei: row.imei,
@@ -472,7 +521,12 @@ export function TravelSummaryPage({
                                                                         avgSpeed: Number(row.avgSpeed || 0),
                                                                         vehicleType: row.model
                                                                     }}
-                                                                    onClose={() => setPlaybackVehicleId(null)}
+                                                                    onClose={() => {
+                                                                        setPlaybackVehicleId(null);
+                                                                        setPlaybackRange(null);
+                                                                    }}
+                                                                    initialDay={playbackDate || undefined}
+                                                                     isTripPlayback={!!playbackRange}
                                                                 />
                                                             </td>
                                                         </tr>

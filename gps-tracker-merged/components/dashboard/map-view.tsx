@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { DivIcon } from "leaflet";
-import { MapContainer, Marker, Popup, TileLayer, useMap, useMapEvents } from "react-leaflet";
+import { MapContainer, Marker, Popup, useMap, useMapEvents } from "react-leaflet";
 import { Fuel, Gauge, Navigation, Thermometer } from "lucide-react";
 import { TelemetryGrid } from "./telemetry-grid";
 import { useDashboardContext } from "./DashboardContext";
 import { useGetLiveVehicleByDeviceIdQuery } from "@/redux/api/gpsLiveApi";
+import { MapTileLayer } from "../admin/Map/MapTileLayer";
 import "leaflet/dist/leaflet.css";
 import "leaflet-defaulticon-compatibility/dist/leaflet-defaulticon-compatibility.css";
 import "leaflet-defaulticon-compatibility";
@@ -21,10 +22,12 @@ function SmoothFocus({
   point,
   selectedId,
   focusKey,
+  isFollowMode = true,
 }: {
   point: { lat: number; lng: number } | null;
   selectedId?: string | null;
   focusKey: number;
+  isFollowMode?: boolean;
 }) {
   const map = useMap();
   const lastIdRef = useRef<string | null>(null);
@@ -55,16 +58,20 @@ function SmoothFocus({
     const isForced = focusKey !== lastKeyRef.current;
     const zoom = map.getZoom();
     const targetZoom = isNewSelection || isForced ? Math.max(zoom, 16) : zoom;
-    if (!manualLockRef.current || isNewSelection || isForced) {
-      map.flyTo(point, targetZoom, {
-        duration: isNewSelection || isForced ? 0.6 : 0.35,
-        easeLinearity: 0.3,
-        noMoveStart: true,
-      });
+    if (!manualLockRef.current || isNewSelection || isForced || isFollowMode) {
+      if (isFollowMode) {
+        map.setView(point, targetZoom);
+      } else {
+        map.flyTo(point, targetZoom, {
+          duration: isNewSelection || isForced ? 0.6 : 0.35,
+          easeLinearity: 0.3,
+          noMoveStart: true,
+        });
+      }
       lastIdRef.current = selectedId || null;
       lastKeyRef.current = focusKey;
     }
-  }, [map, point, point?.lat, point?.lng, selectedId, focusKey]);
+  }, [map, point, point?.lat, point?.lng, selectedId, focusKey, isFollowMode]);
 
   return null;
 }
@@ -79,6 +86,7 @@ const markerIcon = (color: string, size = 15) =>
 
 export function MapView() {
   const { selectedVehicle, focusKey } = useDashboardContext();
+  const [isFollowMode, setIsFollowMode] = useState(true);
   const deviceId = selectedVehicle?.deviceId || selectedVehicle?.gpsDeviceId?._id || selectedVehicle?.gpsDeviceId;
 
   const { data: liveDataRes } = useGetLiveVehicleByDeviceIdQuery(deviceId, {
@@ -125,16 +133,18 @@ export function MapView() {
 
   return (
     <div className="relative h-full w-full bg-[#f6fbf4]">
-      <MapContainer center={center} zoom={13} className="h-full w-full" style={{ zIndex: 1 }}>
-        <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+      <MapContainer center={center as any} zoom={13} className="h-full w-full" style={{ zIndex: 1 }}>
+        <MapTileLayer />
+        <SmoothFocus
+          point={displayPoint as any}
+          selectedId={(selectedVehicle as any)?.id || (selectedVehicle as any)?._id || null}
+          focusKey={focusKey}
+          isFollowMode={isFollowMode}
         />
-        <SmoothFocus point={displayPoint} selectedId={selectedVehicle?.id || selectedVehicle?._id || null} focusKey={focusKey} />
 
         {displayPoint && (
           <Marker
-            position={displayPoint}
+            position={displayPoint as any}
             icon={markerIcon(statusColor(markerStatus), 16)}
           >
             <Popup>
@@ -207,6 +217,16 @@ export function MapView() {
               <h3 className="mt-1 text-lg font-black text-slate-900">{selectedVehicle.vehicleNumber || "N/A"}</h3>
               <p className="mt-1 text-sm font-medium text-slate-500">{selectedVehicle.driver || "Unassigned"}</p>
             </div>
+            <button
+              onClick={() => setIsFollowMode(!isFollowMode)}
+              className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] transition-all flex items-center gap-1.5 shadow-sm border ${isFollowMode
+                ? "bg-[#ecf8ea] text-[#2f8d35] border-[#38a63c]/30"
+                : "bg-white text-slate-400 border-slate-200"
+                }`}
+            >
+              <Navigation size={10} className={isFollowMode ? "fill-[#2f8d35]" : ""} />
+              {isFollowMode ? "Following" : "Follow"}
+            </button>
             <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${selectedVehicle.status === "running"
               ? "bg-[#ecf8ea] text-[#2f8d35]"
               : selectedVehicle.status === "idle"

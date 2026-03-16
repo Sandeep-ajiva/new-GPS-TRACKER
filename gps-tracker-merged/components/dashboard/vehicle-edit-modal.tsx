@@ -16,6 +16,7 @@ interface FormState {
     vehicleNumber: string
     imei: string
     driverName: string
+    make: string
     model: string
     color: string
     vehicleType: string
@@ -33,6 +34,7 @@ export default function VehicleEditModal({ vehicle, isOpen, onClose, onSuccess }
         vehicleNumber: "",
         imei: "",
         driverName: "",
+        make: "",
         model: "",
         color: "",
         vehicleType: "",
@@ -47,6 +49,7 @@ export default function VehicleEditModal({ vehicle, isOpen, onClose, onSuccess }
                 vehicleNumber: vehicle.vehicleNumber || vehicle.registrationNumber || "",
                 imei: vehicle.imei || vehicle.deviceImei || "",
                 driverName: vehicle.driverName || "",
+                make: vehicle.make || "",
                 model: vehicle.model || "",
                 color: vehicle.color || "",
                 vehicleType: vehicle.vehicleType || "",
@@ -85,6 +88,7 @@ export default function VehicleEditModal({ vehicle, isOpen, onClose, onSuccess }
                 vehicleNumber: form.vehicleNumber.trim(),
                 imei: form.imei.trim(),
                 driverName: form.driverName.trim(),
+                make: form.make.trim(),
                 model: form.model.trim(),
                 color: form.color.trim(),
                 vehicleType: form.vehicleType.trim(),
@@ -179,8 +183,20 @@ export default function VehicleEditModal({ vehicle, isOpen, onClose, onSuccess }
                         />
                     </div>
 
-                    {/* Model & Color in a grid */}
+                    {/* Make & Model in a grid */}
                     <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                            <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                                Make
+                            </label>
+                            <input
+                                type="text"
+                                value={form.make}
+                                onChange={handleChange("make")}
+                                placeholder="e.g. Honda"
+                                className="w-full rounded-xl bg-slate-800 border border-white/10 px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500/50 transition-all"
+                            />
+                        </div>
                         <div className="space-y-1">
                             <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider">
                                 Model
@@ -189,10 +205,14 @@ export default function VehicleEditModal({ vehicle, isOpen, onClose, onSuccess }
                                 type="text"
                                 value={form.model}
                                 onChange={handleChange("model")}
-                                placeholder="e.g. Swift"
+                                placeholder="e.g. Hornet"
                                 className="w-full rounded-xl bg-slate-800 border border-white/10 px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500/50 transition-all"
                             />
                         </div>
+                    </div>
+
+                    {/* Color & Vehicle Type in a grid */}
+                    <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-1">
                             <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider">
                                 Color
@@ -201,30 +221,28 @@ export default function VehicleEditModal({ vehicle, isOpen, onClose, onSuccess }
                                 type="text"
                                 value={form.color}
                                 onChange={handleChange("color")}
-                                placeholder="e.g. White"
+                                placeholder="e.g. Black"
                                 className="w-full rounded-xl bg-slate-800 border border-white/10 px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500/50 transition-all"
                             />
                         </div>
-                    </div>
-
-                    {/* Vehicle Type */}
-                    <div className="space-y-1">
-                        <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                            Vehicle Type
-                        </label>
-                        <select
-                            value={form.vehicleType}
-                            onChange={handleChange("vehicleType")}
-                            className="w-full rounded-xl bg-slate-800 border border-white/10 px-4 py-3 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500/50 transition-all"
-                        >
-                            <option value="">Select type…</option>
-                            <option value="car">Car</option>
-                            <option value="truck">Truck</option>
-                            <option value="bus">Bus</option>
-                            <option value="bike">Bike</option>
-                            <option value="van">Van</option>
-                            <option value="other">Other</option>
-                        </select>
+                        <div className="space-y-1">
+                            <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                                Type
+                            </label>
+                            <select
+                                value={form.vehicleType}
+                                onChange={handleChange("vehicleType")}
+                                className="w-full rounded-xl bg-slate-800 border border-white/10 px-4 py-3 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500/50 transition-all"
+                            >
+                                <option value="">Select type…</option>
+                                <option value="car">Car</option>
+                                <option value="truck">Truck</option>
+                                <option value="bus">Bus</option>
+                                <option value="bike">Bike</option>
+                                <option value="van">Van</option>
+                                <option value="other">Other</option>
+                            </select>
+                        </div>
                     </div>
 
                     {/* Actions */}
