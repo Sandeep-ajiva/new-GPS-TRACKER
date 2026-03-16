@@ -99,6 +99,12 @@ const gpsHistorySchema = {
   },
 
   address: String,
+  poi: String,
+  poiId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "POI",
+    default: null,
+  },
 
   // GPS Quality
   gpsFixed: Boolean,

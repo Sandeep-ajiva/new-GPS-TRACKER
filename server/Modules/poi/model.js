@@ -12,4 +12,7 @@ const poiSchema = {
   tags: Array
 };
 
-module.exports = new ajModel("POI", poiSchema).getModel();
+const instance = new ajModel("POI", poiSchema);
+instance.index({ organizationId: 1, locationCoordinates: "2dsphere" });
+
+module.exports = instance.getModel();

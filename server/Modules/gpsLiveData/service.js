@@ -9,6 +9,7 @@ const Alert = require("../alerts/model");
 const Organization = require("../organizations/model");
 const EmergencyEvent = require("../emergencyEvents/model");
 const { calculateDistance, mapAlertType } = require("../../common/utils");
+const { scheduleLocationEnrichment } = require("../../common/locationEnrichment");
 
 const Service = {
   /**
@@ -283,9 +284,11 @@ const Service = {
         // timeDelta <= 0 means duplicate or out-of-order — skip
       }
 
+      let historyDoc = null;
+
       if (shouldSave) {
         try {
-          await GpsHistory.create({
+          historyDoc = await GpsHistory.create({
             organizationId,
             vehicleId,
             gpsDeviceId,
@@ -583,6 +586,18 @@ const Service = {
       } catch (e) {
         console.error("Emergency event error:", e);
       }
+
+      scheduleLocationEnrichment({
+        organizationId,
+        vehicleId,
+        gpsDeviceId,
+        imei,
+        latitude,
+        longitude,
+        packetTimestamp,
+        historyId: historyDoc?._id || null,
+        syncVehicleLocation: Boolean(historyDoc?._id),
+      });
 
       return { success: true, message: "GPS data processed", status: 200 };
     } catch (error) {

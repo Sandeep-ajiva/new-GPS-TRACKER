@@ -85,7 +85,7 @@ async function fetchHistoryPoints(vehicleId, orgScope, query = {}) {
   const points = await GpsHistory.find(filter)
     .sort({ gpsTimestamp: 1 })
     .select(
-      "vehicleId imei latitude longitude speed heading gpsTimestamp ignitionStatus odometer address",
+      "vehicleId imei latitude longitude speed heading gpsTimestamp ignitionStatus odometer address poi",
     )
     .lean();
 
@@ -157,6 +157,10 @@ async function getPlayback(vehicleId, orgScope, query = {}) {
       speed: Number(point.speed || 0),
       heading: point.heading ?? null,
       gpsTimestamp: point.gpsTimestamp,
+      ignitionStatus: Boolean(point.ignitionStatus),
+      odometer: point.odometer ?? null,
+      address: point.address || "",
+      poi: point.poi || "",
     })),
   };
 }

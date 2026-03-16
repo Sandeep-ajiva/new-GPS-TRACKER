@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState, useMemo } from "react";
+import React, { useEffect, useRef, useState, useMemo, useTransition } from "react";
 import {
     X, Play, Pause, SkipBack, SkipForward, Clock, Gauge,
     Navigation, MapPin, Loader2, Maximize, ZoomIn, Info, Activity,
@@ -26,6 +26,42 @@ interface HistoryPoint {
     odometer?: number;
 }
 
+interface SnappedRouteData {
+    snappedPoints: HistoryPoint[];
+    roadGeometry: [number, number][];
+}
+
+interface TripPlaybackRange {
+    from: string;
+    to: string;
+    dayKey?: string | null;
+    tripKey?: string | null;
+}
+
+interface TripDayGroup {
+    key: string;
+    dateLabel?: string;
+    dayName?: string;
+    tripCount?: number;
+    trips: Array<{
+        startTime: string;
+        endTime: string;
+        driverName?: string;
+        distance?: number;
+        runningTime?: number;
+        idleTime?: number;
+        stopTime?: number;
+        inactiveTime?: number;
+        avgSpeed?: number;
+        maxSpeed?: number;
+        alerts?: number;
+        startLocation?: { address?: string; latitude?: number; longitude?: number };
+        endLocation?: { address?: string; latitude?: number; longitude?: number };
+        startOdometer?: number;
+        endOdometer?: number;
+    }>;
+}
+
 interface TravelPlaybackInlineProps {
     vehicleId: string;
     vehicleNumber: string;
@@ -35,6 +71,8 @@ interface TravelPlaybackInlineProps {
     metadata?: any;
     initialDay?: string;
     isTripPlayback?: boolean;
+    tripDayGroups?: TripDayGroup[];
+    initialTripRange?: TripPlaybackRange | null;
 }
 
 function MapInstanceAccessor({ onMap }: { onMap: (map: L.Map) => void }) {
@@ -45,6 +83,76 @@ function MapInstanceAccessor({ onMap }: { onMap: (map: L.Map) => void }) {
     return null;
 }
 
+const snapHistoryPointsToRoads = async (rawPoints: HistoryPoint[]): Promise<SnappedRouteData> => {
+    if (rawPoints.length < 2) {
+        return {
+            snappedPoints: rawPoints,
+            roadGeometry: rawPoints.map((p) => [p.lat, p.lng]),
+        };
+    }
+
+    const chunkSize = 40;
+    const chunks: HistoryPoint[][] = [];
+    for (let index = 0; index < rawPoints.length; index += chunkSize) {
+        chunks.push(rawPoints.slice(index, index + chunkSize + 1));
+    }
+
+    const allSnapped: HistoryPoint[] = [];
+    const fullRoadPath: [number, number][] = [];
+
+    for (const chunk of chunks) {
+        const coords = chunk.map((p) => `${p.lng},${p.lat}`).join(";");
+        const url = `https://router.project-osrm.org/match/v1/driving/${coords}?overview=full&geometries=geojson&annotations=true`;
+
+        const response = await fetch(url);
+        if (!response.ok) {
+            allSnapped.push(...chunk);
+            chunk.forEach((p) => fullRoadPath.push([p.lat, p.lng]));
+            continue;
+        }
+
+        const data = await response.json();
+
+        if (data.code === "Ok") {
+            if (data.tracepoints) {
+                chunk.forEach((point, index) => {
+                    const tracePoint = data.tracepoints[index];
+                    if (tracePoint?.location) {
+                        allSnapped.push({
+                            ...point,
+                            lat: tracePoint.location[1],
+                            lng: tracePoint.location[0],
+                        });
+                    } else {
+                        allSnapped.push(point);
+                    }
+                });
+            }
+
+            if (data.matchings?.[0]?.geometry?.coordinates) {
+                data.matchings[0].geometry.coordinates.forEach((coordinate: [number, number]) => {
+                    fullRoadPath.push([coordinate[1], coordinate[0]]);
+                });
+            }
+        } else {
+            allSnapped.push(...chunk);
+            chunk.forEach((p) => fullRoadPath.push([p.lat, p.lng]));
+        }
+    }
+
+    return {
+        snappedPoints: allSnapped.filter(
+            (point, index, self) => index === self.findIndex((candidate) => candidate.timestamp === point.timestamp),
+        ),
+        roadGeometry: fullRoadPath.filter(
+            (point, index, self) => index === 0 || point[0] !== self[index - 1][0] || point[1] !== self[index - 1][1],
+        ),
+    };
+};
+
+const buildTripOptionKey = (trip: { startTime: string; endTime: string }, index: number) =>
+    `${trip.startTime}|${trip.endTime}|${index}`;
+
 const TravelPlaybackInline: React.FC<TravelPlaybackInlineProps> = ({
     vehicleId,
     vehicleNumber,
@@ -53,32 +161,56 @@ const TravelPlaybackInline: React.FC<TravelPlaybackInlineProps> = ({
     onClose,
     metadata,
     initialDay,
-    isTripPlayback = false
+    tripDayGroups = [],
+    initialTripRange = null,
 }) => {
+    const [isPendingSelection, startSelectionTransition] = useTransition();
     const [currentIndex, setCurrentIndex] = useState(0);
     const [isPlaying, setIsPlaying] = useState(false);
     const [playbackSpeed, setPlaybackSpeed] = useState(1);
     const [followVehicle, setFollowVehicle] = useState(true);
-    const [selectedDay, setSelectedDay] = useState<string | null>(initialDay || null);
+    const [selectedDay, setSelectedDay] = useState<string | null>(initialTripRange?.dayKey || initialDay || null);
+    const [displayedDay, setDisplayedDay] = useState<string | null>(initialTripRange?.dayKey || initialDay || null);
+    const [selectionMode, setSelectionMode] = useState<"full" | "day" | "trip">(
+        initialTripRange ? "trip" : initialDay ? "day" : "full",
+    );
+    const [selectedTripKey, setSelectedTripKey] = useState<string | null>(initialTripRange?.tripKey || null);
     const [animatedPos, setAnimatedPos] = useState<{ lat: number; lng: number; heading: number } | null>(null);
+    const [isSwitchingDay, setIsSwitchingDay] = useState(false);
 
     const leafletMapRef = useRef<L.Map | null>(null);
     const animationFrameRef = useRef<number | null>(null);
     const lastIndexRef = useRef(0);
+    const snapCacheRef = useRef<Map<string, SnappedRouteData>>(new Map());
+    const switchRequestRef = useRef(0);
 
     useEffect(() => {
         // Reset state for new playback session (new range or vehicle)
         setCurrentIndex(0);
         setIsPlaying(false);
         setAnimatedPos(null);
+        setIsSwitchingDay(false);
+        setDisplayedDay(initialTripRange?.dayKey || initialDay || null);
+        setSnappedPoints([]);
+        setRoadGeometry([]);
+        setIsSnapping(false);
+        switchRequestRef.current += 1;
         if (lastIndexRef.current !== undefined) lastIndexRef.current = 0;
 
-        if (initialDay) {
+        if (initialTripRange) {
+            setSelectedDay(initialTripRange.dayKey || initialDay || null);
+            setSelectedTripKey(initialTripRange.tripKey || null);
+            setSelectionMode("trip");
+        } else if (initialDay) {
             setSelectedDay(initialDay);
+            setSelectedTripKey(null);
+            setSelectionMode("day");
         } else {
             setSelectedDay(null);
+            setSelectedTripKey(null);
+            setSelectionMode("full");
         }
-    }, [initialDay, from, to, vehicleId]);
+    }, [initialDay, initialTripRange, from, to, vehicleId]);
 
     const [visibleStatuses, setVisibleStatuses] = useState<Set<string>>(new Set(['stopped', 'idle', 'arrows', 'turns']));
 
@@ -119,88 +251,152 @@ const TravelPlaybackInline: React.FC<TravelPlaybackInlineProps> = ({
     const [roadGeometry, setRoadGeometry] = useState<[number, number][]>([])
     const [isSnapping, setIsSnapping] = useState(false)
 
-    const rawDayPoints = useMemo<HistoryPoint[]>(() => {
+    const pointsByDay = useMemo(() => {
+        const grouped = new Map<string, HistoryPoint[]>();
+        points.forEach((point) => {
+            const dayKey = new Date(point.timestamp).toLocaleDateString("en-CA");
+            const existing = grouped.get(dayKey) || [];
+            existing.push(point);
+            grouped.set(dayKey, existing);
+        });
+        return grouped;
+    }, [points]);
+
+    const targetRawDayPoints = useMemo<HistoryPoint[]>(() => {
         if (!selectedDay) return points;
-        return points.filter((p) => new Date(p.timestamp).toLocaleDateString("en-CA") === selectedDay);
-    }, [points, selectedDay]);
+        return pointsByDay.get(selectedDay) || [];
+    }, [points, pointsByDay, selectedDay]);
 
-    // OSRM Road Snapping Logic
+    const displayedRawDayPoints = useMemo<HistoryPoint[]>(() => {
+        if (!displayedDay) return points;
+        return pointsByDay.get(displayedDay) || [];
+    }, [points, pointsByDay, displayedDay]);
+
+    const tripGroupsByDay = useMemo(() => {
+        return new Map(tripDayGroups.map((group) => [group.key, group]));
+    }, [tripDayGroups]);
+
+    const selectedDayGroup = useMemo(() => {
+        if (!selectedDay) return null;
+        return tripGroupsByDay.get(selectedDay) || null;
+    }, [selectedDay, tripGroupsByDay]);
+
+    const selectedDayTripOptions = useMemo(() => {
+        if (!selectedDayGroup?.trips?.length) return [];
+        return selectedDayGroup.trips.map((trip, index) => ({
+            key: buildTripOptionKey(trip, index),
+            label: `Trip ${index + 1} — ${new Date(trip.startTime).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })} to ${new Date(trip.endTime).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })}`,
+            trip,
+        }));
+    }, [selectedDayGroup]);
+
+    const selectedTripOption = useMemo(() => {
+        if (!selectedTripKey) return null;
+        return selectedDayTripOptions.find((option) => option.key === selectedTripKey) || null;
+    }, [selectedTripKey, selectedDayTripOptions]);
+
     useEffect(() => {
-        const snapToRoads = async () => {
-            if (rawDayPoints.length < 2) {
-                setSnappedPoints(rawDayPoints);
-                setRoadGeometry(rawDayPoints.map(p => [p.lat, p.lng]));
-                return;
-            }
+        if (selectionMode === "trip" && selectedTripKey && !selectedTripOption) {
+            setSelectedTripKey(null);
+            setSelectionMode(selectedDay ? "day" : "full");
+        }
+    }, [selectionMode, selectedTripKey, selectedTripOption, selectedDay]);
 
-            setIsSnapping(true);
+    useEffect(() => {
+        if (!vehicleId) {
+            setSnappedPoints([]);
+            setRoadGeometry([]);
+            setDisplayedDay(selectedDay);
+            setIsSnapping(false);
+            setIsSwitchingDay(false);
+            return;
+        }
+
+        const cacheKey = `${vehicleId}|${from}|${to}|${selectedDay || "__all__"}`;
+        const cachedRoute = snapCacheRef.current.get(cacheKey);
+        const nextRawPoints = targetRawDayPoints;
+
+        if (cachedRoute) {
+            setDisplayedDay(selectedDay);
+            setSnappedPoints(cachedRoute.snappedPoints);
+            setRoadGeometry(cachedRoute.roadGeometry);
+            setIsSnapping(false);
+            setIsSwitchingDay(false);
+            return;
+        }
+
+        const requestId = Date.now();
+        switchRequestRef.current = requestId;
+        setIsSwitchingDay(displayedDay !== selectedDay);
+
+        if (nextRawPoints.length < 2) {
+            const immediateResult = {
+                snappedPoints: nextRawPoints,
+                roadGeometry: nextRawPoints.map((point) => [point.lat, point.lng] as [number, number]),
+            };
+            snapCacheRef.current.set(cacheKey, immediateResult);
+            setDisplayedDay(selectedDay);
+            setSnappedPoints(immediateResult.snappedPoints);
+            setRoadGeometry(immediateResult.roadGeometry);
+            setIsSnapping(false);
+            setIsSwitchingDay(false);
+            return;
+        }
+
+        let cancelled = false;
+        setIsSnapping(true);
+
+        const loadSnappedRoute = async () => {
             try {
-                const chunkSize = 40;
-                const chunks = [];
-                for (let i = 0; i < rawDayPoints.length; i += chunkSize) {
-                    chunks.push(rawDayPoints.slice(i, i + chunkSize + 1));
-                }
+                const snappedRoute = await snapHistoryPointsToRoads(nextRawPoints);
+                if (cancelled || switchRequestRef.current !== requestId) return;
 
-                const allSnapped: HistoryPoint[] = [];
-                const fullRoadPath: [number, number][] = [];
+                snapCacheRef.current.set(cacheKey, snappedRoute);
+                setDisplayedDay(selectedDay);
+                setSnappedPoints(snappedRoute.snappedPoints);
+                setRoadGeometry(snappedRoute.roadGeometry);
+            } catch (error) {
+                console.error("Snapping failed:", error);
+                if (cancelled || switchRequestRef.current !== requestId) return;
 
-                for (const chunk of chunks) {
-                    const coords = chunk.map(p => `${p.lng},${p.lat}`).join(';');
-                    const url = `https://router.project-osrm.org/match/v1/driving/${coords}?overview=full&geometries=geojson&annotations=true`;
-
-                    const res = await fetch(url);
-                    if (!res.ok) {
-                        allSnapped.push(...chunk);
-                        chunk.forEach(p => fullRoadPath.push([p.lat, p.lng]));
-                        continue;
-                    }
-                    const data = await res.json();
-
-                    if (data.code === 'Ok') {
-                        // 1. Capture Tracepoints (for markers)
-                        if (data.tracepoints) {
-                            chunk.forEach((p, idx) => {
-                                const tp = data.tracepoints[idx];
-                                if (tp && tp.location) {
-                                    allSnapped.push({ ...p, lat: tp.location[1], lng: tp.location[0] });
-                                } else {
-                                    allSnapped.push(p);
-                                }
-                            });
-                        }
-
-                        // 2. Capture High-Res Path (for smoothness)
-                        if (data.matchings && data.matchings[0].geometry) {
-                            const coords = data.matchings[0].geometry.coordinates;
-                            coords.forEach((c: any) => fullRoadPath.push([c[1], c[0]]));
-                        }
-                    } else {
-                        allSnapped.push(...chunk);
-                        chunk.forEach(p => fullRoadPath.push([p.lat, p.lng]));
-                    }
-                }
-
-                setSnappedPoints(allSnapped.filter((p, i, self) => i === self.findIndex((t) => t.timestamp === p.timestamp)));
-
-                // Deduplicate consecutive identical points in road geometry
-                const cleanGeometry = fullRoadPath.filter((p, i, self) =>
-                    i === 0 || (p[0] !== self[i - 1][0] || p[1] !== self[i - 1][1])
-                );
-                setRoadGeometry(cleanGeometry);
-
-            } catch (err) {
-                console.error("Snapping failed:", err);
-                setSnappedPoints(rawDayPoints);
-                setRoadGeometry(rawDayPoints.map(p => [p.lat, p.lng]));
+                const fallbackRoute = {
+                    snappedPoints: nextRawPoints,
+                    roadGeometry: nextRawPoints.map((point) => [point.lat, point.lng] as [number, number]),
+                };
+                snapCacheRef.current.set(cacheKey, fallbackRoute);
+                setDisplayedDay(selectedDay);
+                setSnappedPoints(fallbackRoute.snappedPoints);
+                setRoadGeometry(fallbackRoute.roadGeometry);
             } finally {
-                setIsSnapping(false);
+                if (!cancelled && switchRequestRef.current === requestId) {
+                    setIsSnapping(false);
+                    setIsSwitchingDay(false);
+                }
             }
         };
 
-        snapToRoads();
-    }, [rawDayPoints]);
+        void loadSnappedRoute();
 
-    const activeDayPoints = snappedPoints.length > 0 ? snappedPoints : rawDayPoints;
+        return () => {
+            cancelled = true;
+        };
+    }, [vehicleId, from, to, selectedDay, targetRawDayPoints, displayedDay]);
+
+    const basePlaybackPoints = snappedPoints.length > 0 ? snappedPoints : displayedRawDayPoints;
+
+    const activeDayPoints = useMemo(() => {
+        if (selectionMode !== "trip" || !selectedTripOption?.trip) {
+            return basePlaybackPoints;
+        }
+
+        const tripStart = new Date(selectedTripOption.trip.startTime).getTime();
+        const tripEnd = new Date(selectedTripOption.trip.endTime).getTime();
+
+        return basePlaybackPoints.filter((point) => {
+            const pointTime = new Date(point.timestamp).getTime();
+            return pointTime >= tripStart && pointTime <= tripEnd;
+        });
+    }, [basePlaybackPoints, selectionMode, selectedTripOption]);
 
     const currentPoint = activeDayPoints[Math.min(currentIndex, activeDayPoints.length - 1)] ?? null;
 
@@ -325,19 +521,19 @@ const TravelPlaybackInline: React.FC<TravelPlaybackInlineProps> = ({
         return () => clearInterval(timer);
     }, [isPlaying, playbackSpeed, activeDayPoints.length]);
 
-    // Reset when day changes
+    // Reset once the displayed route actually changes
     useEffect(() => {
         setIsPlaying(false);
         setCurrentIndex(0);
         lastIndexRef.current = 0;
         if (activeDayPoints.length > 0) {
-            setAnimatedPos({ lat: activeDayPoints[0].lat, lng: activeDayPoints[0].lng });
+            setAnimatedPos({ lat: activeDayPoints[0].lat, lng: activeDayPoints[0].lng, heading: activeDayPoints[0].heading || 0 });
             if (leafletMapRef.current) {
                 const bounds = activeDayPoints.map(p => [p.lat, p.lng] as [number, number]);
                 leafletMapRef.current.fitBounds(bounds, { padding: [20, 20] });
             }
         }
-    }, [selectedDay, activeDayPoints]);
+    }, [displayedDay, activeDayPoints]);
 
     const zoomToRoute = () => {
         if (!leafletMapRef.current || activeDayPoints.length === 0) return;
@@ -348,6 +544,31 @@ const TravelPlaybackInline: React.FC<TravelPlaybackInlineProps> = ({
         const idx = Math.floor((val / 100) * (activeDayPoints.length - 1));
         setIsPlaying(false);
         setCurrentIndex(idx);
+    };
+
+    const handleDaySelection = (day: string | null) => {
+        if (day === selectedDay) return;
+        startSelectionTransition(() => {
+            setSelectedDay(day);
+            setSelectedTripKey(null);
+            setSelectionMode(day ? "day" : "full");
+            if (day !== displayedDay) {
+                setIsSwitchingDay(true);
+            }
+        });
+    };
+
+    const handleTripSelection = (value: string) => {
+        startSelectionTransition(() => {
+            if (value === "__day__") {
+                setSelectedTripKey(null);
+                setSelectionMode(selectedDay ? "day" : "full");
+                return;
+            }
+
+            setSelectedTripKey(value);
+            setSelectionMode("trip");
+        });
     };
 
     const formatSeconds = (sec: number) => {
@@ -545,9 +766,16 @@ const TravelPlaybackInline: React.FC<TravelPlaybackInlineProps> = ({
 
                         {/* Date Tabs */}
                         {days.length > 1 && (
-                            <div className="flex items-center gap-1.5 ml-auto overflow-x-auto scrollbar-none py-1">
+                            <div className="ml-auto flex items-center gap-2 overflow-x-auto scrollbar-none py-1">
+                                {(isSwitchingDay || isPendingSelection) && (
+                                    <div className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.14em] text-blue-600">
+                                        <Loader2 size={10} className="animate-spin" />
+                                        Switching playback...
+                                    </div>
+                                )}
+                                <div className="flex items-center gap-1.5">
                                 <button
-                                    onClick={() => setSelectedDay(null)}
+                                    onClick={() => handleDaySelection(null)}
                                     className={`px-3 py-1 text-[10px] font-bold rounded-full border transition-all ${!selectedDay ? 'bg-blue-600 border-blue-600 text-white shadow-sm' : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'}`}
                                 >
                                     All days
@@ -555,12 +783,31 @@ const TravelPlaybackInline: React.FC<TravelPlaybackInlineProps> = ({
                                 {days.map(day => (
                                     <button
                                         key={day}
-                                        onClick={() => setSelectedDay(day)}
+                                        onClick={() => handleDaySelection(day)}
                                         className={`px-3 py-1 text-[10px] font-bold rounded-full border transition-all whitespace-nowrap ${selectedDay === day ? 'bg-blue-600 border-blue-600 text-white shadow-sm' : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'}`}
                                     >
                                         {new Date(day + "T00:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "short" })}
                                     </button>
                                 ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {selectedDay && selectedDayTripOptions.length > 1 && (
+                            <div className="flex min-w-[240px] items-center gap-2">
+                                <span className="text-[9px] font-black uppercase tracking-[0.16em] text-gray-400">Trip</span>
+                                <select
+                                    value={selectionMode === "trip" && selectedTripKey ? selectedTripKey : "__day__"}
+                                    onChange={(event) => handleTripSelection(event.target.value)}
+                                    className="h-9 min-w-[230px] rounded-lg border border-gray-200 bg-white px-3 text-[10px] font-bold text-gray-700 shadow-sm outline-none transition focus:border-blue-300"
+                                >
+                                    <option value="__day__">All trips of selected day</option>
+                                    {selectedDayTripOptions.map((option) => (
+                                        <option key={option.key} value={option.key}>
+                                            {option.label}
+                                        </option>
+                                    ))}
+                                </select>
                             </div>
                         )}
                     </div>
@@ -589,6 +836,14 @@ const TravelPlaybackInline: React.FC<TravelPlaybackInlineProps> = ({
 
                     {/* Map Area */}
                     <div className="flex-1 relative bg-gray-100 h-[400px]">
+                        {(isSwitchingDay || isSnapping || isPendingSelection) && (
+                            <div className="pointer-events-none absolute inset-0 z-[350] flex items-start justify-center bg-white/18 backdrop-blur-[1.5px]">
+                                <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-white/80 bg-white/95 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-slate-700 shadow-sm">
+                                    <Loader2 size={12} className="animate-spin text-blue-600" />
+                                    {isSwitchingDay ? "Switching playback..." : isPendingSelection ? "Updating selection..." : "Refreshing route..."}
+                                </div>
+                            </div>
+                        )}
                         <MapContainer
                             center={routePositions[0] || [20.5, 78.9]}
                             zoom={12}
@@ -815,7 +1070,7 @@ const TravelPlaybackInline: React.FC<TravelPlaybackInlineProps> = ({
                     </div>
 
                     {/* Trip Summary (When playing specific range) */}
-                    {isTripPlayback && (
+                    {selectionMode === "trip" && (
                         <div className="px-5 py-6 bg-[#0f172a] text-white border-b border-white/5 relative overflow-hidden group">
                             {/* Decorative background element */}
                             <div className="absolute -right-4 -top-4 w-24 h-24 bg-[#2f8d35]/10 rounded-full blur-2xl group-hover:bg-[#2f8d35]/20 transition-all duration-700"></div>

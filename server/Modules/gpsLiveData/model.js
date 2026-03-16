@@ -103,6 +103,12 @@ const gpsLiveDataSchema = {
   },
 
   currentLocation: String, // Reverse geocoded address
+  poi: String,
+  poiId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "POI",
+    default: null,
+  },
 
   // GPS Quality
   gpsFixed: {

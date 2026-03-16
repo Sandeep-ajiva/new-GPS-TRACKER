@@ -36,7 +36,7 @@ export const gpsHistoryApi = baseApi.injectEndpoints({
             }),
             providesTags: ["History"],
         }),
-        getGpsHistory: builder.query<{ data: { points: Array<{ latitude: number; longitude: number; speed: number; heading: number | null; gpsTimestamp: string; ignitionStatus: boolean; odometer: number; address?: string }> } }, { vehicleId: string; from: string; to: string }>({
+        getGpsHistory: builder.query<{ data: { points: Array<{ latitude: number; longitude: number; speed: number; heading: number | null; gpsTimestamp: string; ignitionStatus: boolean; odometer: number; address?: string; poi?: string }> } }, { vehicleId: string; from: string; to: string }>({
             query: ({ vehicleId, from, to }) => ({
                 url: `/gps-history/playback/${vehicleId}`,
                 params: { from, to },

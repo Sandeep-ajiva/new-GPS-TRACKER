@@ -106,6 +106,22 @@ const toLocationText = (value: unknown): string => {
   return ""
 }
 
+const serializeLocationValue = (value: unknown): string => {
+  if (!value) return ""
+  if (typeof value === "string") return value.trim()
+  try {
+    return JSON.stringify(value)
+  } catch {
+    return ""
+  }
+}
+
+const formatCoordinateText = (latitude?: number | null, longitude?: number | null): string => {
+  if (typeof latitude !== "number" || typeof longitude !== "number") return ""
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return ""
+  return `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`
+}
+
 export default function DashboardPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -211,7 +227,9 @@ export default function DashboardPage() {
         prevValue.speed === nextValue.speed &&
         prevValue.movementStatus === nextValue.movementStatus &&
         prevValue.ignitionStatus === nextValue.ignitionStatus &&
-        prevValue.ignition === nextValue.ignition
+        prevValue.ignition === nextValue.ignition &&
+        serializeLocationValue(prevValue.currentLocation) === serializeLocationValue(nextValue.currentLocation) &&
+        (prevValue.poi || "") === (nextValue.poi || "")
       ) {
         return prev
       }
@@ -261,7 +279,9 @@ export default function DashboardPage() {
           prevValue.speed === item.speed &&
           prevValue.movementStatus === item.movementStatus &&
           prevValue.ignitionStatus === item.ignitionStatus &&
-          prevValue.ignition === item.ignition
+          prevValue.ignition === item.ignition &&
+          serializeLocationValue(prevValue.currentLocation) === serializeLocationValue(item.currentLocation) &&
+          (prevValue.poi || "") === (item.poi || "")
         ) {
           return
         }
@@ -382,11 +402,26 @@ export default function DashboardPage() {
 
         const power = Boolean(live?.mainPowerStatus ?? ignition)
         const ac = Boolean(live?.acStatus && ignition) // AC can only be ON when ignition is ON
+        const coordinateLocation = hasLivePosition
+          ? formatCoordinateText(lat as number, lng as number)
+          : hasVehiclePosition
+            ? formatCoordinateText(
+              vehicle.currentLocation.latitude,
+              vehicle.currentLocation.longitude,
+            )
+            : ""
+        const hasResolvedPoi =
+          (live ? Object.prototype.hasOwnProperty.call(live, "poi") : false) ||
+          Object.prototype.hasOwnProperty.call(vehicle || {}, "poi")
+        const resolvedPoi =
+          pickFirstString(live?.poi, vehicle.poi) ||
+          ((hasLivePosition || hasVehiclePosition) ? (hasResolvedPoi ? "-" : "Resolving POI...") : "-")
         const location =
           toLocationText(live?.currentLocation) ||
-          toLocationText(vehicle?.currentLocation?.address) ||
+          toLocationText(vehicle?.currentLocation) ||
           prevLocationMap.get(vehicle._id) ||
-          "Unknown"
+          coordinateLocation ||
+          (hasLivePosition || hasVehiclePosition ? "Resolving address..." : "Unknown")
         const dateSource = live?.updatedAt || live?.gpsTimestamp || vehicle.updatedAt
         const date = dateSource
           ? new Date(dateSource).toLocaleString("en-GB").replace(",", "")
@@ -481,7 +516,7 @@ export default function DashboardPage() {
           pw: power,
           gps: hasLivePosition || hasVehiclePosition,
           location,
-          poi: live?.poi || vehicle.poi || "-",
+          poi: resolvedPoi,
           route,
           batteryVoltage: live?.internalBatteryVoltage ?? null,
           batteryPercent: live?.batteryLevel ?? null,
@@ -580,8 +615,14 @@ export default function DashboardPage() {
           ac: Boolean(live.acStatus && ignition), // AC can only be ON when ignition is ON
           pw: Boolean(live.mainPowerStatus ?? ignition),
           gps: true,
-          location: toLocationText(live.currentLocation) || prevLocationMap.get(rowId) || "Unknown",
-          poi: "-",
+          location:
+            toLocationText(live.currentLocation) ||
+            prevLocationMap.get(rowId) ||
+            formatCoordinateText(lat as number, lng as number) ||
+            "Resolving address...",
+          poi:
+            pickFirstString(live.poi) ||
+            (Object.prototype.hasOwnProperty.call(live, "poi") ? "-" : "Resolving POI..."),
           route,
           batteryVoltage: live?.internalBatteryVoltage ?? null,
           batteryPercent: live?.batteryLevel ?? null,
@@ -612,6 +653,7 @@ export default function DashboardPage() {
             prevVehicle.date === nextVehicle.date &&
             prevVehicle.gps === nextVehicle.gps &&
             prevVehicle.location === nextVehicle.location &&
+            prevVehicle.poi === nextVehicle.poi &&
             prevLast?.lat === nextLast?.lat &&
             prevLast?.lng === nextLast?.lng &&
             prevVehicle.route.length === nextVehicle.route.length
