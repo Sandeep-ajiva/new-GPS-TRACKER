@@ -2,6 +2,7 @@ const GpsDevice = require("./model");
 const Validator = require("../../helpers/validators");
 const mongoose = require("mongoose");
 const paginate = require("../../helpers/limitoffset");
+const { cleanupForGpsDeviceDeletion } = require("../../common/mappingCleanup");
 const {
   attachInventorySnapshot,
   buildInventoryFilter,
@@ -342,7 +343,7 @@ exports.update = async (req, res) => {
 
     // 🔐 ORG SCOPE FIX
     const orgFilter = req.orgScope === "ALL" ? {} : { organizationId: { $in: req.orgScope } };
-    const device = await GpsDevice.findOne({ _id: req.params.id, ...orgFilter });
+    const device = await GpsDevice.findOne({ _id: req.params.id, ...orgFilter }).session(session);
 
     if (!device) {
       return res.status(404).json({
@@ -596,29 +597,42 @@ exports.getAvailable = async (req, res) => {
 /* -------------------------------------------------------------------------- */
 
 exports.delete = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
   try {
     // 🔐 ORG SCOPE FIX
     const orgFilter = req.orgScope === "ALL" ? {} : { organizationId: { $in: req.orgScope } };
-    const device = await GpsDevice.findOne({ _id: req.params.id, ...orgFilter });
+    const device = await GpsDevice.findOne({ _id: req.params.id, ...orgFilter }).session(session);
 
     if (!device) {
+      if (session.inTransaction()) {
+        await session.abortTransaction();
+      }
       return res.status(404).json({
         status: false,
         message: "GPS Device not found or access denied",
       });
     }
 
-    await device.deleteOne();
+    await cleanupForGpsDeviceDeletion(device, session);
+    await device.deleteOne({ session });
+    await session.commitTransaction();
 
     return res.json({
       status: true,
       message: "GPS Device deleted successfully",
     });
   } catch (error) {
+    if (session.inTransaction()) {
+      await session.abortTransaction();
+    }
     console.error("Delete GPS Device Error:", error);
     return res.status(500).json({
       status: false,
       message: error.message || "Internal server error",
     });
+  } finally {
+    session.endSession();
   }
 };

@@ -1,5 +1,9 @@
 const Organization = require("./model");
 const User = require("../users/model");
+const Vehicle = require("../vehicle/model");
+const Device = require("../gpsDevice/model");
+const Driver = require("../drivers/model");
+const VehicleMapping = require("../deviceMapping/model");
 const Validator = require("../../helpers/validators");
 const paginate = require("../../helpers/limitoffset");
 const bcrypt = require("bcryptjs");
@@ -359,8 +363,16 @@ exports.getAll = async (req, res) => {
 exports.getById = async (req, res) => {
   try {
     // 🔐 ORG SCOPE FIX
-    const orgFilter = req.orgScope === "ALL" ? {} : { _id: { $in: req.orgScope } };
-    const organization = await Organization.findOne({ _id: req.params.id, ...orgFilter });
+    const organizationQuery =
+      req.orgScope === "ALL"
+        ? { _id: req.params.id }
+        : {
+            $and: [
+              { _id: req.params.id },
+              { _id: { $in: req.orgScope } },
+            ],
+          };
+    const organization = await Organization.findOne(organizationQuery);
 
     if (!organization) {
       return res
@@ -385,8 +397,16 @@ exports.getById = async (req, res) => {
 exports.update = async (req, res) => {
   try {
     // 🔐 ORG SCOPE FIX
-    const orgFilter = req.orgScope === "ALL" ? {} : { _id: { $in: req.orgScope } };
-    const organization = await Organization.findOne({ _id: req.params.id, ...orgFilter });
+    const organizationQuery =
+      req.orgScope === "ALL"
+        ? { _id: req.params.id }
+        : {
+            $and: [
+              { _id: req.params.id },
+              { _id: { $in: req.orgScope } },
+            ],
+          };
+    const organization = await Organization.findOne(organizationQuery);
 
     if (!organization) {
       return res
@@ -472,15 +492,17 @@ exports.update = async (req, res) => {
 
 exports.delete = async (req, res) => {
   try {
-    const orgFilter =
+    const organizationQuery =
       req.orgScope === "ALL"
-        ? {}
-        : { _id: { $in: req.orgScope } };
+        ? { _id: req.params.id }
+        : {
+            $and: [
+              { _id: req.params.id },
+              { _id: { $in: req.orgScope } },
+            ],
+          };
 
-    const organization = await Organization.findOne({
-      _id: req.params.id,
-      ...orgFilter,
-    });
+    const organization = await Organization.findOne(organizationQuery);
 
     if (!organization) {
       return res.status(404).json({

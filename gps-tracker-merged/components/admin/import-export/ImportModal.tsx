@@ -23,6 +23,7 @@ import { generateSampleFile } from "@/utils/sampleFileGenerator";
 import { parseImportFile, type ParsedImportFile } from "@/utils/importExport/fileParser";
 import {
   IMPORT_ACCEPT_ATTRIBUTE,
+  IMPORT_MODULE_GUIDES,
   MAX_IMPORT_FILE_SIZE_BYTES,
   MAX_IMPORT_FILE_SIZE_LABEL,
 } from "@/utils/importExport/contracts";
@@ -79,6 +80,13 @@ function normalizeKey(value: string) {
 
 function normalizeValue(value: string | undefined) {
   return String(value || "").trim().toLowerCase();
+}
+
+function formatModuleLabel(moduleName: string) {
+  return moduleName
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/[-_]+/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 function buildDefaultMapping(columns: string[], allowedFields: string[]) {
@@ -178,6 +186,28 @@ function validatePreviewRows(
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) addIssue("email", "email must be valid");
       if (!/^\+?[1-9]\d{7,14}$/.test(phone)) addIssue("phone", "phone must be a valid international number");
       if (!USER_STATUS.has(status)) addIssue("status", "status must be one of active, inactive");
+    }
+
+    if (moduleName === "deviceMapping") {
+      const vehicleNumber = getMappedValue(row, "vehicleNumber");
+      const imei = getMappedValue(row, "imei");
+
+      if (!vehicleNumber) addIssue("vehicleNumber", "vehicleNumber is required");
+      if (!imei) {
+        addIssue("imei", "imei is required");
+      } else if (!/^\d{15}$/.test(imei)) {
+        addIssue("imei", "IMEI must be exactly 15 digits");
+      }
+    }
+
+    if (moduleName === "driverMapping") {
+      const vehicleNumber = getMappedValue(row, "vehicleNumber");
+      const driverEmail = getMappedValue(row, "driverEmail");
+
+      if (!vehicleNumber) addIssue("vehicleNumber", "vehicleNumber is required");
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(driverEmail)) {
+        addIssue("driverEmail", "driverEmail must be valid");
+      }
     }
   });
 
@@ -288,6 +318,8 @@ export default function ImportModal({
   const previewScrollRef = useRef<HTMLDivElement>(null);
 
   const organizations = useMemo(() => organizationResponse?.data || [], [organizationResponse]);
+  const moduleLabel = useMemo(() => formatModuleLabel(moduleName), [moduleName]);
+  const moduleGuide = useMemo(() => IMPORT_MODULE_GUIDES[moduleName], [moduleName]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -428,6 +460,30 @@ export default function ImportModal({
         mappingLabel: "Mapping Ready",
         mappingReady: null,
         mappingMessage: "No separate mapping step is required beyond the driver and linked user-account fields.",
+      };
+    }
+
+    if (moduleName === "deviceMapping") {
+      return {
+        importReady,
+        importMessage: importReady
+          ? `Device mapping import ready. Required fields matched: ${matchedRequiredFields}.`
+          : `Device mapping import not ready. Required fields still missing: ${missingRequiredMessage}.`,
+        mappingLabel: "Entity Resolution Ready",
+        mappingReady: null,
+        mappingMessage: "Each row will resolve vehicleNumber to a vehicle and imei to a GPS device inside the selected organization scope.",
+      };
+    }
+
+    if (moduleName === "driverMapping") {
+      return {
+        importReady,
+        importMessage: importReady
+          ? `Driver mapping import ready. Required fields matched: ${matchedRequiredFields}.`
+          : `Driver mapping import not ready. Required fields still missing: ${missingRequiredMessage}.`,
+        mappingLabel: "Entity Resolution Ready",
+        mappingReady: null,
+        mappingMessage: "Each row will resolve vehicleNumber to a vehicle and driverEmail to a driver inside the selected organization scope.",
       };
     }
 
@@ -573,7 +629,7 @@ export default function ImportModal({
         <div className="sticky top-0 z-20 border-b border-slate-200 bg-white px-5 py-3">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h3 className="text-lg font-black text-slate-900">Import / Export {moduleName}</h3>
+              <h3 className="text-lg font-black text-slate-900">Import / Export {moduleLabel}</h3>
               <p className="mt-1 text-xs text-slate-500">Upload CSV or Excel files, map columns, and import data safely.</p>
             </div>
             <button type="button" onClick={closeModal} className="rounded-full border border-slate-200 p-2 text-slate-500 hover:bg-slate-100">
@@ -646,6 +702,7 @@ export default function ImportModal({
               <div className="space-y-5">
                 <div className="grid gap-4 xl:grid-cols-[1.6fr,0.9fr]">
                   <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-4">
                     <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                     <p className="text-sm font-black text-slate-900">Upload File</p>
                     <div className="mt-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
@@ -673,58 +730,91 @@ export default function ImportModal({
                       </div>
                     )}
                     </div>
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                      <p className="mb-2 text-[11px] font-black uppercase tracking-wide text-slate-500">Validation Summary</p>
+                      <ValidationSummary totalRows={parsedFile?.totalRows ?? 0} validRows={previewValidRows} invalidRows={invalidRowIds.size} duplicateCount={0} missingRequiredFields={missingRequiredFields} />
+                      {parsedFile && readinessState && (
+                        <div className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                          <div className="space-y-2">
+                            <div className="grid gap-2 sm:grid-cols-2">
+                              <div className={`rounded-xl border px-3 py-2 ${readinessState.importReady ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-rose-200 bg-rose-50 text-rose-700"}`}>
+                                <div className="text-[10px] font-black uppercase tracking-wide">Import Ready</div>
+                                <div className="mt-1 text-[11px] font-semibold">
+                                  {readinessState.importReady ? "Yes" : "No"}
+                                </div>
+                              </div>
+                              <div className={`rounded-xl border px-3 py-2 ${
+                                readinessState.mappingReady === null
+                                  ? "border-slate-200 bg-white text-slate-700"
+                                  : readinessState.mappingReady
+                                    ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                                    : "border-amber-200 bg-amber-50 text-amber-800"
+                              }`}>
+                                <div className="text-[10px] font-black uppercase tracking-wide">{readinessState.mappingLabel}</div>
+                                <div className="mt-1 text-[11px] font-semibold">
+                                  {readinessState.mappingReady === null
+                                    ? "Not separate"
+                                    : readinessState.mappingReady
+                                      ? "Yes"
+                                      : "No"}
+                                </div>
+                              </div>
+                            </div>
+                            <p>{readinessState.importMessage}</p>
+                            <p>{readinessState.mappingMessage}</p>
+                            {missingRequiredFields.length > 0 && (
+                              <p>Add matching columns in the file or map them manually before import.</p>
+                            )}
+                            {ignoredColumns.length > 0 && (
+                              <p>Ignored columns: {ignoredColumns.join(", ")}</p>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    </div>
                     <div className="rounded-2xl border border-slate-200 bg-white p-4">
                       <div className="flex flex-col gap-3">
                         <div className="min-w-0">
                           <p className="text-sm font-black text-slate-900">Templates & Instructions</p>
-                          <p className="mt-1 text-xs text-slate-500">Required columns: {effectiveRequiredFields.join(", ")}</p>
+                          <p className="mt-1 text-xs text-slate-500">
+                            Required columns: {(moduleGuide?.required || effectiveRequiredFields).join(", ")}
+                          </p>
+                          {moduleGuide?.optional?.length ? (
+                            <p className="mt-1 text-xs text-slate-500">
+                              Optional columns: {moduleGuide.optional.join(", ")}
+                            </p>
+                          ) : null}
+                          <p className="mt-1 text-xs text-slate-500">
+                            Mapping fields: {moduleGuide?.mappingFields?.length ? moduleGuide.mappingFields.join(", ") : "none"}
+                          </p>
                         </div>
                         <div className="flex flex-wrap gap-2">
                           <button type="button" onClick={() => void generateSampleFile({ moduleName, allowedFields, requiredFields, format: "csv" })} className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] font-black uppercase tracking-wide text-emerald-800">CSV Template</button>
                           <button type="button" onClick={() => void generateSampleFile({ moduleName, allowedFields, requiredFields, format: "excel" })} className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-[11px] font-black uppercase tracking-wide text-sky-800">Excel Template</button>
                         </div>
-                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                          <p className="mb-2 text-[11px] font-black uppercase tracking-wide text-slate-500">Validation Summary</p>
-                          <ValidationSummary totalRows={parsedFile?.totalRows ?? 0} validRows={previewValidRows} invalidRows={invalidRowIds.size} duplicateCount={0} missingRequiredFields={missingRequiredFields} />
-                          {parsedFile && readinessState && (
-                            <div className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                              <div className="space-y-2">
-                                <div className="grid gap-2 sm:grid-cols-2">
-                                  <div className={`rounded-xl border px-3 py-2 ${readinessState.importReady ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-rose-200 bg-rose-50 text-rose-700"}`}>
-                                    <div className="text-[10px] font-black uppercase tracking-wide">Import Ready</div>
-                                    <div className="mt-1 text-[11px] font-semibold">
-                                      {readinessState.importReady ? "Yes" : "No"}
-                                    </div>
-                                  </div>
-                                  <div className={`rounded-xl border px-3 py-2 ${
-                                    readinessState.mappingReady === null
-                                      ? "border-slate-200 bg-white text-slate-700"
-                                      : readinessState.mappingReady
-                                        ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                                        : "border-amber-200 bg-amber-50 text-amber-800"
-                                  }`}>
-                                    <div className="text-[10px] font-black uppercase tracking-wide">{readinessState.mappingLabel}</div>
-                                    <div className="mt-1 text-[11px] font-semibold">
-                                      {readinessState.mappingReady === null
-                                        ? "Not separate"
-                                        : readinessState.mappingReady
-                                          ? "Yes"
-                                          : "No"}
-                                    </div>
-                                  </div>
-                                </div>
-                                <p>{readinessState.importMessage}</p>
-                                <p>{readinessState.mappingMessage}</p>
-                                {missingRequiredFields.length > 0 && (
-                                  <p>Add matching columns in the file or map them manually before import.</p>
-                                )}
-                                {ignoredColumns.length > 0 && (
-                                  <p>Ignored columns: {ignoredColumns.join(", ")}</p>
-                                )}
+                        {(moduleGuide?.enumFields || moduleGuide?.notes?.length) && (
+                          <div className="rounded-2xl border border-slate-200 bg-white p-3 text-xs text-slate-600">
+                            {moduleGuide?.enumFields && Object.keys(moduleGuide.enumFields).length > 0 && (
+                              <div className="space-y-1">
+                                <p className="font-black uppercase tracking-wide text-slate-500">Allowed values</p>
+                                {Object.entries(moduleGuide.enumFields).map(([field, values]) => (
+                                  <p key={field}>
+                                    <span className="font-semibold text-slate-700">{field}:</span> {values.join(", ")}
+                                  </p>
+                                ))}
                               </div>
-                            </div>
-                          )}
-                        </div>
+                            )}
+                            {moduleGuide?.notes?.length ? (
+                              <div className={moduleGuide?.enumFields && Object.keys(moduleGuide.enumFields).length > 0 ? "mt-3 space-y-1" : "space-y-1"}>
+                                <p className="font-black uppercase tracking-wide text-slate-500">Notes</p>
+                                {moduleGuide.notes.map((note) => (
+                                  <p key={note}>{note}</p>
+                                ))}
+                              </div>
+                            ) : null}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>

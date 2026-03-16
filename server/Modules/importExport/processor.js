@@ -6,6 +6,8 @@ const Organization = require("../organizations/model");
 const Driver = require("../drivers/model");
 const User = require("../users/model");
 const DeviceMapping = require("../deviceMapping/model");
+const VehicleDriverMapping = require("../vehicleDriverMapping/model");
+const { syncInventoryStatus } = require("../gpsDevice/service");
 const { normalizeImportedRow } = require("./validator");
 
 function addError(result, row, field, message, raw = null) {
@@ -716,6 +718,328 @@ async function processVehiclesChunk(rows, req, result, state) {
   }
 }
 
+async function processDeviceMappingsChunk(rows, req, result, state) {
+  if (rows.length === 0) return;
+
+  const dedupedRows = [];
+  for (const item of rows) {
+    const vehicleKey = `${item.data.organizationId}:${item.data.vehicleNumber}`;
+    const deviceKey = `${item.data.organizationId}:${item.data.imei}`;
+
+    if (state.seenDeviceMappingVehicleKeys.has(vehicleKey)) {
+      addDuplicate(result, item.rowNumber, "vehicleNumber", "Duplicate vehicleNumber in file for device mapping", item.raw);
+      continue;
+    }
+
+    if (state.seenDeviceMappingDeviceKeys.has(deviceKey)) {
+      addDuplicate(result, item.rowNumber, "imei", "Duplicate imei in file for device mapping", item.raw);
+      continue;
+    }
+
+    state.seenDeviceMappingVehicleKeys.add(vehicleKey);
+    state.seenDeviceMappingDeviceKeys.add(deviceKey);
+    dedupedRows.push(item);
+  }
+
+  if (dedupedRows.length === 0) return;
+
+  const orgIds = [...new Set(dedupedRows.map((item) => item.data.organizationId))];
+  const vehicleNumbers = [...new Set(dedupedRows.map((item) => item.data.vehicleNumber).filter(Boolean))];
+  const imeis = [...new Set(dedupedRows.map((item) => item.data.imei).filter(Boolean))];
+
+  const vehicles = await Vehicle.find({
+    organizationId: { $in: orgIds },
+    vehicleNumber: { $in: vehicleNumbers },
+  }).select("_id organizationId vehicleNumber deviceId").lean();
+
+  const devices = await GpsDevice.find({
+    imei: { $in: imeis },
+  }).select("_id organizationId imei vehicleId deviceModel status").lean();
+
+  const vehicleByKey = new Map(
+    vehicles.map((vehicle) => [`${vehicle.organizationId}:${vehicle.vehicleNumber}`, vehicle]),
+  );
+  const deviceByImei = new Map(devices.map((device) => [device.imei, device]));
+
+  const activeMappings = await DeviceMapping.find({
+    unassignedAt: null,
+    $or: [
+      { vehicleId: { $in: vehicles.map((vehicle) => vehicle._id) } },
+      { gpsDeviceId: { $in: devices.map((device) => device._id) } },
+    ],
+  }).select("vehicleId gpsDeviceId").lean();
+
+  const activeVehicleIds = new Set(activeMappings.map((mapping) => String(mapping.vehicleId)));
+  const activeDeviceIds = new Set(activeMappings.map((mapping) => String(mapping.gpsDeviceId)));
+
+  const preparedRows = [];
+  for (const item of dedupedRows) {
+    const row = item.data;
+    const vehicle = vehicleByKey.get(`${row.organizationId}:${row.vehicleNumber}`);
+    if (!vehicle) {
+      addError(result, item.rowNumber, "vehicleNumber", "vehicleNumber not found in selected organization", item.raw);
+      continue;
+    }
+
+    const device = deviceByImei.get(row.imei);
+    if (!device) {
+      addError(result, item.rowNumber, "imei", "imei not found", item.raw);
+      continue;
+    }
+
+    if (String(device.organizationId) !== String(row.organizationId)) {
+      addError(result, item.rowNumber, "imei", "imei belongs to a different organization", item.raw);
+      continue;
+    }
+
+    if (device.status !== "active") {
+      addError(result, item.rowNumber, "imei", "Only active GPS devices can be mapped", item.raw);
+      continue;
+    }
+
+    if (vehicle.deviceId || activeVehicleIds.has(String(vehicle._id))) {
+      addDuplicate(result, item.rowNumber, "vehicleNumber", "Vehicle already has an active device mapping", item.raw);
+      continue;
+    }
+
+    if (device.vehicleId || activeDeviceIds.has(String(device._id))) {
+      addDuplicate(result, item.rowNumber, "imei", "Device already has an active vehicle mapping", item.raw);
+      continue;
+    }
+
+    activeVehicleIds.add(String(vehicle._id));
+    activeDeviceIds.add(String(device._id));
+    preparedRows.push({ item, vehicle, device });
+  }
+
+  if (preparedRows.length === 0) return;
+
+  const now = new Date();
+  const session = await mongoose.startSession();
+  try {
+    await session.withTransaction(async () => {
+      await DeviceMapping.insertMany(
+        preparedRows.map(({ vehicle, device }) => ({
+          organizationId: vehicle.organizationId,
+          vehicleId: vehicle._id,
+          gpsDeviceId: device._id,
+          assignedAt: now,
+          unassignedAt: null,
+        })),
+        { ordered: false, session },
+      );
+
+      await Vehicle.bulkWrite(
+        preparedRows.map(({ vehicle, device }) => ({
+          updateOne: {
+            filter: { _id: vehicle._id },
+            update: { $set: { deviceId: device._id, deviceImei: device.imei } },
+          },
+        })),
+        { session },
+      );
+
+      await GpsDevice.bulkWrite(
+        preparedRows.map(({ vehicle, device }) => ({
+          updateOne: {
+            filter: { _id: device._id },
+            update: {
+              $set: {
+                vehicleId: vehicle._id,
+                organizationId: vehicle.organizationId,
+                vehicleRegistrationNumber: vehicle.vehicleNumber,
+              },
+            },
+          },
+        })),
+        { session },
+      );
+
+      for (const { device } of preparedRows) {
+        await syncInventoryStatus(device._id, "assigned", { session });
+      }
+    });
+
+    result.successfulRows += preparedRows.length;
+    result.summary.inserted += preparedRows.length;
+  } catch (error) {
+    if (error?.code === 11000 || error?.writeErrors?.length) {
+      addChunkFailure(
+        result,
+        preparedRows.map((entry) => entry.item),
+        "deviceMapping",
+        "Duplicate active device mapping conflict",
+      );
+      return;
+    }
+
+    addChunkFailure(
+      result,
+      preparedRows.map((entry) => entry.item),
+      "deviceMapping",
+      error?.message || "Device mapping import failed",
+    );
+  } finally {
+    await session.endSession();
+  }
+}
+
+async function processDriverMappingsChunk(rows, req, result, state) {
+  if (rows.length === 0) return;
+
+  const dedupedRows = [];
+  for (const item of rows) {
+    const vehicleKey = `${item.data.organizationId}:${item.data.vehicleNumber}`;
+    const driverKey = `${item.data.organizationId}:${item.data.driverEmail}`;
+
+    if (state.seenDriverMappingVehicleKeys.has(vehicleKey)) {
+      addDuplicate(result, item.rowNumber, "vehicleNumber", "Duplicate vehicleNumber in file for driver mapping", item.raw);
+      continue;
+    }
+
+    if (state.seenDriverMappingDriverKeys.has(driverKey)) {
+      addDuplicate(result, item.rowNumber, "driverEmail", "Duplicate driverEmail in file for driver mapping", item.raw);
+      continue;
+    }
+
+    state.seenDriverMappingVehicleKeys.add(vehicleKey);
+    state.seenDriverMappingDriverKeys.add(driverKey);
+    dedupedRows.push(item);
+  }
+
+  if (dedupedRows.length === 0) return;
+
+  const orgIds = [...new Set(dedupedRows.map((item) => item.data.organizationId))];
+  const vehicleNumbers = [...new Set(dedupedRows.map((item) => item.data.vehicleNumber).filter(Boolean))];
+  const driverEmails = [...new Set(dedupedRows.map((item) => item.data.driverEmail).filter(Boolean))];
+
+  const vehicles = await Vehicle.find({
+    organizationId: { $in: orgIds },
+    vehicleNumber: { $in: vehicleNumbers },
+  }).select("_id organizationId vehicleNumber driverId").lean();
+
+  const drivers = await Driver.find({
+    organizationId: { $in: orgIds },
+    email: { $in: driverEmails },
+  }).select("_id organizationId email firstName lastName licenseNumber assignedVehicleId status").lean();
+
+  const vehicleByKey = new Map(
+    vehicles.map((vehicle) => [`${vehicle.organizationId}:${vehicle.vehicleNumber}`, vehicle]),
+  );
+  const driverByKey = new Map(
+    drivers.map((driver) => [`${driver.organizationId}:${driver.email}`, driver]),
+  );
+
+  const activeMappings = await VehicleDriverMapping.find({
+    unassignedAt: null,
+    status: "assigned",
+    $or: [
+      { vehicleId: { $in: vehicles.map((vehicle) => vehicle._id) } },
+      { driverId: { $in: drivers.map((driver) => driver._id) } },
+    ],
+  }).select("vehicleId driverId").lean();
+
+  const activeVehicleIds = new Set(activeMappings.map((mapping) => String(mapping.vehicleId)));
+  const activeDriverIds = new Set(activeMappings.map((mapping) => String(mapping.driverId)));
+
+  const preparedRows = [];
+  for (const item of dedupedRows) {
+    const row = item.data;
+    const vehicle = vehicleByKey.get(`${row.organizationId}:${row.vehicleNumber}`);
+    if (!vehicle) {
+      addError(result, item.rowNumber, "vehicleNumber", "vehicleNumber not found in selected organization", item.raw);
+      continue;
+    }
+
+    const driver = driverByKey.get(`${row.organizationId}:${row.driverEmail}`);
+    if (!driver) {
+      addError(result, item.rowNumber, "driverEmail", "driverEmail not found in selected organization", item.raw);
+      continue;
+    }
+
+    if (driver.status !== "active") {
+      addError(result, item.rowNumber, "driverEmail", "Only active drivers can be mapped", item.raw);
+      continue;
+    }
+
+    if (vehicle.driverId || activeVehicleIds.has(String(vehicle._id))) {
+      addDuplicate(result, item.rowNumber, "vehicleNumber", "Vehicle already has an active driver mapping", item.raw);
+      continue;
+    }
+
+    if (driver.assignedVehicleId || activeDriverIds.has(String(driver._id))) {
+      addDuplicate(result, item.rowNumber, "driverEmail", "Driver already has an active vehicle mapping", item.raw);
+      continue;
+    }
+
+    activeVehicleIds.add(String(vehicle._id));
+    activeDriverIds.add(String(driver._id));
+    preparedRows.push({ item, vehicle, driver });
+  }
+
+  if (preparedRows.length === 0) return;
+
+  const now = new Date();
+  const session = await mongoose.startSession();
+  try {
+    await session.withTransaction(async () => {
+      await VehicleDriverMapping.insertMany(
+        preparedRows.map(({ vehicle, driver }) => ({
+          organizationId: vehicle.organizationId,
+          vehicleId: vehicle._id,
+          driverId: driver._id,
+          assignedAt: now,
+          unassignedAt: null,
+          status: "assigned",
+        })),
+        { ordered: false, session },
+      );
+
+      await Vehicle.bulkWrite(
+        preparedRows.map(({ vehicle, driver }) => ({
+          updateOne: {
+            filter: { _id: vehicle._id },
+            update: { $set: { driverId: driver._id } },
+          },
+        })),
+        { session },
+      );
+
+      await Driver.bulkWrite(
+        preparedRows.map(({ vehicle, driver }) => ({
+          updateOne: {
+            filter: { _id: driver._id },
+            update: { $set: { assignedVehicleId: vehicle._id } },
+          },
+        })),
+        { session },
+      );
+    });
+
+    result.successfulRows += preparedRows.length;
+    result.summary.inserted += preparedRows.length;
+  } catch (error) {
+    if (error?.code === 11000 || error?.writeErrors?.length) {
+      addChunkFailure(
+        result,
+        preparedRows.map((entry) => entry.item),
+        "driverMapping",
+        "Duplicate active driver mapping conflict",
+      );
+      return;
+    }
+
+    addChunkFailure(
+      result,
+      preparedRows.map((entry) => entry.item),
+      "driverMapping",
+      error?.message || "Driver mapping import failed",
+    );
+  } finally {
+    await session.endSession();
+  }
+}
+
 async function processChunk(entity, rows, req, context, result, state, options) {
   const normalizedRows = await normalizeChunkRows(entity, rows, req, context, result, options);
   if (normalizedRows.length === 0) return;
@@ -738,6 +1062,14 @@ async function processChunk(entity, rows, req, context, result, state, options) 
   }
   if (entity === "vehicles") {
     await processVehiclesChunk(normalizedRows, req, result, state);
+    return;
+  }
+  if (entity === "devicemapping") {
+    await processDeviceMappingsChunk(normalizedRows, req, result, state);
+    return;
+  }
+  if (entity === "drivermapping") {
+    await processDriverMappingsChunk(normalizedRows, req, result, state);
     return;
   }
   throw { status: 400, message: "Unsupported import entity" };

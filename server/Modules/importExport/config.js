@@ -3,6 +3,8 @@ const GpsDevice = require("../gpsDevice/model");
 const Driver = require("../drivers/model");
 const Organization = require("../organizations/model");
 const User = require("../users/model");
+const DeviceMapping = require("../deviceMapping/model");
+const VehicleDriverMapping = require("../vehicleDriverMapping/model");
 
 const ENTITY_CONFIGS = {
   organizations: {
@@ -339,6 +341,75 @@ const ENTITY_CONFIGS = {
         licenseExpiry: doc.licenseExpiry ? new Date(doc.licenseExpiry).toISOString() : "",
         status: doc.status || "",
         createdAt: doc.createdAt ? new Date(doc.createdAt).toISOString() : "",
+      }),
+    },
+  },
+  devicemapping: {
+    entity: "devicemapping",
+    label: "device mapping",
+    importFields: [
+      "vehicleNumber",
+      "imei",
+    ],
+    requiredFields: ["vehicleNumber", "imei"],
+    requiredFieldGroups: [],
+    headerAliases: {
+      vehiclenumber: "vehicleNumber",
+      registrationnumber: "vehicleNumber",
+      registration: "vehicleNumber",
+      platenumber: "vehicleNumber",
+      imei: "imei",
+      deviceimei: "imei",
+    },
+    export: {
+      filename: "device-mapping-export",
+      headers: ["vehicleNumber", "imei", "deviceModel", "mappingDate"],
+      model: DeviceMapping,
+      baseFilter: { unassignedAt: null },
+      populate: [
+        { path: "vehicleId", select: "vehicleNumber organizationId" },
+        { path: "gpsDeviceId", select: "imei deviceModel organizationId" },
+      ],
+      mapDocument: (doc) => ({
+        vehicleNumber: doc.vehicleId?.vehicleNumber || "",
+        imei: doc.gpsDeviceId?.imei || "",
+        deviceModel: doc.gpsDeviceId?.deviceModel || "",
+        mappingDate: doc.assignedAt ? new Date(doc.assignedAt).toISOString() : "",
+      }),
+    },
+  },
+  drivermapping: {
+    entity: "drivermapping",
+    label: "driver mapping",
+    importFields: [
+      "vehicleNumber",
+      "driverEmail",
+    ],
+    requiredFields: ["vehicleNumber", "driverEmail"],
+    requiredFieldGroups: [],
+    headerAliases: {
+      vehiclenumber: "vehicleNumber",
+      registrationnumber: "vehicleNumber",
+      registration: "vehicleNumber",
+      platenumber: "vehicleNumber",
+      driveremail: "driverEmail",
+      email: "driverEmail",
+    },
+    export: {
+      filename: "driver-mapping-export",
+      headers: ["vehicleNumber", "driverName", "driverEmail", "licenseNumber"],
+      model: VehicleDriverMapping,
+      baseFilter: { unassignedAt: null, status: "assigned" },
+      populate: [
+        { path: "vehicleId", select: "vehicleNumber organizationId" },
+        { path: "driverId", select: "firstName lastName email phone licenseNumber organizationId" },
+      ],
+      mapDocument: (doc) => ({
+        vehicleNumber: doc.vehicleId?.vehicleNumber || "",
+        driverName: [doc.driverId?.firstName, doc.driverId?.lastName].filter(Boolean).join(" "),
+        driverEmail: doc.driverId?.email || "",
+        driverPhone: doc.driverId?.phone || "",
+        licenseNumber: doc.driverId?.licenseNumber || "",
       }),
     },
   },

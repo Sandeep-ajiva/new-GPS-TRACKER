@@ -21,12 +21,6 @@ export const usersApi = baseApi.injectEndpoints({
       }),
       providesTags: ["User"],
     }),
-
-    // getUsersByOrganization: builder.query({
-    //   query: (organizationId) => `/users/manager/${organizationId}`,
-    //   providesTags: ["User"],
-    // }),
-
     createUser: builder.mutation({
       query: (body) => ({
         url: "/users",

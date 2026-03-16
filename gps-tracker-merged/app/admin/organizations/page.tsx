@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { ReactNode, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Table from "@/components/ui/Table";
 import Pagination from "@/components/ui/Pagination";
@@ -29,7 +29,7 @@ import AdminSectionCard from "@/components/admin/UI/AdminSectionCard";
 
 /* ================= TYPES ================= */
 
-interface Organization {
+interface Organization extends Record<string, unknown> {
   _id: string;
   name: string;
   organizationType: string;
@@ -45,6 +45,13 @@ interface Organization {
   parentOrganizationId: string | null;
   status: "active" | "inactive";
 }
+
+type OrganizationTableColumn = {
+  header: string;
+  accessor: keyof Organization | ((row: Organization) => ReactNode);
+  headerClassName?: string;
+  cellClassName?: string;
+};
 
 /* ================= PAGE ================= */
 
@@ -132,6 +139,7 @@ export default function OrganizationsPage() {
       state: z.string().min(1, "State is required"),
       country: z.string().min(1, "Country is required"),
       pincode: z.string().regex(/^\d{4,10}$/, "Pincode must be numeric"),
+      status: z.enum(["active", "inactive"]).optional(),
       parentOrganizationId: z.string().optional(),
       managerFirstName: z.string().optional(),
       managerLastName: z.string().optional(),
@@ -156,9 +164,6 @@ export default function OrganizationsPage() {
   };
 
   const openEditModal = (org: Organization) => {
-    console.log("Opening edit modal with org:", org); // Debug log
-    console.log("Current orgId from context:", orgId); // Debug log
-    console.log("Organizations list:", organizations); // Debug log
     setEditingOrg(org);
     setIsModalOpen(true);
   };
@@ -190,6 +195,7 @@ export default function OrganizationsPage() {
             email: form.email,
             phone: form.phone,
             address,
+            status: form.status,
           }
         }).unwrap();
 
@@ -218,7 +224,7 @@ export default function OrganizationsPage() {
           },
         }).unwrap();
 
-        toast.success("Sub-organization & manager created successfully");
+        toast.success("Sub-organization and admin created successfully");
       }
     } catch (err: any) {
       toast.error(err?.data?.message || "Operation failed");
@@ -242,7 +248,7 @@ export default function OrganizationsPage() {
   /* ---------------------------------------
      Table columns
   ---------------------------------------- */
-  const columns = [
+  const columns: OrganizationTableColumn[] = [
     { header: "Name", accessor: "name" },
     { header: "Type", accessor: "organizationType" },
     { header: "Email", accessor: "email" },
@@ -326,21 +332,19 @@ export default function OrganizationsPage() {
                   "state",
                   "country",
                   "pincode",
-                  "parentOrganizationId",
-                  "parentOrganizationName",
                   "status",
                 ]}
                 requiredFields={["name", "organizationType", "email", "phone"]}
                 filters={{
-                  name: filters.name,
-                  organizationType: filters.type,
-                  status: filters.status,
+            name: filters.name,
+            organizationType: filters.type,
+            status: filters.status,
                 }}
                 organizationSelectionMode="disabled"
                 organizationSelectionNote={
                   isSuperAdmin
-                    ? "Parent organization comes from the file for this import."
-                    : `If no parent is provided in the file, new rows will be created under ${orgName}.`
+                    ? "Use the organization import template without parent-organization columns."
+                    : `Use the organization import template without parent-organization columns under ${orgName}.`
                 }
                 onCompleted={() => {
                   void refetchSubOrgs();
@@ -427,7 +431,7 @@ export default function OrganizationsPage() {
         className="min-h-[420px]"
         bodyClassName="flex min-h-[340px] flex-col justify-between gap-4 p-4"
       >
-        <Table columns={columns} data={organizations} />
+        <Table<Organization> columns={columns} data={organizations} />
         <Pagination
           page={page}
           totalPages={(subOrgResponse as any)?.pagination?.totalPages ?? Math.max(1, Math.ceil(((subOrgResponse as any)?.pagination?.totalrecords ?? organizations.length) / LIMIT))}
@@ -443,7 +447,7 @@ export default function OrganizationsPage() {
         title={
           editingOrg
             ? "Edit Organization"
-            : "Create Organization & Manager"
+            : "Create Organization & Admin"
         }
         fields={formFields}
         schema={organizationSchema}
@@ -460,6 +464,7 @@ export default function OrganizationsPage() {
               state: editingOrg.address?.state || "",
               country: editingOrg.address?.country || "",
               pincode: editingOrg.address?.pincode || "",
+              status: editingOrg.status,
             }
             : {
               parentOrganizationId: orgId || "",
@@ -477,19 +482,22 @@ export default function OrganizationsPage() {
 /* ================= FORM FIELDS ================= */
 
 function getFormFields(isEdit: boolean, canSelectParent: boolean, currentOrgName?: string): FormField[] {
-  const orgFields: FormField[] = [
-    ...(canSelectParent && !isEdit
+  const parentFields: FormField[] =
+    canSelectParent && !isEdit
       ? [
-        {
-          name: "parentOrganizationDisplay",
-          label: "Parent Organization",
-          type: "text",
-          disabled: true,
-          helperText: "This organization is fixed for the current admin scope.",
-          placeholder: currentOrgName || "Current organization",
-        },
-      ]
-      : []),
+          {
+            name: "parentOrganizationDisplay",
+            label: "Parent Organization",
+            type: "text",
+            disabled: true,
+            helperText: "This organization is fixed for the current admin scope.",
+            placeholder: currentOrgName || "Current organization",
+          },
+        ]
+      : [];
+
+  const orgFields: FormField[] = [
+    ...parentFields,
     { name: "name", label: "Organization Name", type: "text", required: true },
     {
       name: "organizationType",
@@ -511,12 +519,25 @@ function getFormFields(isEdit: boolean, canSelectParent: boolean, currentOrgName
     { name: "state", label: "State", type: "text", required: true },
     { name: "city", label: "City", type: "text", required: true },
     { name: "pincode", label: "Pincode", type: "text", required: true, helperText: "Digits only" },
+    ...(isEdit
+      ? [
+          {
+            name: "status",
+            label: "Status",
+            type: "select" as const,
+            required: true,
+            options: [
+              { label: "Active", value: "active" },
+              { label: "Inactive", value: "inactive" },
+            ],
+          },
+        ]
+      : []),
   ];
 
   if (isEdit) return orgFields;
 
-  return [
-    ...orgFields,
+  const managerFields: FormField[] = [
     {
       name: "managerFirstName",
       label: "Admin First Name",
@@ -536,4 +557,6 @@ function getFormFields(isEdit: boolean, canSelectParent: boolean, currentOrgName
       required: true,
     },
   ];
+
+  return [...orgFields, ...managerFields];
 }

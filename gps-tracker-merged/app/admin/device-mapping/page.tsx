@@ -13,6 +13,7 @@ import {
 import { useGetVehiclesQuery } from "@/redux/api/vehicleApi";
 import { useGetGpsDevicesQuery } from "@/redux/api/gpsDeviceApi";
 import { useGetOrganizationsQuery } from "@/redux/api/organizationApi";
+import ImportExportButton from "@/components/admin/import-export/ImportExportButton";
 // 🔐 ORG CONTEXT UPDATE
 import { useOrgContext } from "@/hooks/useOrgContext";
 // 🔧 ACTIVE STATUS FILTERING
@@ -23,9 +24,9 @@ export default function DeviceMappingPage() {
   const { role, orgId, isSuperAdmin, isRootOrgAdmin } = useOrgContext();
 
     // API Hooks
-    const { data: mappingData, isLoading: isMappingLoading } = useGetDeviceMappingsQuery({ page: 0, limit: 1000 }, { refetchOnMountOrArgChange: true });
-    const { data: vehData, isLoading: isVehLoading } = useGetVehiclesQuery({ page: 0, limit: 1000 }, { refetchOnMountOrArgChange: true });
-    const { data: devData, isLoading: isDevLoading } = useGetGpsDevicesQuery({ page: 0, limit: 1000 }, { refetchOnMountOrArgChange: true });
+    const { data: mappingData, isLoading: isMappingLoading, refetch: refetchMappings } = useGetDeviceMappingsQuery({ page: 0, limit: 1000 }, { refetchOnMountOrArgChange: true });
+    const { data: vehData, isLoading: isVehLoading, refetch: refetchVehicles } = useGetVehiclesQuery({ page: 0, limit: 1000 }, { refetchOnMountOrArgChange: true });
+    const { data: devData, isLoading: isDevLoading, refetch: refetchDevices } = useGetGpsDevicesQuery({ page: 0, limit: 1000 }, { refetchOnMountOrArgChange: true });
 
   const canFilterOrg = isSuperAdmin || isRootOrgAdmin;
 
@@ -329,6 +330,24 @@ export default function DeviceMappingPage() {
                         <p className="text-sm text-slate-500">Associate GPS devices with vehicles.</p>
                     </div>
                     <div className="flex flex-col gap-3 sm:flex-row">
+                        <ImportExportButton
+                            moduleName="deviceMapping"
+                            importUrl="/importexport/import/devicemapping"
+                            exportUrl="/importexport/export/devicemapping"
+                            allowedFields={["vehicleNumber", "imei"]}
+                            requiredFields={["vehicleNumber", "imei"]}
+                            filters={{
+                                vehicleNumber: filters.vehicleNumber,
+                                imei: filters.imei,
+                                organizationId: filters.organizationId,
+                                assignedDate: filters.assignedDate,
+                            }}
+                            onCompleted={() => {
+                                void refetchMappings();
+                                void refetchVehicles();
+                                void refetchDevices();
+                            }}
+                        />
                         <button
                             onClick={() => setShowFilters(!showFilters)}
                             className="rounded-xl bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-widest text-slate-700 shadow-sm transition hover:bg-slate-200"

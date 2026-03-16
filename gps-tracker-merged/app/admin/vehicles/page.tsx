@@ -404,7 +404,7 @@ export default function VehiclesPage() {
 
   const vehicleFormFields: FormField[] = useMemo(() => [
     // 🔐 ORG CONTEXT UPDATE
-    ...(canSelectOrg ? [
+    ...(canSelectOrg && !editingVehicle ? [
       {
         name: "organizationId",
         label: "Organization",
@@ -458,70 +458,73 @@ export default function VehiclesPage() {
       placeholder: "e.g. MH12AB1234",
       icon: <Hash size={14} className="text-slate-500" />,
     },
-    {
-      name: "model",
-      label: "Model",
-      type: "text",
-      placeholder: "e.g. Fortuner",
-      icon: <Info size={14} className="text-slate-500" />,
-    },
-    {
-      name: "year",
-      label: "Year",
-      type: "number",
-      placeholder: "e.g. 2024",
-      icon: <Calendar size={14} className="text-slate-500" />,
-    },
-    {
-      name: "color",
-      label: "Color",
-      type: "text",
-      placeholder: "e.g. White",
-      icon: <Palette size={14} className="text-slate-500" />,
-    },
-    {
-      name: "status",
-      label: "Status",
-      type: "select",
-      required: true,
-      options: [
-        { label: "Active", value: "active" },
-        { label: "Inactive", value: "inactive" },
-      ],
-      icon: <ToggleLeft size={14} className="text-slate-500" />,
-    },
-    {
-      name: "deviceId",
-      label: "Assign GPS Device",
-      type: "select",
-      options: [
-        { label: "Unassigned", value: "" },
-        ...getAvailableDevicesForForm(editingVehicle?._id).map((d) => ({
-          label: `${d.imei} (${d.deviceModel})`,
-          value: d._id,
-        })),
-      ],
-      icon: <ShieldAlert size={14} className="text-slate-500" />,
-      disabled: !effectiveOrgIdForForm,
-      onChange: (value: string) => {
-        setFormDeviceId(value);
-      },
-    },
-    {
-      name: "driverId",
-      label: "Driver",
-      type: "select",
-      options: [
-        { label: "Unassigned", value: "" },
-        ...availableDriversForForm.map((driver) => ({
-          label: `${driver.firstName} ${driver.lastName}`,
-          value: driver._id,
-        })),
-      ],
-      icon: <Info size={14} className="text-slate-500" />,
-      // 🔐 Business Rule: driver can only be assigned when vehicle has a GPS device
-      disabled: !effectiveOrgIdForForm || !formDeviceId,
-    },
+    ...(editingVehicle
+      ? [
+          {
+            name: "model",
+            label: "Model",
+            type: "text",
+            placeholder: "e.g. Fortuner",
+            icon: <Info size={14} className="text-slate-500" />,
+          },
+          {
+            name: "year",
+            label: "Year",
+            type: "number",
+            placeholder: "e.g. 2024",
+            icon: <Calendar size={14} className="text-slate-500" />,
+          },
+          {
+            name: "color",
+            label: "Color",
+            type: "text",
+            placeholder: "e.g. White",
+            icon: <Palette size={14} className="text-slate-500" />,
+          },
+          {
+            name: "status",
+            label: "Status",
+            type: "select" as const,
+            required: true,
+            options: [
+              { label: "Active", value: "active" },
+              { label: "Inactive", value: "inactive" },
+            ],
+            icon: <ToggleLeft size={14} className="text-slate-500" />,
+          },
+          {
+            name: "deviceId",
+            label: "Assign GPS Device",
+            type: "select" as const,
+            options: [
+              { label: "Unassigned", value: "" },
+              ...getAvailableDevicesForForm(editingVehicle?._id).map((d) => ({
+                label: `${d.imei} (${d.deviceModel})`,
+                value: d._id,
+              })),
+            ],
+            icon: <ShieldAlert size={14} className="text-slate-500" />,
+            disabled: !effectiveOrgIdForForm,
+            onChange: (value: string) => {
+              setFormDeviceId(value);
+            },
+          },
+          {
+            name: "driverId",
+            label: "Driver",
+            type: "select" as const,
+            options: [
+              { label: "Unassigned", value: "" },
+              ...availableDriversForForm.map((driver) => ({
+                label: `${driver.firstName} ${driver.lastName}`,
+                value: driver._id,
+              })),
+            ],
+            icon: <Info size={14} className="text-slate-500" />,
+            disabled: !effectiveOrgIdForForm || !formDeviceId,
+          },
+        ]
+      : []),
   ], [organizations, availableDriversForForm, vehicles, editingVehicle, effectiveOrgIdForForm, formDeviceId]);
 
   const vehicleSchema = useMemo(() => {
@@ -532,20 +535,23 @@ export default function VehiclesPage() {
       model: z.string().optional(),
       year: z.string().optional(),
       color: z.string().optional(),
-      status: z.enum(["active", "inactive"]),
+      status: z.enum(["active", "inactive"]).optional(),
       deviceId: z.string().optional(),
       driverId: z.string().optional(),
     });
 
     return base.superRefine((val, ctx) => {
-      if (canSelectOrg && !val.organizationId) {
+      if (!editingVehicle && canSelectOrg && !val.organizationId) {
         ctx.addIssue({ code: "custom", path: ["organizationId"], message: "Organization is required" });
+      }
+      if (editingVehicle && !val.status) {
+        ctx.addIssue({ code: "custom", path: ["status"], message: "Status is required" });
       }
       if (val.year && !/^\d{4}$/.test(String(val.year))) {
         ctx.addIssue({ code: "custom", path: ["year"], message: "Year must be 4 digits" });
       }
     });
-  }, [canSelectOrg]);
+  }, [canSelectOrg, editingVehicle]);
 
 
   const handleAssignDevice = async (deviceId: string) => {
@@ -736,7 +742,6 @@ export default function VehiclesPage() {
                 importUrl="/importexport/import/vehicles"
                 exportUrl="/importexport/export/vehicles"
                 allowedFields={[
-                  "organizationId",
                   "organizationName",
                   "vehicleType",
                   "vehicleNumber",
@@ -752,7 +757,6 @@ export default function VehiclesPage() {
                   "deviceImei",
                 ]}
                 requiredFields={[
-                  ...(canSelectImportOrganization ? ["organizationId"] : []),
                   "vehicleType",
                   "vehicleNumber",
                 ]}
@@ -957,17 +961,13 @@ export default function VehiclesPage() {
           <DynamicModal
             isOpen={isPopupOpen("vehicleModal")}
             onClose={closeModal}
-            title={editingVehicle ? "Edit Vehicle" : "  "}
-            description="Configure vehicle details and fleet assignment."
+            title={editingVehicle ? "Edit Vehicle" : "New Vehicle"}
+            description={editingVehicle ? "Update vehicle details, status, and assignments." : "Create a vehicle with its core registration details."}
             fields={vehicleFormFields}
             schema={vehicleSchema}
             initialData={
               editingVehicle
                 ? {
-                  organizationId:
-                    typeof editingVehicle.organizationId === "object"
-                      ? editingVehicle.organizationId._id
-                      : editingVehicle.organizationId,
                   vehicleType: editingVehicle.vehicleType,
                   vehicleNumber: editingVehicle.vehicleNumber,
                   model: editingVehicle.model || "",

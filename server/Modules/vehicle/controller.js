@@ -3,6 +3,7 @@ const VehicleModel = require("./model");
 const GpsDevice = require("../gpsDevice/model");
 const paginate = require("../../helpers/limitoffset");
 const Validator = require("../../helpers/validators");
+const { cleanupForVehicleDeletion } = require("../../common/mappingCleanup");
 
 /* -------------------------------------------------------------------------- */
 /*                               VALIDATION RULES                              */
@@ -123,7 +124,7 @@ exports.update = async (req, res) => {
 
     // 🔐 ORG SCOPE FIX
     const orgFilter = req.orgScope === "ALL" ? {} : { organizationId: { $in: req.orgScope } };
-    const vehicle = await VehicleModel.findOne({ _id: req.params.id, ...orgFilter });
+    const vehicle = await VehicleModel.findOne({ _id: req.params.id, ...orgFilter }).session(session);
 
     if (!vehicle) {
       return res.status(404).json({
@@ -322,29 +323,42 @@ exports.getById = async (req, res) => {
 /* -------------------------------------------------------------------------- */
 
 exports.remove = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
   try {
     // 🔐 ORG SCOPE FIX
     const orgFilter = req.orgScope === "ALL" ? {} : { organizationId: { $in: req.orgScope } };
-    const vehicle = await VehicleModel.findOne({ _id: req.params.id, ...orgFilter });
+    const vehicle = await VehicleModel.findOne({ _id: req.params.id, ...orgFilter }).session(session);
 
     if (!vehicle) {
+      if (session.inTransaction()) {
+        await session.abortTransaction();
+      }
       return res.status(404).json({
         status: false,
         message: "Vehicle not found or access denied",
       });
     }
 
-    await VehicleModel.findByIdAndDelete(req.params.id);
+    await cleanupForVehicleDeletion(vehicle, session);
+    await vehicle.deleteOne({ session });
+    await session.commitTransaction();
 
     return res.json({
       status: true,
       message: "Vehicle deleted successfully",
     });
   } catch (error) {
+    if (session.inTransaction()) {
+      await session.abortTransaction();
+    }
     console.error("Delete Vehicle Error:", error);
     return res.status(500).json({
       status: false,
       message: error.message || "Internal server error",
     });
+  } finally {
+    session.endSession();
   }
 };

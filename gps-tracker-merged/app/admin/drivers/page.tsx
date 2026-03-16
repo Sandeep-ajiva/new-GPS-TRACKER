@@ -188,12 +188,6 @@ export default function DriversPage() {
             helperText: "Required",
             icon: <IdCard size={14} className="text-slate-500" />,
         },
-        {
-            name: "licenseExpiry",
-            label: "License Expiry",
-            type: "date",
-            icon: <Calendar size={14} className="text-slate-500" />,
-        },
         // Password only on creation
         ...(!editingDriver
             ? [
@@ -208,7 +202,7 @@ export default function DriversPage() {
             ]
             : []),
         // 🔐 ORG CONTEXT UPDATE
-        ...(isSuperAdmin || isRootOrgAdmin ? [
+        ...((isSuperAdmin || isRootOrgAdmin) && !editingDriver ? [
             {
                 name: "organizationId",
                 label: "Organization",
@@ -237,18 +231,28 @@ export default function DriversPage() {
                 icon: <User size={14} className="text-slate-500" />,
             }
         ] : []),
-        {
-            name: "status",
-            label: "Status",
-            type: "select",
-            required: true,
-            options: [
-                { label: "Active", value: "active" },
-                { label: "Inactive", value: "inactive" },
-                { label: "Blocked", value: "blocked" },
-            ],
-            icon: <CheckCircle size={14} className="text-slate-500" />,
-        },
+        ...(editingDriver
+            ? [
+                {
+                    name: "licenseExpiry",
+                    label: "License Expiry",
+                    type: "date",
+                    icon: <Calendar size={14} className="text-slate-500" />,
+                },
+                {
+                    name: "status",
+                    label: "Status",
+                    type: "select" as const,
+                    required: true,
+                    options: [
+                        { label: "Active", value: "active" },
+                        { label: "Inactive", value: "inactive" },
+                        { label: "Blocked", value: "blocked" },
+                    ],
+                    icon: <CheckCircle size={14} className="text-slate-500" />,
+                },
+            ]
+            : []),
     ], [editingDriver, organizations, isSuperAdmin, isRootOrgAdmin]);
 
     const driverSchema = useMemo(() => {
@@ -259,7 +263,7 @@ export default function DriversPage() {
             phone: z.string().regex(/^\+?[1-9]\d{7,14}$/, "Enter valid phone with country code"),
             licenseNumber: z.string().min(1, "License number is required"),
             licenseExpiry: z.string().optional(),
-            status: z.enum(["active", "inactive", "blocked"]),
+            status: z.enum(["active", "inactive", "blocked"]).optional(),
             organizationId: z.string().optional(),
             passwordHash: z.string().optional(),
         });
@@ -268,18 +272,18 @@ export default function DriversPage() {
             return base.extend({
                 passwordHash: z.string().min(6, "Password is required (min 6)"),
             }).superRefine((val, ctx) => {
-                if (isSuperAdmin && !val.organizationId) {
+                if ((isSuperAdmin || isRootOrgAdmin) && !val.organizationId) {
                     ctx.addIssue({ code: "custom", path: ["organizationId"], message: "Organization is required" });
                 }
             });
         }
 
         return base.superRefine((val, ctx) => {
-            if (isSuperAdmin && !val.organizationId) {
-                ctx.addIssue({ code: "custom", path: ["organizationId"], message: "Organization is required" });
+            if (!val.status) {
+                ctx.addIssue({ code: "custom", path: ["status"], message: "Status is required" });
             }
         });
-    }, [editingDriver, isSuperAdmin]);
+    }, [editingDriver, isRootOrgAdmin, isSuperAdmin]);
 
     const openCreateModal = () => {
         setEditingDriver(null);
@@ -433,7 +437,6 @@ export default function DriversPage() {
                                 importUrl="/importexport/import/drivers"
                                 exportUrl="/importexport/export/drivers"
                                 allowedFields={[
-                                    "organizationId",
                                     "organizationName",
                                     "firstName",
                                     "lastName",
@@ -445,7 +448,6 @@ export default function DriversPage() {
                                     "password",
                                 ]}
                                 requiredFields={[
-                                    ...(canSelectImportOrganization ? ["organizationId"] : []),
                                     "firstName",
                                     "lastName",
                                     "email",
@@ -635,8 +637,8 @@ export default function DriversPage() {
                     <DynamicModal
                         isOpen={isPopupOpen("driverModal")}
                         onClose={closeModal}
-                        title={editingDriver ? "Edit Driver" : "New Driver & User"}
-                        description={editingDriver ? "Update driver information." : "Create a new driver and automatically generate their user account."}
+                        title={editingDriver ? "Edit Driver" : "New Driver"}
+                        description={editingDriver ? "Update driver information." : "Create a new driver and automatically generate their login account."}
                         fields={driverFormFields}
                         schema={driverSchema}
                         initialData={
@@ -650,7 +652,6 @@ export default function DriversPage() {
                                     licenseExpiry: editingDriver.licenseExpiry
                                         ? new Date(editingDriver.licenseExpiry).toISOString().split('T')[0]
                                         : "",
-                                    organizationId: typeof editingDriver.organizationId === 'object' ? editingDriver.organizationId._id : editingDriver.organizationId,
                                     status: editingDriver.status,
                                 }
                                 : undefined

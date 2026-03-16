@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Table from "@/components/ui/Table";
 import Pagination from "@/components/ui/Pagination";
 import ApiErrorBoundary from "@/components/admin/ErrorBoundary/ApiErrorBoundary";
-import { Plus, Edit, Trash2, Filter, Loader2 } from "lucide-react";
+import { Plus, Edit, Trash2, Filter, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
 
@@ -33,7 +33,6 @@ import ImportExportButton from "@/components/admin/import-export/ImportExportBut
 import { InventoryLayer } from "@/components/gps-devices/InventoryLayer";
 import { InventoryStatusBadge } from "@/components/gps-devices/InventoryStatusBadge";
 import type { GpsDeviceRecord } from "@/components/gps-devices/inventoryTypes";
-import { INVENTORY_STATUS_OPTIONS } from "@/components/gps-devices/inventoryTypes";
 import { DEVICE_IMPORT_FIELDS } from "@/utils/importExport/contracts";
 
 import { Building2 } from "lucide-react";
@@ -41,6 +40,7 @@ import { Building2 } from "lucide-react";
 type DeviceFormValues = {
   organizationId?: string | { _id: string };
   imei: string;
+  softwareVersion: string;
   simNumber?: string;
   deviceModel: string;
   manufacturer?: string;
@@ -48,14 +48,7 @@ type DeviceFormValues = {
   firmwareVersion?: string;
   hardwareVersion?: string;
   warrantyExpiry?: string;
-  status: "active" | "inactive";
-  purchaseDate?: string;
-  purchasePrice?: string | number;
-  supplierName?: string;
-  invoiceNumber?: string;
-  stockLocation?: string;
-  rackNumber?: string;
-  inventoryStatus?: string;
+  status?: "active" | "inactive" | "suspended";
 };
 
 type PaginatedDeviceResponse = {
@@ -87,6 +80,7 @@ const getApiErrorMessage = (error: unknown, fallback: string) => {
 
 export default function GpsDevicesPage() {
   const { openPopup, closePopup, isPopupOpen } = usePopups();
+  const tableScrollRef = useRef<HTMLDivElement | null>(null);
 
   // 🔐 ORG CONTEXT UPDATE
   const { orgId, role, user, isSuperAdmin, isRootOrgAdmin, isSubOrgAdmin } = useOrgContext();
@@ -219,29 +213,10 @@ export default function GpsDevicesPage() {
 
         toast.success("Device updated successfully");
       } else {
-        const {
-          purchaseDate,
-          purchasePrice,
-          supplierName,
-          invoiceNumber,
-          stockLocation,
-          rackNumber,
-          inventoryStatus,
-          ...technicalData
-        } = data;
         // 🔐 ORG CONTEXT UPDATE
         // If user is NOT superadmin or root-org-admin, lock organization from context
         const finalData: Record<string, unknown> = {
-          ...technicalData,
-          inventory: {
-            status: inventoryStatus || "in_stock",
-            purchaseDate: purchaseDate || null,
-            purchasePrice: purchasePrice === "" || purchasePrice === undefined ? null : Number(purchasePrice),
-            supplierName: supplierName || "",
-            invoiceNumber: invoiceNumber || "",
-            stockLocation: stockLocation || "",
-            rackNumber: rackNumber || "",
-          },
+          ...data,
         };
         if (!(isSuperAdmin || isRootOrgAdmin)) {
           finalData.organizationId = orgId || "";
@@ -258,7 +233,7 @@ export default function GpsDevicesPage() {
   /* ================= FORM FIELDS (FIXED) ================= */
 
   const deviceFormFields: FormField[] = useMemo(() => [
-    ...(isSuperAdmin || isRootOrgAdmin ? [
+    ...((isSuperAdmin || isRootOrgAdmin) && !editingDevice ? [
       {
         name: "organizationId",
         label: "Organization",
@@ -288,103 +263,63 @@ export default function GpsDevicesPage() {
       }
     ] : []),
     { name: "imei", label: "IMEI", type: "text", required: true, helperText: "Exactly 15 digits" },
-    { name: "simNumber", label: "SIM Number", type: "text" },
-    {
-      name: "deviceModel",
-      label: "Device Model",
-      type: "text",
-      required: true,
-    },
-    { name: "manufacturer", label: "Manufacturer", type: "text" },
-    { name: "serialNumber", label: "Serial Number", type: "text" },
-    { name: "firmwareVersion", label: "Firmware Version", type: "text" },
-    { name: "hardwareVersion", label: "Hardware Version", type: "text" },
-    {
-      name: "warrantyExpiry",
-      label: "Warranty Expiry",
-      type: "date",
-    },
-    {
-      name: "status",
-      label: "Status",
-      type: "select",
-      required: true,
-      options: [
-        { label: "Active", value: "active" },
-        { label: "Inactive", value: "inactive" },
-      ],
-    },
-    ...(!editingDevice ? [
-      {
-        name: "purchaseDate",
-        label: "Purchase Date",
-        type: "date" as const,
-        section: "Inventory Information",
-      },
-      {
-        name: "purchasePrice",
-        label: "Purchase Price",
-        type: "number" as const,
-      },
-      {
-        name: "supplierName",
-        label: "Supplier Name",
-        type: "text" as const,
-      },
-      {
-        name: "invoiceNumber",
-        label: "Invoice Number",
-        type: "text" as const,
-      },
-      {
-        name: "stockLocation",
-        label: "Stock Location",
-        type: "text" as const,
-      },
-      {
-        name: "rackNumber",
-        label: "Rack Number",
-        type: "text" as const,
-      },
-      {
-        name: "inventoryStatus",
-        label: "Inventory Status",
-        type: "select" as const,
-        options: INVENTORY_STATUS_OPTIONS.map((value) => ({
-          label: value.replace("_", " ").replace(/\b\w/g, (char) => char.toUpperCase()),
-          value,
-        })),
-      },
-    ] : []),
+    { name: "softwareVersion", label: "Software Version", type: "text", required: true },
+    ...(editingDevice
+      ? [
+          { name: "simNumber", label: "SIM Number", type: "text" },
+          {
+            name: "deviceModel",
+            label: "Device Model",
+            type: "text",
+          },
+          { name: "manufacturer", label: "Manufacturer", type: "text" },
+          { name: "serialNumber", label: "Serial Number", type: "text" },
+          { name: "firmwareVersion", label: "Firmware Version", type: "text" },
+          { name: "hardwareVersion", label: "Hardware Version", type: "text" },
+          {
+            name: "warrantyExpiry",
+            label: "Warranty Expiry",
+            type: "date",
+          },
+          {
+            name: "status",
+            label: "Status",
+            type: "select" as const,
+            required: true,
+            options: [
+              { label: "Active", value: "active" },
+              { label: "Inactive", value: "inactive" },
+              { label: "Suspended", value: "suspended" },
+            ],
+          },
+        ]
+      : []),
   ], [editingDevice, isRootOrgAdmin, isSuperAdmin, organizations]);
 
   const deviceSchema = useMemo(() => {
     const base = z.object({
       organizationId: z.string().optional(),
       imei: z.string().regex(/^\d{15}$/, "IMEI must be exactly 15 digits"),
+      softwareVersion: z.string().min(1, "Software version is required"),
       simNumber: z.string().optional(),
-      deviceModel: z.string().min(1, "Device model is required"),
+      deviceModel: z.string().optional(),
       manufacturer: z.string().optional(),
       serialNumber: z.string().optional(),
       firmwareVersion: z.string().optional(),
       hardwareVersion: z.string().optional(),
       warrantyExpiry: z.string().optional(),
-      status: z.enum(["active", "inactive"]),
-      purchaseDate: z.string().optional(),
-      purchasePrice: z.union([z.string(), z.number()]).optional(),
-      supplierName: z.string().optional(),
-      invoiceNumber: z.string().optional(),
-      stockLocation: z.string().optional(),
-      rackNumber: z.string().optional(),
-      inventoryStatus: z.string().optional(),
+      status: z.enum(["active", "inactive", "suspended"]).optional(),
     });
 
     return base.superRefine((val, ctx) => {
-      if ((isSuperAdmin || isRootOrgAdmin) && !val.organizationId) {
+      if (!editingDevice && (isSuperAdmin || isRootOrgAdmin) && !val.organizationId) {
         ctx.addIssue({ code: "custom", path: ["organizationId"], message: "Organization is required" });
       }
+      if (editingDevice && !val.status) {
+        ctx.addIssue({ code: "custom", path: ["status"], message: "Status is required" });
+      }
     });
-  }, [isSuperAdmin, isRootOrgAdmin]);
+  }, [editingDevice, isSuperAdmin, isRootOrgAdmin]);
 
 
   /* ================= MODALS ================= */
@@ -424,6 +359,14 @@ export default function GpsDevicesPage() {
       vehicleNumber: "",
       warrantyExpiry: "",
       organizationId: "",
+    });
+  };
+
+  const scrollDeviceTable = (direction: "left" | "right") => {
+    if (!tableScrollRef.current) return;
+    tableScrollRef.current.scrollBy({
+      left: direction === "left" ? -260 : 260,
+      behavior: "smooth",
     });
   };
 
@@ -603,7 +546,6 @@ export default function GpsDevicesPage() {
                 exportUrl="/importexport/export/devices"
                 allowedFields={[...DEVICE_IMPORT_FIELDS]}
                 requiredFields={[
-                  ...(canSelectImportOrganization ? ["organizationId"] : []),
                   "imei",
                   "softwareVersion",
                 ]}
@@ -918,7 +860,30 @@ export default function GpsDevicesPage() {
 
             {/* Table Section */}
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-              <Table columns={columns} data={devices as any} />
+              <div className="flex items-center justify-end gap-2 border-b border-slate-200 bg-slate-50 px-4 py-3">
+                <span className="mr-auto text-[10px] font-black uppercase tracking-[0.22em] text-slate-500">
+                  Move Table
+                </span>
+                <button
+                  type="button"
+                  onClick={() => scrollDeviceTable("left")}
+                  className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[11px] font-black uppercase tracking-wide text-slate-700 transition hover:bg-slate-100"
+                >
+                  <ChevronLeft size={14} />
+                  Left
+                </button>
+                <button
+                  type="button"
+                  onClick={() => scrollDeviceTable("right")}
+                  className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[11px] font-black uppercase tracking-wide text-slate-700 transition hover:bg-slate-100"
+                >
+                  Right
+                  <ChevronRight size={14} />
+                </button>
+              </div>
+              <div ref={tableScrollRef} className="overflow-x-auto">
+                <Table columns={columns} data={devices as any} />
+              </div>
               <Pagination
                 page={page}
                 totalPages={totalPages}
@@ -941,16 +906,13 @@ export default function GpsDevicesPage() {
           initialData={
             editingDevice
               ? {
-                organizationId: typeof editingDevice.organizationId === "object"
-                  ? editingDevice.organizationId._id
-                  : editingDevice.organizationId,
                 imei: editingDevice.imei,
+                softwareVersion: editingDevice.softwareVersion || editingDevice.firmwareVersion || "",
                 simNumber: editingDevice.simNumber || "",
                 deviceModel: editingDevice.deviceModel || "",
                 manufacturer: editingDevice.manufacturer || "",
                 serialNumber: editingDevice.serialNumber || "",
-                firmwareVersion:
-                  editingDevice.firmwareVersion || editingDevice.softwareVersion || "",
+                firmwareVersion: editingDevice.firmwareVersion || "",
                 hardwareVersion: editingDevice.hardwareVersion || "",
                 warrantyExpiry: editingDevice.warrantyExpiry
                   ? editingDevice.warrantyExpiry.split("T")[0]
@@ -960,21 +922,7 @@ export default function GpsDevicesPage() {
               : {
                 organizationId: "",
                 imei: "",
-                simNumber: "",
-                deviceModel: "",
-                manufacturer: "",
-                serialNumber: "",
-                firmwareVersion: "",
-                hardwareVersion: "",
-                warrantyExpiry: "",
-                status: "active",
-                purchaseDate: "",
-                purchasePrice: "",
-                supplierName: "",
-                invoiceNumber: "",
-                stockLocation: "",
-                rackNumber: "",
-                inventoryStatus: "in_stock",
+                softwareVersion: "",
               }
           }
           onSubmit={handleSubmit}

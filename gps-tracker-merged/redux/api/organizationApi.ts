@@ -45,7 +45,7 @@ export const organizationApi = baseApi.injectEndpoints({
       invalidatesTags: ["Organization"],
     }),
 
-    // 5️⃣ Create sub-organization + manager
+    // 5️⃣ Create sub-organization + admin
     createSubOrganizationWithManager: builder.mutation({
       query: (body) => ({
         url: "/organizations/sub", // ✅ MATCHES BACKEND

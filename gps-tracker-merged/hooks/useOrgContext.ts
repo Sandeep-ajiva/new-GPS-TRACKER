@@ -43,12 +43,12 @@ export const useOrgContext = (): OrgContext => {
         const isSuperAdmin = role === "superadmin";
         const isRootOrgAdmin =
             !isSuperAdmin &&
-            (role === "admin" || role === "manager") &&
+            role === "admin" &&
             orgDepth === 1;
 
         const isSubOrgAdmin =
             !isSuperAdmin &&
-            (role === "admin" || role === "manager") &&
+            role === "admin" &&
             orgDepth > 1;
 
         return {

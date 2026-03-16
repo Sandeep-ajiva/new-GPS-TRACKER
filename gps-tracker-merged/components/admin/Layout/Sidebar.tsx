@@ -22,32 +22,32 @@ const menuGroups = [
     {
         title: "System",
         items: [
-            { name: "Dashboard", icon: LayoutDashboard, href: "/admin", exact: true, roles: ["admin", "manager"] },
-            { name: "Live Tracking", icon: Map, href: "/admin/live-tracking", roles: ["admin", "manager"] },
+            { name: "Dashboard", icon: LayoutDashboard, href: "/admin", exact: true, roles: ["admin", "superadmin"] },
+            { name: "Live Tracking", icon: Map, href: "/admin/live-tracking", roles: ["admin", "superadmin"] },
         ]
     },
     {
         title: "Management",
         items: [
-            { name: "Organizations", icon: Building2, href: "/admin/organizations", roles: ["admin"], superOnly: true },
-            { name: "Vehicles", icon: Car, href: "/admin/vehicles", roles: ["admin", "manager"] },
-            { name: "GPS Devices", icon: Radio, href: "/admin/gps-devices", roles: ["admin", "manager"] },
-            { name: "Users", icon: Users, href: "/admin/users", roles: ["admin", "manager"] },
-            { name: "Drivers", icon: Users, href: "/admin/drivers", roles: ["admin", "manager"] },
+            { name: "Organizations", icon: Building2, href: "/admin/organizations", roles: ["admin", "superadmin"], superOnly: true },
+            { name: "Vehicles", icon: Car, href: "/admin/vehicles", roles: ["admin", "superadmin"] },
+            { name: "GPS Devices", icon: Radio, href: "/admin/gps-devices", roles: ["admin", "superadmin"] },
+            { name: "Users", icon: Users, href: "/admin/users", roles: ["admin", "superadmin"] },
+            { name: "Drivers", icon: Users, href: "/admin/drivers", roles: ["admin", "superadmin"] },
         ]
     },
     {
         title: "Operations",
         items: [
-            { name: "Device Mapping", icon: LinkIcon, href: "/admin/device-mapping", roles: ["admin", "manager"] },
-            { name: "Driver Mapping", icon: LinkIcon, href: "/admin/driver-mapping", roles: ["admin", "manager"] },
+            { name: "Device Mapping", icon: LinkIcon, href: "/admin/device-mapping", roles: ["admin", "superadmin"] },
+            { name: "Driver Mapping", icon: LinkIcon, href: "/admin/driver-mapping", roles: ["admin", "superadmin"] },
         ]
     },
     {
         title: "Config",
         items: [
-            { name: "Settings", icon: Settings, href: "/admin/settings", roles: ["admin"] },
-            { name: "Permissions", icon: Settings, href: "/admin/permissions", roles: ["admin"] },
+            { name: "Settings", icon: Settings, href: "/admin/settings", roles: ["admin", "superadmin"] },
+            { name: "Permissions", icon: Settings, href: "/admin/permissions", roles: ["admin", "superadmin"] },
         ]
     }
 ];

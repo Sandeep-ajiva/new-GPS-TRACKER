@@ -5,6 +5,7 @@ const Validator = require('../../helpers/validators');
 const mongoose = require('mongoose');
 const paginate = require("../../helpers/limitoffset");
 const bcrypt = require('bcryptjs');
+const { cleanupForDriverDeletion } = require("../../common/mappingCleanup");
 
 const validateDriverData = async (data) => {
     const rules = {
@@ -480,6 +481,9 @@ exports.getAvailable = async (req, res) => {
 };
 
 exports.delete = async (req, res) => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
     try {
         const { id } = req.params;
 
@@ -491,12 +495,16 @@ exports.delete = async (req, res) => {
         }
 
         // 🔐 ORG SCOPE FIX
+        const orgFilter = req.orgScope === "ALL" ? {} : { organizationId: { $in: req.orgScope } };
         const driver = await Driver.findOne({
             _id: id,
-            organizationId: { $in: req.orgScope }
-        });
+            ...orgFilter
+        }).session(session);
 
         if (!driver) {
+            if (session.inTransaction()) {
+                await session.abortTransaction();
+            }
             return res.status(403).json({
                 status: false,
                 message: "Forbidden: Access denied or driver not found"
@@ -511,18 +519,25 @@ exports.delete = async (req, res) => {
         //     });
         // }
 
-        await driver.deleteOne();
+        await cleanupForDriverDeletion(driver, session);
+        await driver.deleteOne({ session });
+        await session.commitTransaction();
 
         return res.status(200).json({
             status: true,
             message: "Driver Deleted Successfully"
         });
     } catch (error) {
+        if (session.inTransaction()) {
+            await session.abortTransaction();
+        }
         console.error("Delete Driver Error:", error);
         return res.status(error.status || 500).json({
             status: false,
             message: error.message || "Internal server error"
         });
+    } finally {
+        session.endSession();
     }
 };
 

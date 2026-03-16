@@ -12,7 +12,7 @@ type LoginResponse = {
   token: string;
   user: {
     _id: string;
-    role: "superadmin" | "admin" | "user" | "manager" | "driver";
+    role: "superadmin" | "admin" | "driver";
     organizationId: string | null;
     organizationName?: string;
     organizationPath?: string;

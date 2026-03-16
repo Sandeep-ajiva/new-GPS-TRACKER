@@ -48,6 +48,17 @@ function buildDateRange(from, to) {
   return Object.keys(range).length > 0 ? range : null;
 }
 
+function buildSingleDayRange(value) {
+  const raw = sanitizeString(value);
+  if (!raw) return null;
+  const start = new Date(raw);
+  if (Number.isNaN(start.getTime())) return null;
+  const end = new Date(start);
+  end.setHours(23, 59, 59, 999);
+  start.setHours(0, 0, 0, 0);
+  return { $gte: start, $lte: end };
+}
+
 function parseWorkbook(filePath, fileType) {
   const workbook = XLSX.readFile(filePath, {
     type: "file",
@@ -223,6 +234,10 @@ async function importData({ entity, file, req }) {
       seenOrganizationEmails: new Set(),
       seenOrganizationPhones: new Set(),
       seenOrganizationPaths: new Set(),
+      seenDeviceMappingVehicleKeys: new Set(),
+      seenDeviceMappingDeviceKeys: new Set(),
+      seenDriverMappingVehicleKeys: new Set(),
+      seenDriverMappingDriverKeys: new Set(),
     };
 
     for (let start = 0; start < mappedRows.length; start += CHUNK_SIZE) {
@@ -334,7 +349,54 @@ function buildExportFilter(entity, req) {
     if (req.query.connectionStatus) filter.connectionStatus = req.query.connectionStatus;
   }
 
+  if (entity === "devicemapping") {
+    filter.unassignedAt = null;
+    const assignedDateRange = buildSingleDayRange(req.query.assignedDate) || buildDateRange(req.query.from, req.query.to);
+    if (assignedDateRange) {
+      filter.assignedAt = assignedDateRange;
+    }
+  }
+
+  if (entity === "drivermapping") {
+    filter.unassignedAt = null;
+    filter.status = "assigned";
+    const assignedDateRange = buildSingleDayRange(req.query.assignedDate) || buildDateRange(req.query.from, req.query.to);
+    if (assignedDateRange) {
+      filter.assignedAt = assignedDateRange;
+    }
+  }
+
   return filter;
+}
+
+function filterExportRows(entity, rows, req) {
+  if (entity === "devicemapping") {
+    const vehicleNumberRegex = buildContainsRegex(req.query.vehicleNumber);
+    const imeiRegex = buildContainsRegex(req.query.imei);
+
+    return rows.filter((row) => {
+      if (vehicleNumberRegex && !vehicleNumberRegex.test(row.vehicleNumber || "")) return false;
+      if (imeiRegex && !imeiRegex.test(row.imei || "")) return false;
+      return true;
+    });
+  }
+
+  if (entity === "drivermapping") {
+    const vehicleNumberRegex = buildContainsRegex(req.query.vehicleNumber);
+    const driverNameRegex = buildContainsRegex(req.query.driverName);
+    const driverPhoneRegex = buildContainsRegex(req.query.driverPhone);
+    const driverEmailRegex = buildContainsRegex(req.query.driverEmail);
+
+    return rows.filter((row) => {
+      if (vehicleNumberRegex && !vehicleNumberRegex.test(row.vehicleNumber || "")) return false;
+      if (driverNameRegex && !driverNameRegex.test(row.driverName || "")) return false;
+      if (driverPhoneRegex && !driverPhoneRegex.test(row.driverPhone || "")) return false;
+      if (driverEmailRegex && !driverEmailRegex.test(row.driverEmail || "")) return false;
+      return true;
+    });
+  }
+
+  return rows;
 }
 
 async function exportData({ entity, req, res }) {
@@ -342,7 +404,10 @@ async function exportData({ entity, req, res }) {
   const config = getEntityConfig(entity);
   const exportConfig = config.export;
   const format = sanitizeString(req.query.format).toLowerCase() === "excel" ? "excel" : "csv";
-  const filter = buildExportFilter(entity, req);
+  const filter = {
+    ...(exportConfig.baseFilter || {}),
+    ...buildExportFilter(entity, req),
+  };
 
   const query = exportConfig.model.find(filter).lean();
   (exportConfig.populate || []).forEach((populateConfig) => {
@@ -350,7 +415,11 @@ async function exportData({ entity, req, res }) {
   });
 
   const docs = await query;
-  const rows = docs.map((doc) => exportConfig.mapDocument(doc));
+  const rows = filterExportRows(
+    entity,
+    docs.map((doc) => exportConfig.mapDocument(doc)),
+    req,
+  );
 
   if (format === "excel") {
     const worksheet = XLSX.utils.json_to_sheet(rows, { header: exportConfig.headers });

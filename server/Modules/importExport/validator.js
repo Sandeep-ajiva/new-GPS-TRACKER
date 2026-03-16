@@ -382,6 +382,36 @@ function normalizeImportedRow(entity, rawRow, req, context, options = {}) {
     return { normalized, errors };
   }
 
+  if (entity === "devicemapping") {
+    normalized.vehicleNumber = sanitizeString(rawRow.vehicleNumber).toUpperCase();
+    normalized.imei = sanitizeString(rawRow.imei);
+
+    if (!normalized.vehicleNumber) {
+      errors.push({ field: "vehicleNumber", message: "vehicleNumber is required" });
+    }
+    if (!normalized.imei) {
+      errors.push({ field: "imei", message: "imei is required" });
+    } else if (!/^\d{15}$/.test(normalized.imei)) {
+      errors.push({ field: "imei", message: "IMEI must be exactly 15 digits" });
+    }
+
+    return { normalized, errors };
+  }
+
+  if (entity === "drivermapping") {
+    normalized.vehicleNumber = sanitizeString(rawRow.vehicleNumber).toUpperCase();
+    normalized.driverEmail = sanitizeString(rawRow.driverEmail).toLowerCase();
+
+    if (!normalized.vehicleNumber) {
+      errors.push({ field: "vehicleNumber", message: "vehicleNumber is required" });
+    }
+    if (!validateEmail(normalized.driverEmail)) {
+      errors.push({ field: "driverEmail", message: "driverEmail must be valid" });
+    }
+
+    return { normalized, errors };
+  }
+
   return { normalized: rawRow, errors };
 }
 

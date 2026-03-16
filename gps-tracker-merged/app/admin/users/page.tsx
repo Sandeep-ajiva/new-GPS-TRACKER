@@ -46,7 +46,7 @@ export interface User {
   lastName: string;
   email: string;
   mobile: string;
-  role: "admin" | "manager" | "superadmin" | "driver" | "viewer";
+  role: "admin" | "superadmin" | "driver";
   organizationId?: string | { _id: string; name: string };
   status: "active" | "inactive";
 }
@@ -98,7 +98,7 @@ export default function UsersPage() {
       organizationName: filters.organizationName || undefined,
       from: filters.startDate || undefined,
       to: filters.endDate || undefined,
-      roles: isRootOrgAdmin ? "admin,manager" : undefined,
+      roles: isRootOrgAdmin ? "admin,driver" : undefined,
       excludeUserId: isRootOrgAdmin ? user?._id : undefined,
     }),
     [LIMIT, page, filters, isRootOrgAdmin, user?._id],
@@ -141,9 +141,8 @@ export default function UsersPage() {
     [orgData],
   );
 
-  // Extract manager from the organization users list
-  const organizationManager = useMemo(
-    () => users.find((u) => u.role === "manager"),
+  const organizationAdmin = useMemo(
+    () => users.find((u) => u.role === "admin"),
     [users],
   );
 
@@ -179,7 +178,6 @@ export default function UsersPage() {
         await updateUser(updatePayload).unwrap();
         toast.success("User updated successfully");
       } else {
-        // 🔐 ORG CONTEXT UPDATE - Create mode includes all fields
         const createPayload = {
           firstName: data.firstName?.toString().trim(),
           lastName: data.lastName?.toString().trim(),
@@ -187,8 +185,7 @@ export default function UsersPage() {
           mobile: data.mobile?.toString().trim(),
           role: data.role,
           organizationId: data.organizationId,
-          status: data.status,
-          passwordHash: data.passwordHash
+          password: data.password,
         };
         
         if (!isSuperAdmin) {
@@ -243,7 +240,7 @@ export default function UsersPage() {
     ...(!editingUser
       ? [
         {
-          name: "passwordHash",
+          name: "password",
           label: "Password",
           type: "password" as const,
           required: true,
@@ -252,37 +249,39 @@ export default function UsersPage() {
         },
       ]
       : []),
-    {
-      name: "role",
-      label: "Role",
-      type: "select",
-      required: true,
-      disabled: !!editingUser, // Disable role field in edit mode
-      options: [
-        { label: "Admin", value: "admin" },
-        { label: "Viewer", value: "viewer" },
-      ],
-
-      icon: <ShieldCheck size={14} className="text-slate-500" />,
-    },
-    {
-      name: "status",
-      label: "Status",
-      type: "select",
-      required: true,
-      options: [
-        { label: "Active", value: "active" },
-        { label: "Inactive", value: "inactive" },
-      ],
-      icon: <ToggleRight size={14} className="text-slate-500" />,
-    },
+    ...(!editingUser
+      ? [
+          {
+            name: "role",
+            label: "Role",
+            type: "select" as const,
+            required: true,
+            options: [
+              { label: "Admin", value: "admin" },
+              { label: "Driver", value: "driver" },
+            ],
+            icon: <ShieldCheck size={14} className="text-slate-500" />,
+          },
+        ]
+      : [
+          {
+            name: "status",
+            label: "Status",
+            type: "select" as const,
+            required: true,
+            options: [
+              { label: "Active", value: "active" },
+              { label: "Inactive", value: "inactive" },
+            ],
+            icon: <ToggleRight size={14} className="text-slate-500" />,
+          },
+        ]),
     // 🔐 ORG CONTEXT UPDATE
-    ...(isSuperAdmin ? [
+    ...(isSuperAdmin && !editingUser ? [
       {
         name: "organizationId",
         label: "Organization",
         type: "select" as const,
-        disabled: !!editingUser, // Disable organization field in edit mode
         options: organizations.map((org) => ({
           label: org.name,
           value: org._id,
@@ -298,16 +297,16 @@ export default function UsersPage() {
       lastName: z.string().min(1, "Last name is required"),
       email: z.string().email("Valid email is required"),
       mobile: z.string().regex(/^\+?[1-9]\d{7,14}$/, "Enter valid mobile with country code"),
-      role: z.enum(["admin", "manager", "driver", "viewer", "superadmin"]),
-      status: z.enum(["active", "inactive"]),
+      role: z.enum(["admin", "driver"]).optional(),
+      status: z.enum(["active", "inactive"]).optional(),
       organizationId: z.string().optional(),
-      passwordHash: z.string().optional(),
+      password: z.string().optional(),
     });
 
     if (!editingUser) {
-      // Create mode: password required, role and organizationId required
       return base.extend({
-        passwordHash: z.string().min(6, "Password is required (min 6)"),
+        role: z.enum(["admin", "driver"]),
+        password: z.string().min(6, "Password is required (min 6)"),
       }).superRefine((val, ctx) => {
         if (isSuperAdmin && !val.organizationId) {
           ctx.addIssue({ code: "custom", path: ["organizationId"], message: "Organization is required" });
@@ -315,10 +314,9 @@ export default function UsersPage() {
       });
     }
 
-    // Edit mode: password not required, role and organizationId validation only for display
     return base.superRefine((val, ctx) => {
-      if (isSuperAdmin && !val.organizationId) {
-        ctx.addIssue({ code: "custom", path: ["organizationId"], message: "Organization is required" });
+      if (!val.status) {
+        ctx.addIssue({ code: "custom", path: ["status"], message: "Status is required" });
       }
     });
   }, [editingUser, isSuperAdmin]);
@@ -451,14 +449,13 @@ export default function UsersPage() {
         <AdminPageHeader
           eyebrow="Access Control"
           title="Users"
-          description="Manage administrators and access across organizations."
+          description="Manage admin and driver access across organizations."
           actions={<div className="flex flex-col gap-3 sm:flex-row">
             <ImportExportButton
               moduleName="users"
               importUrl="/importexport/import/users"
               exportUrl="/importexport/export/users"
               allowedFields={[
-                "organizationId",
                 "organizationName",
                 "firstName",
                 "lastName",
@@ -469,7 +466,6 @@ export default function UsersPage() {
                 "password",
               ]}
               requiredFields={[
-                ...(isSuperAdmin || isRootOrgAdmin ? ["organizationId"] : []),
                 "firstName",
                 "email",
                 "mobile",
@@ -574,7 +570,7 @@ export default function UsersPage() {
                 >
                   <option value="">All Roles</option>
                   <option value="admin">Admin</option>
-                  <option value="viewer">Viewer</option>
+                  <option value="driver">Driver</option>
                 </select>
               </div>
               <div>
@@ -653,23 +649,23 @@ export default function UsersPage() {
           </AdminSectionCard>
         )}
 
-        {filters.organizationId && organizationManager && (
+        {filters.organizationId && organizationAdmin && (
           <AdminSectionCard className="border-emerald-200 bg-emerald-50/70" bodyClassName="p-4">
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-4">
               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500 font-black text-white">
-                {organizationManager.firstName[0]}
-                {organizationManager.lastName[0]}
+                {organizationAdmin.firstName[0]}
+                {organizationAdmin.lastName[0]}
               </div>
               <div>
                 <p className="text-[10px] font-black uppercase tracking-widest text-emerald-600">
-                  Organization Manager
+                  Organization Admin
                 </p>
                 <h3 className="text-sm font-bold text-slate-900">
-                  {organizationManager.firstName} {organizationManager.lastName}
+                  {organizationAdmin.firstName} {organizationAdmin.lastName}
                 </h3>
                 <p className="text-xs text-slate-500">
-                  {organizationManager.email} • {organizationManager.mobile}
+                  {organizationAdmin.email} • {organizationAdmin.mobile}
                 </p>
               </div>
             </div>
@@ -716,15 +712,6 @@ export default function UsersPage() {
                   lastName: editingUser.lastName,
                   email: editingUser.email,
                   mobile: editingUser.mobile,
-                  role:
-                    editingUser.role === "superadmin" ||
-                      editingUser.role === "driver"
-                      ? "admin"
-                      : editingUser.role,
-                  organizationId:
-                    typeof editingUser.organizationId === "object"
-                      ? editingUser.organizationId._id
-                      : editingUser.organizationId || "",
                   status: editingUser.status,
                 }
                 : undefined

@@ -14,10 +14,68 @@ import { useGetVehiclesQuery } from "@/redux/api/vehicleApi";
 import { useGetDriversQuery } from "@/redux/api/driversApi";
 import { useGetGpsDevicesQuery } from "@/redux/api/gpsDeviceApi";
 import { useGetOrganizationsQuery } from "@/redux/api/organizationApi";
+import ImportExportButton from "@/components/admin/import-export/ImportExportButton";
 // 🔐 ORG CONTEXT UPDATE
 import { useOrgContext } from "@/hooks/useOrgContext";
 // 🔧 ACTIVE STATUS FILTERING
 import { isActiveStatus, filterExcludedIds } from "@/utils/mappingHelpers";
+
+type EntityId = string | { toString: () => string };
+
+type OrganizationRef = string | {
+    _id: string;
+    name?: string;
+};
+
+type GpsDeviceRef = {
+    _id: EntityId;
+    imei?: string;
+};
+
+type VehicleRef = {
+    _id: EntityId;
+    organizationId?: OrganizationRef;
+    vehicleNumber?: string;
+    model?: string;
+    deviceId?: EntityId | GpsDeviceRef;
+    status?: string;
+};
+
+type DriverRef = {
+    _id: EntityId;
+    organizationId?: OrganizationRef;
+    firstName?: string;
+    lastName?: string;
+    phone?: string;
+    status?: string;
+};
+
+type DriverMappingRow = {
+    vehicleId?: EntityId | VehicleRef;
+    driverId?: EntityId | DriverRef;
+    deviceId?: EntityId | GpsDeviceRef;
+    organizationId?: OrganizationRef;
+    assignedAt?: string;
+    createdAt?: string;
+};
+
+type OrganizationOption = {
+    _id: EntityId;
+    name?: string;
+    orgPath?: string;
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+    typeof value === "object" && value !== null;
+
+const isPopulatedVehicle = (value: unknown): value is VehicleRef =>
+    isRecord(value) && "vehicleNumber" in value;
+
+const isPopulatedDriver = (value: unknown): value is DriverRef =>
+    isRecord(value) && ("firstName" in value || "lastName" in value || "phone" in value);
+
+const isPopulatedDevice = (value: unknown): value is GpsDeviceRef =>
+    isRecord(value) && "imei" in value;
 
 export default function DriverMappingPage() {
     // 🔐 ORG CONTEXT UPDATE
@@ -26,9 +84,9 @@ export default function DriverMappingPage() {
   const canFilterOrg = isSuperAdmin || isRootOrgAdmin;
 
     // API Hooks
-    const { data: mappingData, isLoading: isMappingLoading } = useGetVehicleDriverMappingsQuery(undefined, { refetchOnMountOrArgChange: true });
-    const { data: vehData, isLoading: isVehLoading } = useGetVehiclesQuery({ page: 0, limit: 1000 }, { refetchOnMountOrArgChange: true });
-    const { data: driverData, isLoading: isDriverLoading } = useGetDriversQuery({ page: 0, limit: 1000 }, { refetchOnMountOrArgChange: true });
+    const { data: mappingData, isLoading: isMappingLoading, refetch: refetchMappings } = useGetVehicleDriverMappingsQuery(undefined, { refetchOnMountOrArgChange: true });
+    const { data: vehData, isLoading: isVehLoading, refetch: refetchVehicles } = useGetVehiclesQuery({ page: 0, limit: 1000 }, { refetchOnMountOrArgChange: true });
+    const { data: driverData, isLoading: isDriverLoading, refetch: refetchDrivers } = useGetDriversQuery({ page: 0, limit: 1000 }, { refetchOnMountOrArgChange: true });
     const { data: gpsData, isLoading: isGpsLoading } = useGetGpsDevicesQuery({ page: 0, limit: 1000 }, { refetchOnMountOrArgChange: true });
 
   // 🔐 Superadmin + root admin can see scoped org list
@@ -41,11 +99,11 @@ export default function DriverMappingPage() {
     const [assignDriver, { isLoading: isAssigning }] = useAssignDriverMutation();
     const [unassignDriver, { isLoading: isUnassigning }] = useUnassignDriverMutation();
 
-    const mappings = Array.isArray(mappingData?.data) ? mappingData.data : [];
-    const vehicles = Array.isArray(vehData?.data) ? vehData.data : [];
-    const drivers = Array.isArray(driverData?.data) ? driverData.data : [];
-    const gpsDevices = Array.isArray(gpsData?.data) ? gpsData.data : [];
-    const organizations = useMemo(() => (orgData?.data as any[]) || [], [orgData]);
+    const mappings: DriverMappingRow[] = Array.isArray(mappingData?.data) ? (mappingData.data as DriverMappingRow[]) : [];
+    const vehicles: VehicleRef[] = Array.isArray(vehData?.data) ? (vehData.data as VehicleRef[]) : [];
+    const drivers: DriverRef[] = Array.isArray(driverData?.data) ? (driverData.data as DriverRef[]) : [];
+    const gpsDevices: GpsDeviceRef[] = Array.isArray(gpsData?.data) ? (gpsData.data as GpsDeviceRef[]) : [];
+    const organizations = useMemo(() => (orgData?.data as OrganizationOption[]) || [], [orgData]);
 
     // 🔐 ORG CONTEXT UPDATE
 
@@ -71,18 +129,22 @@ export default function DriverMappingPage() {
         return value.toString?.() || null;
     };
 
-    const assignedVehicleIds = new Set(
-        mappings.map((m: any) => getEntityId(m.vehicleId)).filter(Boolean),
+    const assignedVehicleIds = new Set<string>(
+        mappings
+            .map((m) => getEntityId(m.vehicleId))
+            .filter((id): id is string => Boolean(id)),
     );
-    const assignedDriverIds = new Set(
-        mappings.map((m: any) => getEntityId(m.driverId)).filter(Boolean),
+    const assignedDriverIds = new Set<string>(
+        mappings
+            .map((m) => getEntityId(m.driverId))
+            .filter((id): id is string => Boolean(id)),
     );
 
     const availableVehicles = useMemo(
         () => {
             // ✅ FIXED: Filter by both unassigned AND active status
             const unassignedVehicles = filterExcludedIds(vehicles || [], assignedVehicleIds);
-            return unassignedVehicles.filter((v: any) => isActiveStatus(v.status) && v.deviceId);
+            return unassignedVehicles.filter((v) => isActiveStatus(v.status) && v.deviceId);
         },
         [vehicles, assignedVehicleIds],
     );
@@ -90,7 +152,7 @@ export default function DriverMappingPage() {
         () => {
             // ✅ FIXED: Filter by both unassigned AND active status
             const unassignedDrivers = filterExcludedIds(drivers || [], assignedDriverIds);
-            return unassignedDrivers.filter((d: any) => isActiveStatus(d.status));
+            return unassignedDrivers.filter((d) => isActiveStatus(d.status));
         },
         [drivers, assignedDriverIds],
     );
@@ -98,7 +160,7 @@ export default function DriverMappingPage() {
   // 🔐 Filter vehicles by selected organization in modal (for superadmin/rootOrgAdmin)
   const vehiclesByModalOrg = useMemo(() => {
     if (!modalOrgFilter) return availableVehicles;
-    return availableVehicles.filter((v: any) => {
+    return availableVehicles.filter((v) => {
       const vehicleOrgId = typeof v.organizationId === "object"
         ? v.organizationId._id
         : v.organizationId;
@@ -107,7 +169,7 @@ export default function DriverMappingPage() {
   }, [availableVehicles, modalOrgFilter]);
 
   const selectedVehicle = useMemo(
-    () => vehiclesByModalOrg.find((v: any) => v._id === formData.vehicleId) || null,
+    () => vehiclesByModalOrg.find((v) => v._id.toString() === formData.vehicleId) || null,
     [vehiclesByModalOrg, formData.vehicleId],
   );
 
@@ -119,7 +181,7 @@ export default function DriverMappingPage() {
       ? selectedVehicle.organizationId._id
       : selectedVehicle.organizationId;
 
-    return availableDrivers.filter((d: any) => {
+    return availableDrivers.filter((d) => {
       const driverOrgId = typeof d.organizationId === "object"
         ? d.organizationId._id
         : d.organizationId;
@@ -128,48 +190,48 @@ export default function DriverMappingPage() {
   }, [selectedVehicle, availableDrivers]);
 
   const selectedDriver = useMemo(
-    () => driversBySelectedVehicleOrg.find((d: any) => d._id === formData.driverId) || null,
+    () => driversBySelectedVehicleOrg.find((d) => d._id.toString() === formData.driverId) || null,
     [driversBySelectedVehicleOrg, formData.driverId],
   );
 
-    const getMappedVehicle = (row: any) => {
+    const getMappedVehicle = (row: DriverMappingRow) => {
         const vehicle = row.vehicleId;
-        if (vehicle && typeof vehicle === "object") return vehicle;
-        return vehicles.find((item: any) => item._id === vehicle) || null;
+        if (isPopulatedVehicle(vehicle)) return vehicle;
+        return vehicles.find((item) => item._id.toString() === vehicle) || null;
     };
 
-    const getMappedDriver = (row: any) => {
+    const getMappedDriver = (row: DriverMappingRow) => {
         const driver = row.driverId;
-        if (driver && typeof driver === "object") return driver;
-        return drivers.find((item: any) => item._id === driver) || null;
+        if (isPopulatedDriver(driver)) return driver;
+        return drivers.find((item) => item._id.toString() === driver) || null;
     };
 
-    const getMappedDevice = (row: any) => {
+    const getMappedDevice = (row: DriverMappingRow) => {
         const directDevice = row.deviceId;
-        if (directDevice && typeof directDevice === "object") return directDevice;
+        if (isPopulatedDevice(directDevice)) return directDevice;
         if (typeof directDevice === "string") {
-            const foundDirect = gpsDevices.find((item: any) => item._id === directDevice);
+            const foundDirect = gpsDevices.find((item) => item._id.toString() === directDevice);
             if (foundDirect) return foundDirect;
         }
 
         const vehicle = getMappedVehicle(row);
         const vehicleDevice = vehicle?.deviceId;
-        if (vehicleDevice && typeof vehicleDevice === "object") return vehicleDevice;
-        return gpsDevices.find((item: any) => item._id === vehicleDevice) || null;
+        if (isPopulatedDevice(vehicleDevice)) return vehicleDevice;
+        return gpsDevices.find((item) => item._id.toString() === vehicleDevice) || null;
     };
 
-    const getVehicleNumber = (row: any) => getMappedVehicle(row)?.vehicleNumber || "";
-    const getVehicleImei = (row: any) => getMappedDevice(row)?.imei || "";
+    const getVehicleNumber = (row: DriverMappingRow) => getMappedVehicle(row)?.vehicleNumber || "";
+    const getVehicleImei = (row: DriverMappingRow) => getMappedDevice(row)?.imei || "";
 
-    const getDriverName = (row: any) => {
+    const getDriverName = (row: DriverMappingRow) => {
         const driver = getMappedDriver(row);
         if (!driver) return "";
         return `${driver.firstName || ""} ${driver.lastName || ""}`.trim();
     };
 
-    const getDriverPhone = (row: any) => getMappedDriver(row)?.phone || "";
+    const getDriverPhone = (row: DriverMappingRow) => getMappedDriver(row)?.phone || "";
 
-    const getOrganizationId = (row: any) => {
+    const getOrganizationId = (row: DriverMappingRow) => {
         const directOrg = row.organizationId;
         if (directOrg && typeof directOrg === "object") return directOrg._id || "";
         if (typeof directOrg === "string") return directOrg;
@@ -185,7 +247,7 @@ export default function DriverMappingPage() {
         return "";
     };
 
-    const getOrganizationName = (row: any) => {
+    const getOrganizationName = (row: DriverMappingRow) => {
         const directOrg = row.organizationId;
         if (directOrg && typeof directOrg === "object" && directOrg.name) return directOrg.name;
 
@@ -196,11 +258,11 @@ export default function DriverMappingPage() {
         if (driverOrg && typeof driverOrg === "object" && driverOrg.name) return driverOrg.name;
 
         const orgId = getOrganizationId(row);
-        const org = organizations.find((item: any) => item._id === orgId);
+        const org = organizations.find((item) => item._id.toString() === orgId);
         return org?.name || "N/A";
     };
 
-    const getAssignedDate = (row: any) => {
+    const getAssignedDate = (row: DriverMappingRow) => {
         const date = row.assignedAt || row.createdAt;
         return date ? new Date(date).toISOString().split("T")[0] : "";
     };
@@ -359,6 +421,25 @@ export default function DriverMappingPage() {
                         <p className="text-sm text-slate-500">Associate active drivers with fleet vehicles.</p>
                     </div>
                     <div className="flex flex-col gap-3 sm:flex-row">
+                        <ImportExportButton
+                            moduleName="driverMapping"
+                            importUrl="/importexport/import/drivermapping"
+                            exportUrl="/importexport/export/drivermapping"
+                            allowedFields={["vehicleNumber", "driverEmail"]}
+                            requiredFields={["vehicleNumber", "driverEmail"]}
+                            filters={{
+                                vehicleNumber: filters.vehicleNumber,
+                                driverName: filters.driverName,
+                                driverPhone: filters.driverPhone,
+                                organizationId: filters.organizationId,
+                                assignedDate: filters.assignedDate,
+                            }}
+                            onCompleted={() => {
+                                void refetchMappings();
+                                void refetchVehicles();
+                                void refetchDrivers();
+                            }}
+                        />
                         <button
                             onClick={() => setShowFilters(!showFilters)}
                             className="rounded-xl bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-widest text-slate-700 shadow-sm transition hover:bg-slate-200"
@@ -491,8 +572,8 @@ export default function DriverMappingPage() {
                       }}
                     >
                       <option value="">All organizations (scoped)</option>
-                      {organizations.map((org: any) => (
-                        <option key={org._id} value={org._id}>
+                      {organizations.map((org) => (
+                        <option key={org._id.toString()} value={org._id.toString()}>
                           {org.orgPath ? `${org.orgPath} / ${org.name}` : org.name}
                         </option>
                       ))}
