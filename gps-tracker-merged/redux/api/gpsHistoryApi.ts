@@ -6,6 +6,8 @@ type HistoryQueryParams = {
     to?: string
     page?: number
     limit?: number
+    alertType?: string
+    search?: string
 }
 
 const buildDateParams = ({ from, to }: { from?: string; to?: string }) => ({
@@ -65,9 +67,15 @@ export const gpsHistoryApi = baseApi.injectEndpoints({
             providesTags: ["History"],
         }),
         getAlertSummary: builder.query({
-            query: ({ vehicleId, from, to }: HistoryQueryParams) => ({
+            query: ({ vehicleId, from, to, page, limit, alertType, search }: HistoryQueryParams) => ({
                 url: `/gps-history/alert-summary/${vehicleId}`,
-                params: buildDateParams({ from, to }),
+                params: {
+                    ...buildDateParams({ from, to }),
+                    ...(page !== undefined ? { page } : {}),
+                    ...(limit !== undefined ? { limit } : {}),
+                    ...(alertType ? { alertType } : {}),
+                    ...(search ? { search } : {}),
+                },
             }),
             providesTags: ["History"],
         }),

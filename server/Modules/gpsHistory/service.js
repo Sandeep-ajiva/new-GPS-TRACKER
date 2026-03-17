@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const paginate = require("../../helpers/limitoffset");
 const GpsHistory = require("./model");
 const GpsLiveData = require("../gpsLiveData/model");
 const VehicleDailyStats = require("../vehicleDailyStats/model");
@@ -159,7 +160,7 @@ async function getPlayback(vehicleId, orgScope, query = {}) {
       gpsTimestamp: point.gpsTimestamp,
       ignitionStatus: Boolean(point.ignitionStatus),
       odometer: point.odometer ?? null,
-      address: point.address || "",
+      address: point.address || `${point.latitude}, ${point.longitude}`,
       poi: point.poi || "",
     })),
   };
@@ -238,10 +239,30 @@ async function getTravelSummary(vehicleId, orgScope, query = {}) {
       });
     });
 
-    const { trips: allTrips, tripSummary: totalSummary } = buildTrips(vPoints);
-    const maxStoppageGlobal = Math.max(0, ...allTrips.map(t => t.stopTime || 0), ...allTrips.map(t => t.inactiveTime || 0));
-    const idleCountGlobal = allTrips.reduce((acc, t) => acc + (t.idleTime > 0 ? 1 : 0), 0);
-    const overSpeedCountGlobal = allTrips.filter(t => t.maxSpeed > 60).length;
+    // Aggregate from already-computed dailySummaries — no second buildTrips pass needed
+    const allTripsFlat = dailySummaries;
+    const totalSummary = {
+      totalTripDistance: Number(allTripsFlat.reduce((s, d) => s + Number(d.distance || 0), 0).toFixed(2)),
+      totalRunning: allTripsFlat.reduce((s, d) => s + Number(d.runningTime || 0), 0),
+      totalIdle: allTripsFlat.reduce((s, d) => s + Number(d.idleTime || 0), 0),
+      totalStop: allTripsFlat.reduce((s, d) => s + Number(d.stopTime || 0), 0),
+      totalInactive: allTripsFlat.reduce((s, d) => s + Number(d.inactiveTime || 0), 0),
+      totalDuration: allTripsFlat.reduce((s, d) => s + Number(d.duration || 0), 0),
+      avgSpeed: 0,
+      maxSpeed: Math.max(0, ...allTripsFlat.map(d => Number(d.maxSpeed || 0))),
+    };
+    const runningHours = totalSummary.totalRunning / 3600;
+    totalSummary.avgSpeed = runningHours > 0
+      ? Number((totalSummary.totalTripDistance / runningHours).toFixed(2))
+      : 0;
+    const maxStoppageGlobal = Math.max(0, ...allTripsFlat.map(d => Number(d.maxStoppage || 0)));
+    const idleCountGlobal = allTripsFlat.reduce((s, d) => s + Number(d.idleCount || 0), 0);
+    const overSpeedCountGlobal = allTripsFlat.reduce((s, d) => s + Number(d.overSpeedCount || 0), 0);
+    // Derive first/last ignition from daily summaries
+    const firstIgnitionDay = allTripsFlat.find(d => d.firstIgnitionOn);
+    const lastIgnitionDay = [...allTripsFlat].reverse().find(d => d.lastIgnitionOff);
+    const firstIgnitionOnGlobal = firstIgnitionDay?.firstIgnitionOn || null;
+    const lastIgnitionOffGlobal = lastIgnitionDay?.lastIgnitionOff || null;
 
     results.push({
       vehicleId: vId,
@@ -263,11 +284,11 @@ async function getTravelSummary(vehicleId, orgScope, query = {}) {
       overSpeedCount: overSpeedCountGlobal,
       avgSpeed: totalSummary.avgSpeed,
       maxSpeed: totalSummary.maxSpeed,
-      startLocation: allTrips[0]?.startLocation,
-      endLocation: allTrips[allTrips.length - 1]?.endLocation,
-      startOdometer: allTrips[0]?.startOdometer || 0,
-      endOdometer: allTrips[allTrips.length - 1]?.endOdometer || 0,
-      alerts: allTrips.reduce((sum, trip) => sum + (trip.alerts || 0), 0),
+      startLocation: dailySummaries[0]?.startLocation,
+      endLocation: dailySummaries[dailySummaries.length - 1]?.endLocation,
+      startOdometer: dailySummaries[0]?.startOdometer || 0,
+      endOdometer: dailySummaries[dailySummaries.length - 1]?.endOdometer || 0,
+      alerts: allTripsFlat.reduce((sum, d) => sum + Number(d.alerts || 0), 0),
       dailyBreakdown: dailySummaries
     });
   }
@@ -406,20 +427,35 @@ async function getAlertSummary(vehicleId, orgScope, query = {}) {
     "gpsTimestamp",
     dateRange,
   );
+  // Apply optional alert type filter from query
+  if (query.alertType && query.alertType !== "all") {
+    alertFilter.alertName = query.alertType;
+  }
 
-  const [alertDocs, emergencyDocs] = await Promise.all([
-    Alert.find(alertFilter)
-      .populate("organizationId", "name")
-      .populate("vehicleId", "vehicleNumber driverId")
-      .sort({ gpsTimestamp: -1 })
-      .lean(),
-    EmergencyEvent.find(alertFilter).select("_id eventType gpsTimestamp").lean(),
-  ]);
+  const paginatedResult = await paginate(
+    Alert,
+    alertFilter,
+    query.page,
+    query.limit || 50,
+    [
+      { path: "organizationId", select: "name" },
+      { path: "vehicleId", select: "vehicleNumber driverId" },
+    ],
+    ["alertName"],
+    query.search || "",
+    { gpsTimestamp: -1 },
+  );
 
-  // Fetch drivers for the vehicles found in alertDocs
+  const alertDocs = paginatedResult.data;
+
+  const emergencyDocs = await EmergencyEvent.find(alertFilter)
+    .select("_id eventType gpsTimestamp")
+    .lean();
+
+  // Fetch drivers for the vehicles found in alertDocs (current page only)
   const vehicleDriverIds = alertDocs
-    .map(a => a.vehicleId?.driverId)
-    .filter(id => id && mongoose.isValidObjectId(id));
+    .map((a) => a.vehicleId?.driverId)
+    .filter((id) => id && mongoose.isValidObjectId(id));
 
   const drivers = await Driver.find({ _id: { $in: vehicleDriverIds } }).select("firstName lastName").lean();
 
@@ -453,6 +489,7 @@ async function getAlertSummary(vehicleId, orgScope, query = {}) {
     from: dateRange.from,
     to: dateRange.to,
     alerts: enrichedAlerts,
+    pagination: paginatedResult.pagination,
     ...summarizeAlerts(alertDocs, emergencyDocs, []), // Keep summary counts
   };
 }

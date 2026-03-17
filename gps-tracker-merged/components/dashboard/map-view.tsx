@@ -8,6 +8,7 @@ import { TelemetryGrid } from "./telemetry-grid";
 import { useDashboardContext } from "./DashboardContext";
 import { useGetLiveVehicleByDeviceIdQuery } from "@/redux/api/gpsLiveApi";
 import { MapTileLayer } from "../admin/Map/MapTileLayer";
+import { animatePosition, calculateAnimationDuration } from "@/lib/positionInterpolation";
 import "leaflet/dist/leaflet.css";
 import "leaflet-defaulticon-compatibility/dist/leaflet-defaulticon-compatibility.css";
 import "leaflet-defaulticon-compatibility";
@@ -16,6 +17,9 @@ type LiveVehicleNode = {
   latitude?: number | string
   longitude?: number | string
   status?: string
+  currentLocation?: string | Record<string, unknown>
+  poi?: string
+  poiId?: string | null
 }
 
 function SmoothFocus({
@@ -87,6 +91,12 @@ const markerIcon = (color: string, size = 15) =>
 export function MapView() {
   const { selectedVehicle, focusKey } = useDashboardContext();
   const [isFollowMode, setIsFollowMode] = useState(true);
+  
+  // Smooth position animation state
+  const [animatedPos, setAnimatedPos] = useState<{ lat: number; lng: number } | null>(null);
+  const prevPosRef = useRef<{ lat: number; lng: number } | null>(null);
+  const animationCleanupRef = useRef<(() => void) | null>(null);
+  
   const deviceId = selectedVehicle?.deviceId || selectedVehicle?.gpsDeviceId?._id || selectedVehicle?.gpsDeviceId;
 
   const { data: liveDataRes } = useGetLiveVehicleByDeviceIdQuery(deviceId, {
@@ -104,8 +114,79 @@ export function MapView() {
     const lat = typeof latRaw === "string" ? parseFloat(latRaw) : latRaw;
     const lng = typeof lngRaw === "string" ? parseFloat(lngRaw) : lngRaw;
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-    return { lat, lng, status: liveNode.status || selectedVehicle?.status || "running" };
+    return { lat: lat as number, lng: lng as number, status: liveNode.status || selectedVehicle?.status || "running" };
   }, [liveNode, selectedVehicle]);
+
+  // WHY: liveNode is polled every 5s and contains the freshest poi from backend enrichment.
+  // selectedVehicle.poi comes from context which updates via socket + 10s poll — slightly staler.
+  // We prefer liveNode.poi when available, fall back to context poi.
+  // Empty string "" from backend means "no POI found" — show "-" not "N/A".
+  const livePoi = liveNode?.poi !== undefined
+    ? (liveNode.poi || "-")
+    : (selectedVehicle?.poi || "-")
+
+  // Trigger smooth animation when position updates
+  useEffect(() => {
+    if (!currentPos) return;
+
+    // Ensure lat and lng are valid numbers
+    if (!Number.isFinite(currentPos.lat) || !Number.isFinite(currentPos.lng)) return;
+
+    // Initialize animated position on first load
+    if (animatedPos === null) {
+      setAnimatedPos({ lat: currentPos.lat, lng: currentPos.lng });
+      prevPosRef.current = { lat: currentPos.lat, lng: currentPos.lng };
+      return;
+    }
+
+    // If position hasn't actually changed, don't animate
+    const hasMoved = Math.abs(animatedPos.lat - currentPos.lat) > 0.0001 ||
+                     Math.abs(animatedPos.lng - currentPos.lng) > 0.0001;
+    
+    if (!hasMoved) return;
+
+    // Cancel any ongoing animation
+    if (animationCleanupRef.current) {
+      animationCleanupRef.current();
+      animationCleanupRef.current = null;
+    }
+
+    // Calculate smooth animation duration
+    const fromPos = prevPosRef.current || animatedPos;
+    const duration = calculateAnimationDuration(fromPos, { lat: currentPos.lat, lng: currentPos.lng }, 150);
+
+    // Start smooth interpolation animation
+    animationCleanupRef.current = animatePosition(
+      fromPos,
+      { lat: currentPos.lat, lng: currentPos.lng },
+      duration,
+      undefined,
+      undefined,
+      (animPos) => setAnimatedPos({ lat: animPos.lat, lng: animPos.lng }),
+      () => {
+        // Animation complete, snap to final position
+        setAnimatedPos({ lat: currentPos.lat, lng: currentPos.lng });
+        prevPosRef.current = { lat: currentPos.lat, lng: currentPos.lng };
+        animationCleanupRef.current = null;
+      }
+    );
+
+    return () => {
+      if (animationCleanupRef.current) {
+        animationCleanupRef.current();
+        animationCleanupRef.current = null;
+      }
+    };
+  }, [currentPos]);
+
+  // Cleanup animation on unmount
+  useEffect(() => {
+    return () => {
+      if (animationCleanupRef.current) {
+        animationCleanupRef.current();
+      }
+    };
+  }, []);
 
   const statusColor = (status: string) => {
     if (status === "running") return "#38a63c";
@@ -127,7 +208,8 @@ export function MapView() {
   }
 
   const fallbackRoutePoint = selectedVehicle?.route?.[selectedVehicle?.route.length - 1] || selectedVehicle?.route?.[0] || null;
-  const displayPoint = currentPos || fallbackRoutePoint;
+  // Use animated position if available, fall back to current position, then fallback route
+  const displayPoint = animatedPos || currentPos || fallbackRoutePoint;
   const center = displayPoint || { lat: 20.5937, lng: 78.9629 };
   const markerStatus = currentPos?.status || selectedVehicle?.status || "running";
 
@@ -255,7 +337,7 @@ export function MapView() {
             </div>
             <div className="rounded-2xl bg-[#f8fcf7] p-3">
               <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">POI</p>
-              <p className="mt-1 truncate text-sm font-bold text-slate-900">{selectedVehicle.poi || "N/A"}</p>
+              <p className="mt-1 truncate text-sm font-bold text-slate-900">{livePoi}</p>
             </div>
           </div>
         </div>

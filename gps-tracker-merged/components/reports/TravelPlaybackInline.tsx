@@ -234,8 +234,7 @@ const TravelPlaybackInline: React.FC<TravelPlaybackInlineProps> = ({
             timestamp: p.gpsTimestamp || p.timestamp,
             speed: p.speed || 0,
             ignition: p.ignitionStatus ?? p.ignition,
-            address: p.address || "",
-            heading: p.heading || 0,
+            address: p.address || `${p.latitude || p.lat}, ${p.longitude || p.lng}`,            heading: p.heading || 0,
             odometer: p.odometer
         })).sort((a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
     }, [historyResponse]);

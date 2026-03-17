@@ -72,6 +72,7 @@ type LiveGpsItem = {
   fuelPercentage?: number
   temperature?: string
   poi?: string
+  poiId?: string | null
 }
 
 const LIVE_STALE_TIMEOUT_MS = 60 * 1000
@@ -229,7 +230,8 @@ export default function DashboardPage() {
         prevValue.ignitionStatus === nextValue.ignitionStatus &&
         prevValue.ignition === nextValue.ignition &&
         serializeLocationValue(prevValue.currentLocation) === serializeLocationValue(nextValue.currentLocation) &&
-        (prevValue.poi || "") === (nextValue.poi || "")
+        (prevValue.poi || "") === (nextValue.poi || "") &&
+        (prevValue.poiId || null) === (nextValue.poiId || null)
       ) {
         return prev
       }
@@ -281,7 +283,8 @@ export default function DashboardPage() {
           prevValue.ignitionStatus === item.ignitionStatus &&
           prevValue.ignition === item.ignition &&
           serializeLocationValue(prevValue.currentLocation) === serializeLocationValue(item.currentLocation) &&
-          (prevValue.poi || "") === (item.poi || "")
+          (prevValue.poi || "") === (item.poi || "") &&
+          (prevValue.poiId || null) === (item.poiId || null)
         ) {
           return
         }
@@ -517,6 +520,7 @@ export default function DashboardPage() {
           gps: hasLivePosition || hasVehiclePosition,
           location,
           poi: resolvedPoi,
+          poiId: live?.poiId ?? (vehicle.poiId as string | null | undefined) ?? null,
           route,
           batteryVoltage: live?.internalBatteryVoltage ?? null,
           batteryPercent: live?.batteryLevel ?? null,
@@ -620,11 +624,13 @@ export default function DashboardPage() {
             prevLocationMap.get(rowId) ||
             formatCoordinateText(lat as number, lng as number) ||
             "Resolving address...",
-          poi:
+              poi:
             pickFirstString(live.poi) ||
             (Object.prototype.hasOwnProperty.call(live, "poi") ? "-" : "Resolving POI..."),
+          poiId: live?.poiId ?? null,
           route,
           batteryVoltage: live?.internalBatteryVoltage ?? null,
+          
           batteryPercent: live?.batteryLevel ?? null,
           satelliteCount: live?.numberOfSatellites ?? null,
           gsmSignal: live?.gsmSignalStrength ?? null,

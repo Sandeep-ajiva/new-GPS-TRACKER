@@ -15,10 +15,11 @@ const CONFIG = {
     PORT: 6000,
 
     // ── Route  (start → end, lat/lng) ───────────────────────────────
-    START_LAT: 30.72676592785246,
-    START_LNG: 76.76698255305155,
-    END_LAT: 30.583376117925678,
-    END_LNG: 77.01932070473283,
+    START_LAT: 30.965995020581953,
+    START_LNG: 76.5215709388435,
+    END_LAT: 31.036977241291694,
+    END_LNG: 76.33794866231312, 
+    
 
     // ── ORS Routing API ─────────────────────────────────────────────
     ORS_KEY: "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImNiYWM1NmMxNGY2NDQ2ZTFhYzc5YWQ2NjU1ZGM5NjU3IiwiaCI6Im11cm11cjY0In0=",
@@ -27,8 +28,8 @@ const CONFIG = {
     INITIAL_ODO: 23000,
 
     // ── Packet Timing (ms between packets) ──────────────────────────
-    PACKET_DELAY_MOVING: 150,   // delay between moving packets
-    PACKET_DELAY_IDLE: 120,   // delay between idle/stop packets
+    PACKET_DELAY_MOVING: 200,   // delay between moving packets (optimized for smooth animation)
+    PACKET_DELAY_IDLE: 300,   // delay between idle/stop packets
 
     // ── Trip Logic Thresholds ────────────────────────────────────────
     SPEED_MOVING_THRESHOLD: 5,     // km/h above which = "Running"

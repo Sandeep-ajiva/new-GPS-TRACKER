@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { AlertTriangle, Siren, TriangleAlert, ShieldAlert, Filter } from "lucide-react"
 import { useGetAlertSummaryQuery } from "@/redux/api/gpsHistoryApi"
 import { ReportFilterBar, ReportFilterState, getDefaultReportFilter } from "./ReportFilterBar"
@@ -17,16 +17,38 @@ export function AlertSummaryPage({
     userOrgId: string | null
 }) {
     const [filters, setFilters] = useState<ReportFilterState>(getDefaultReportFilter())
+    const [alertPage, setAlertPage] = useState(0)
+    const [alertType, setAlertType] = useState("all")
+    const [alertSearch, setAlertSearch] = useState("")
+
+    useEffect(() => {
+        setAlertPage(0)
+    }, [filters, alertType, alertSearch])
 
     const isValidSelection = filters.vehicleId !== ""
     const { data, isFetching, error } = useGetAlertSummaryQuery(
-        { vehicleId: filters.vehicleId, from: filters.from, to: filters.to },
-        { skip: !isValidSelection }
+        {
+            vehicleId: filters.vehicleId,
+            from: filters.from,
+            to: filters.to,
+            page: alertPage,
+            limit: 50,
+            alertType,
+            search: alertSearch,
+        },
+        { skip: !isValidSelection },
     )
 
     const alertData = data?.data
     const alerts = alertData?.alerts || []
-    const totalAlerts = alertData?.alerts?.length || 0
+    const pagination = alertData?.pagination
+    const totalAlerts = pagination?.totalrecords ?? (alertData?.alerts?.length || 0)
+
+    const currentPage = pagination?.currentPage ?? alertPage
+    const totalPages = pagination?.totalPages ?? 1
+    const pageSize = pagination?.limit ?? 50
+    const startIndex = totalAlerts === 0 ? 0 : currentPage * pageSize + 1
+    const endIndex = totalAlerts === 0 ? 0 : Math.min(totalAlerts, (currentPage + 1) * pageSize)
 
     // Group alerts by Vehicle number for the dropdown functionality
     const groupedAlerts = alerts.reduce((acc: any, alert: any) => {
@@ -75,6 +97,35 @@ export function AlertSummaryPage({
                     </div>
                 ) : (
                     <div className="min-w-max">
+                        <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-[#f8faf8] p-4 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                                <label className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Alert Type</label>
+                                <select
+                                    value={alertType}
+                                    onChange={(e) => setAlertType(e.target.value)}
+                                    className="h-8 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-[#2f8d35]/30"
+                                >
+                                    {['all', 'Overspeed', 'Ignition On', 'Ignition Off', 'Low Battery'].map((type) => (
+                                        <option key={type} value={type}>
+                                            {type}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                                <label className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Search</label>
+                                <div className="relative">
+                                    <Filter className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                                    <input
+                                        value={alertSearch}
+                                        onChange={(e) => setAlertSearch(e.target.value)}
+                                        placeholder="Alert name..."
+                                        className="h-8 rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-[#2f8d35]/30"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
                         {/* Summary Header Row */}
                         <div className="grid grid-cols-[140px_160px_120px_120px_100px_160px_100px_1fr_100px] border-b border-slate-200 bg-[#f8faf8] sticky top-0 z-20">
                             {["Alert DateTime", "Branch", "Vehicle", "Driver", "Alert", "Alert Information", "Duration", "Location", "No of Alerts"].map((h) => (
@@ -146,6 +197,41 @@ export function AlertSummaryPage({
                                 </div>
                             )}
                         </div>
+
+                        {pagination && (
+                            <div className="mt-4 flex flex-col gap-2 rounded-b-2xl border border-t-0 border-slate-200 bg-white px-4 py-3 text-[11px] text-slate-600 md:flex-row md:items-center md:justify-between">
+                                <div>
+                                    Showing {startIndex}–{endIndex} of {totalAlerts} alerts
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={() => setAlertPage((prev) => Math.max(0, prev - 1))}
+                                        disabled={alertPage === 0}
+                                        className={`rounded-lg border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold transition ${
+                                            alertPage === 0
+                                                ? "cursor-not-allowed bg-slate-100 text-slate-400"
+                                                : "hover:bg-slate-50"
+                                        }`}
+                                    >
+                                        ← Prev
+                                    </button>
+                                    <span className="text-[11px] font-semibold">
+                                        Page {currentPage + 1} of {totalPages}
+                                    </span>
+                                    <button
+                                        onClick={() => setAlertPage((prev) => Math.min(totalPages - 1, prev + 1))}
+                                        disabled={alertPage >= totalPages - 1}
+                                        className={`rounded-lg border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold transition ${
+                                            alertPage >= totalPages - 1
+                                                ? "cursor-not-allowed bg-slate-100 text-slate-400"
+                                                : "hover:bg-slate-50"
+                                        }`}
+                                    >
+                                        Next →
+                                    </button>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 )}
             </div>

@@ -45,7 +45,7 @@ const DetailRow = ({ label, value }: { label: string; value: React.ReactNode }) 
 const MetricBox = ({ label, value }: { label: string; value: React.ReactNode }) => (
     <div className="rounded-2xl border border-[#dbe7d4] bg-white px-3 py-2.5">
         <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">{label}</div>
-        <div className="mt-1.5 text-xl font-black tracking-tight text-slate-900">{value}</div>
+        <div className="mt-1.5 text-xl font-black tracking-tight text-slate-900 break-words">{value}</div>
     </div>
 )
 
@@ -131,7 +131,7 @@ export function VehicleDetails({
                 <div className="rounded-[22px] border border-[#dbe7d4] bg-white p-4 shadow-sm">
                     <div className="mb-4 flex items-center justify-between">
                         <SectionPill color="#3e8d11" title="Today Activity" />
-                        <span className="text-lg font-black text-[#3e8d11]">{dailyStats?.totalDistance ?? 0} km</span>
+                        <span className="text-lg font-black text-[#3e8d11]">{(dailyStats?.totalDistance ?? 0).toFixed(2)} km</span>
                     </div>
                     <div className="space-y-1.5 text-sm">
                         <div className="flex items-center justify-between">
