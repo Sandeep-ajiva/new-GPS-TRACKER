@@ -64,6 +64,12 @@
         "update",
         "delete"
       ],
+      "notifications": [
+        "create",
+        "read",
+        "update",
+        "delete"
+      ],
       "geofence": [
         "create",
         "read",
@@ -118,6 +124,12 @@
         "read"
       ],
       "alerts": [
+        "read",
+        "update",
+        "delete"
+      ],
+      "notifications": [
+        "create",
         "read",
         "update",
         "delete"

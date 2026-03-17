@@ -76,7 +76,6 @@ export default function ProfilePage() {
                 firstName: formData.firstName,
                 lastName: formData.lastName,
                 mobile: formData.mobile,
-                email: formData.email, // backend allows email update? check controller
                 status: user.status
             };
 
@@ -212,11 +211,10 @@ export default function ProfilePage() {
                                 <label className="flex text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 icon-label items-center gap-2"><Mail size={12} /> Email Address</label>
                                 <input
                                     type="email"
-                                    className={`w-full px-4 py-3 rounded-xl bg-slate-50 border ${errors.email ? 'border-red-500' : 'border-transparent'} text-sm font-bold text-slate-900 focus:bg-white focus:ring-2 focus:ring-slate-900/10 transition-all outline-none`}
+                                    className={`w-full px-4 py-3 rounded-xl border ${errors.email ? 'border-red-500' : 'border-transparent'} bg-slate-100 text-sm font-bold text-slate-500 outline-none cursor-not-allowed`}
                                     value={formData.email}
-                                    onChange={e => setFormData({ ...formData, email: e.target.value })}
-                                    onBlur={e => handleBlur("email", e.target.value)}
-                                // Should we disable email edit? Usually yes for identity. But Requirement doesn't specify. Left editable.
+                                    readOnly
+                                    disabled
                                 />
                                 {errors.email && <p className="text-red-500 text-[10px] mt-1 font-bold">{errors.email}</p>}
                             </div>

@@ -7,6 +7,7 @@ export type FieldType =
   | "tel"
   | "number"
   | "select"
+  | "searchable-select"
   | "textarea"
   | "checkbox"
   | "file"
@@ -22,6 +23,14 @@ export interface FormOptionGroup {
   options: FormOption[];
 }
 
+export interface SearchableFormOption extends FormOption {
+  description?: string;
+  meta?: string;
+  keywords?: string[];
+  badge?: string;
+  disabled?: boolean;
+}
+
 export interface FormField {
   name: string;
   label: string;
@@ -31,12 +40,18 @@ export interface FormField {
   required?: boolean;
   options?: FormOption[]; // For select type
   groups?: FormOptionGroup[]; // For grouped select type
+  searchableOptions?: SearchableFormOption[];
+  searchPlaceholder?: string;
+  emptyMessage?: string;
+  clearable?: boolean;
+  clearLabel?: string;
   rows?: number; // For textarea type
   icon?: React.ReactNode;
   helperText?: string;
   // Optional UI behavior hooks
   disabled?: boolean;
   onChange?: (value: string) => void;
+  resetFields?: string[];
 }
 
 export interface DynamicModalProps {
@@ -46,7 +61,7 @@ export interface DynamicModalProps {
   description?: string;
   fields: FormField[];
   initialData?: Record<string, string | number | boolean | File>;
-  schema?: ZodSchema<any>;
+  schema?: ZodSchema;
   onSubmit: (
     data: Record<string, string | number | boolean | File>,
   ) => Promise<void> | void;

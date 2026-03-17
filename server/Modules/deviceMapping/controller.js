@@ -7,6 +7,11 @@ const DriverModel = require("../drivers/model");
 const VehicleDriverMapping = require("../vehicleDriverMapping/model");
 const paginate = require("../../helpers/limitoffset");
 const { syncInventoryStatus } = require("../gpsDevice/service");
+const {
+  buildContextFromReq,
+  createDeviceMappingNotification,
+  createDriverMappingNotification,
+} = require("../notifications/producers");
 
 const validateVehicleMappingData = async (data) => {
   const rules = {
@@ -154,6 +159,17 @@ exports.assign = async (req, res) => {
       { path: "gpsDeviceId" },
     ]);
 
+    await createDeviceMappingNotification(
+      {
+        action: "assigned",
+        mappingId: vehicleMapping._id,
+        organizationId,
+        vehicle,
+        device,
+      },
+      buildContextFromReq(req),
+    );
+
     return res.status(201).json({
       status: true,
       message: "Device assigned to vehicle successfully",
@@ -222,6 +238,11 @@ exports.unassignById = async (req, res) => {
     }
 
     const { vehicleId, gpsDeviceId } = mapping;
+    const [vehicleSnapshot, deviceSnapshot] = await Promise.all([
+      VehicleModel.findById(vehicleId).session(session),
+      DeviceModel.findById(gpsDeviceId).session(session),
+    ]);
+    let driverSnapshot = null;
 
     // 🔄 Sync vehicle & device
     await VehicleModel.findByIdAndUpdate(
@@ -247,6 +268,7 @@ exports.unassignById = async (req, res) => {
     }).session(session);
 
     if (activeDriverMapping) {
+      driverSnapshot = await DriverModel.findById(activeDriverMapping.driverId).session(session);
       activeDriverMapping.unassignedAt = new Date();
       activeDriverMapping.status = "unassigned";
       await activeDriverMapping.save({ session });
@@ -265,6 +287,30 @@ exports.unassignById = async (req, res) => {
     }
 
     await session.commitTransaction();
+
+    await createDeviceMappingNotification(
+      {
+        action: "unassigned",
+        mappingId: mapping._id,
+        organizationId: mapping.organizationId,
+        vehicle: vehicleSnapshot || { _id: vehicleId },
+        device: deviceSnapshot || { _id: gpsDeviceId },
+      },
+      buildContextFromReq(req),
+    );
+
+    if (activeDriverMapping && driverSnapshot) {
+      await createDriverMappingNotification(
+        {
+          action: "unassigned",
+          mappingId: activeDriverMapping._id,
+          organizationId: mapping.organizationId,
+          vehicle: vehicleSnapshot || { _id: vehicleId },
+          driver: driverSnapshot,
+        },
+        buildContextFromReq(req),
+      );
+    }
 
     return res.status(200).json({
       status: true,
@@ -313,6 +359,12 @@ exports.unassign = async (req, res) => {
       throw { status: 404, message: "Active mapping not found or access denied" };
     }
 
+    const [vehicleSnapshot, deviceSnapshot] = await Promise.all([
+      VehicleModel.findById(vehicleId).session(session),
+      DeviceModel.findById(gpsDeviceId).session(session),
+    ]);
+    let driverSnapshot = null;
+
     await VehicleModel.findByIdAndUpdate(
       vehicleId,
       { deviceId: null },
@@ -333,6 +385,7 @@ exports.unassign = async (req, res) => {
     }).session(session);
 
     if (activeDriverMapping) {
+      driverSnapshot = await DriverModel.findById(activeDriverMapping.driverId).session(session);
       activeDriverMapping.unassignedAt = new Date();
       activeDriverMapping.status = "unassigned";
       await activeDriverMapping.save({ session });
@@ -351,6 +404,30 @@ exports.unassign = async (req, res) => {
     }
 
     await session.commitTransaction();
+
+    await createDeviceMappingNotification(
+      {
+        action: "unassigned",
+        mappingId: mapping._id,
+        organizationId: mapping.organizationId,
+        vehicle: vehicleSnapshot || { _id: vehicleId },
+        device: deviceSnapshot || { _id: gpsDeviceId },
+      },
+      buildContextFromReq(req),
+    );
+
+    if (activeDriverMapping && driverSnapshot) {
+      await createDriverMappingNotification(
+        {
+          action: "unassigned",
+          mappingId: activeDriverMapping._id,
+          organizationId: mapping.organizationId,
+          vehicle: vehicleSnapshot || { _id: vehicleId },
+          driver: driverSnapshot,
+        },
+        buildContextFromReq(req),
+      );
+    }
 
     return res.status(200).json({
       status: true,

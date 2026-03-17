@@ -4,8 +4,8 @@ import type {
   FetchArgs,
   FetchBaseQueryError,
 } from "@reduxjs/toolkit/query";
-import { apiCircuitBreaker } from "@/utils/CircuitBreaker";
 import { encryptPayload } from "@/utils/encryption";
+import { getApiErrorMessage, normalizeFetchBaseQueryError } from "@/utils/apiError";
 
 import { getSecureItem } from "@/app/admin/Helpers/encryptionHelper";
 
@@ -39,7 +39,11 @@ const rawBaseQuery = fetchBaseQuery({
 
 /**
  * -----------------------------------------------------
- * BASE QUERY WRAPPER (WITH CIRCUIT BREAKER)
+ * BASE QUERY WRAPPER
+ * -----------------------------------------------------
+ * Admin CRUD flows should surface the real backend message and must not be
+ * blocked by shared frontend circuit state, so we normalize errors here
+ * without rewriting them to a generic synthetic 503.
  * -----------------------------------------------------
  */
 export const baseQuery: BaseQueryFn<
@@ -48,26 +52,22 @@ export const baseQuery: BaseQueryFn<
   FetchBaseQueryError
 > = async (args, api, extraOptions) => {
   try {
-    return await apiCircuitBreaker.execute(async () => {
-      const result = await rawBaseQuery(args, api, extraOptions);
+    const result = await rawBaseQuery(args, api, extraOptions);
 
-      // treat 5xx as circuit-breaker failures
-      if (
-        result.error &&
-        typeof result.error.status === "number" &&
-        result.error.status >= 500
-      ) {
-        throw result.error;
-      }
+    if (result.error) {
+      return {
+        error: normalizeFetchBaseQueryError(result.error, "Request failed"),
+      };
+    }
 
-      return result;
-    });
+    return result;
   } catch (err) {
     return {
       error: {
-        status: 503,
+        status: "CUSTOM_ERROR",
+        error: err instanceof Error ? err.message : "Unexpected frontend error",
         data: {
-          message: (err as Error).message || "Service temporarily unavailable",
+          message: getApiErrorMessage(err, "Unexpected frontend error"),
         },
       } as FetchBaseQueryError,
     };

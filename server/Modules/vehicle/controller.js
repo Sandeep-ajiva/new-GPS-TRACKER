@@ -4,6 +4,10 @@ const GpsDevice = require("../gpsDevice/model");
 const paginate = require("../../helpers/limitoffset");
 const Validator = require("../../helpers/validators");
 const { cleanupForVehicleDeletion } = require("../../common/mappingCleanup");
+const {
+  buildContextFromReq,
+  createVehicleCreatedNotification,
+} = require("../notifications/producers");
 
 /* -------------------------------------------------------------------------- */
 /*                               VALIDATION RULES                              */
@@ -88,6 +92,11 @@ exports.create = async (req, res) => {
 
     const vehicle = await VehicleModel.create(vehicleData);
 
+    await createVehicleCreatedNotification(
+      { vehicle },
+      buildContextFromReq(req),
+    );
+
     return res.status(201).json({
       status: true,
       message: "Vehicle created successfully",
@@ -124,7 +133,7 @@ exports.update = async (req, res) => {
 
     // 🔐 ORG SCOPE FIX
     const orgFilter = req.orgScope === "ALL" ? {} : { organizationId: { $in: req.orgScope } };
-    const vehicle = await VehicleModel.findOne({ _id: req.params.id, ...orgFilter }).session(session);
+    const vehicle = await VehicleModel.findOne({ _id: req.params.id, ...orgFilter });
 
     if (!vehicle) {
       return res.status(404).json({

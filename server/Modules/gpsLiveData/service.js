@@ -9,6 +9,7 @@ const Alert = require("../alerts/model");
 const Organization = require("../organizations/model");
 const EmergencyEvent = require("../emergencyEvents/model");
 const { calculateDistance, mapAlertType } = require("../../common/utils");
+const { createNotificationFromAlert } = require("../notifications/producers");
 
 const Service = {
   /**
@@ -463,7 +464,7 @@ const Service = {
         ) => {
           const alertMapping = mapAlertType(alertType);
 
-          await Alert.create({
+          const alert = await Alert.create({
             organizationId,
             gpsDeviceId,
             vehicleId,
@@ -486,6 +487,7 @@ const Service = {
             operatorName: data.operatorName ?? null,
             odometer: data.currentMileage ?? null,
           });
+          void createNotificationFromAlert(alert, { orgScope: "ALL" });
 
           // Increment alert count in VehicleDailyStats
           const countField = `alertCounts.${alertType}Count`;

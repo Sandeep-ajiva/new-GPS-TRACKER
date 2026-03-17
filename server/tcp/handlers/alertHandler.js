@@ -6,6 +6,7 @@
 const Alert = require("../../Modules/alerts/model");
 const GpsDevice = require("../../Modules/gpsDevice/model");
 const VehicleDailyStats = require("../../Modules/vehicleDailyStats/model");
+const { createNotificationFromAlert } = require("../../Modules/notifications/producers");
 
 // Map alert identifiers to alertId numbers and alertName enum values
 const ALERT_MAP = {
@@ -102,7 +103,8 @@ module.exports = async function alertHandler(socket, packet) {
       (k) => alertDoc[k] === undefined && delete alertDoc[k],
     );
 
-    await Alert.create(alertDoc);
+    const alert = await Alert.create(alertDoc);
+    void createNotificationFromAlert(alert, { orgScope: "ALL" });
 
     /* ------------------------------------------------------------ */
     /* 4️⃣ UPDATE DAILY STATS (overspeed counter)                    */

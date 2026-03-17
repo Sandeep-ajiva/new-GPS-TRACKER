@@ -261,10 +261,10 @@ export default function DashboardPage() {
       />
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <AdminStatCard label="Organizations" value={orgTotal} icon={<Users size={20} />} tone="blue" meta="Active hierarchy and sub-org visibility" />
-        <AdminStatCard label="Vehicles" value={vehicleTotal} icon={<Car size={20} />} tone="amber" meta={`${offlineVehicles} currently offline`} />
-        <AdminStatCard label="GPS Devices" value={deviceTotal} icon={<Radio size={20} />} tone="violet" meta="Provisioned and mapped tracking units" />
-        <AdminStatCard label="Online Vehicles" value={onlineVehicles} icon={<Activity size={20} />} tone="green" meta="Live telemetry reporting now" />
+        <AdminStatCard label="Organizations" value={orgTotal} icon={<Users size={20} />} tone="blue" meta="Active hierarchy and sub-org visibility" href="/admin/organizations" />
+        <AdminStatCard label="Vehicles" value={vehicleTotal} icon={<Car size={20} />} tone="amber" meta={`${offlineVehicles} currently offline`} href="/admin/vehicles" />
+        <AdminStatCard label="GPS Devices" value={deviceTotal} icon={<Radio size={20} />} tone="violet" meta="Provisioned and mapped tracking units" href="/admin/gps-devices" />
+        <AdminStatCard label="Online Vehicles" value={onlineVehicles} icon={<Activity size={20} />} tone="green" meta="Live telemetry reporting now" href="/admin/live-tracking" />
       </div>
 
       {selectedOrgId ? (

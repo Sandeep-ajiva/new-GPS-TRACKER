@@ -3,6 +3,10 @@ const Vehicle = require('../vehicle/model');
 const Driver = require('../drivers/model');
 const Validator = require('../../helpers/validators');
 const mongoose = require('mongoose');
+const {
+  buildContextFromReq,
+  createDriverMappingNotification,
+} = require("../notifications/producers");
 
 const validateAssignData = async (data) => {
   const rules = {
@@ -140,6 +144,17 @@ exports.assignDriverToVehicle = async (req, res) => {
       { path: "organizationId" },
     ]);
 
+    await createDriverMappingNotification(
+      {
+        action: "assigned",
+        mappingId: mapping._id,
+        organizationId,
+        vehicle,
+        driver,
+      },
+      buildContextFromReq(req),
+    );
+
     return res.status(201).json({
       status: true,
       message: "Driver assigned to vehicle successfully",
@@ -200,6 +215,17 @@ exports.unassignDriverFromVehicle = async (req, res) => {
     await Driver.findByIdAndUpdate(activeMapping.driverId, { assignedVehicleId: null });
 
     await activeMapping.populate(['vehicleId', 'driverId']);
+
+    await createDriverMappingNotification(
+      {
+        action: "unassigned",
+        mappingId: activeMapping._id,
+        organizationId: vehicle.organizationId,
+        vehicle: activeMapping.vehicleId,
+        driver: activeMapping.driverId,
+      },
+      buildContextFromReq(req),
+    );
 
     return res.status(200).json({
       status: true,

@@ -1,8 +1,8 @@
 "use client";
 
-import { ReactNode } from "react";
+import { ReactNode, type Ref } from "react";
 
-type TableRow = Record<string, unknown>;
+type TableRow = object;
 
 interface TableColumn<T extends TableRow> {
   header: string;
@@ -16,6 +16,8 @@ interface TableProps<T extends TableRow> {
   data: T[];
   loading?: boolean;
   variant?: "light" | "dark";
+  scrollContainerRef?: Ref<HTMLDivElement>;
+  horizontalScrollMode?: "internal" | "external";
 }
 
 export default function Table<T extends TableRow>({
@@ -23,6 +25,8 @@ export default function Table<T extends TableRow>({
   data,
   loading,
   variant = "light",
+  scrollContainerRef,
+  horizontalScrollMode = "internal",
 }: TableProps<T>) {
   const isDark = variant === "dark";
   const containerClass = isDark
@@ -56,10 +60,8 @@ export default function Table<T extends TableRow>({
     );
   }
 
-  return (
-    <div className={`${containerClass} overflow-hidden`}>
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-max table-auto text-sm">
+  const tableMarkup = (
+    <table className="w-full min-w-max table-auto text-sm">
         <thead>
           <tr className={headerClass}>
             {columns.map((col, idx) => (
@@ -85,13 +87,23 @@ export default function Table<T extends TableRow>({
                 >
                   {typeof col.accessor === "function"
                     ? col.accessor(row)
-                    : (row[col.accessor] ?? "-") as ReactNode}
+                    : ((row as Record<string, unknown>)[col.accessor as string] ?? "-") as ReactNode}
                 </td>
               ))}
             </tr>
           ))}
         </tbody>
-        </table>
+    </table>
+  );
+
+  if (horizontalScrollMode === "external") {
+    return <div className={containerClass}>{tableMarkup}</div>;
+  }
+
+  return (
+    <div className={`${containerClass} overflow-hidden`}>
+      <div ref={scrollContainerRef} className="overflow-x-auto">
+        {tableMarkup}
       </div>
     </div>
   );

@@ -1,527 +1,514 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import { useDeferredValue, useMemo, useState } from "react";
 import {
   AlertTriangle,
-  ShieldX,
-  Activity,
-  AlertCircle,
-  MapPin,
   Bell,
-  Calendar,
+  CheckCheck,
   Filter,
-  Search,
-  Car,
   RefreshCw,
-  X
+  Search,
 } from "lucide-react";
-import { useGetNotificationsQuery, useMarkAsReadMutation, useDeleteNotificationMutation, useClearAllNotificationsMutation } from "@/redux/api/notificationsApi";
-import { useGetVehiclesQuery } from "@/redux/api/vehicleApi";
-import { Badge } from "@/components/ui/badge";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+import { NotificationListItem } from "@/components/admin/notifications/NotificationListItem";
 import { Button } from "@/components/ui/button";
+import type {
+  AdminNotification,
+  NotificationQueryParams,
+} from "@/lib/adminNotifications";
+import {
+  NOTIFICATION_SEVERITY_OPTIONS,
+  NOTIFICATION_STATUS_OPTIONS,
+  NOTIFICATION_TYPE_OPTIONS,
+  getNotificationPrimaryRoute,
+} from "@/lib/adminNotifications";
+import { useGetOrganizationsQuery } from "@/redux/api/organizationApi";
+import {
+  useBulkMarkAdminNotificationsAsAcknowledgedMutation,
+  useBulkMarkAdminNotificationsAsReadMutation,
+  useDeleteAdminNotificationMutation,
+  useGetAdminNotificationCountsQuery,
+  useGetAdminNotificationsQuery,
+  useMarkAdminNotificationAsAcknowledgedMutation,
+  useMarkAdminNotificationAsReadMutation,
+  useMarkAdminNotificationAsResolvedMutation,
+} from "@/redux/api/adminNotificationsApi";
+import { getApiErrorMessage } from "@/utils/apiError";
 
-// Alert type icons
-const getAlertIcon = (type: string, severity: string) => {
-  const iconClass = "w-5 h-5";
+const PAGE_SIZE = 20;
 
-  if (type?.toLowerCase().includes("overspeed") || type?.toLowerCase().includes("speed")) {
-    return <AlertTriangle className={`${iconClass} text-amber-500`} />;
-  }
-  if (type?.toLowerCase().includes("ignition")) {
-    return severity?.toLowerCase().includes("on") ?
-      <Activity className={`${iconClass} text-green-500`} /> :
-      <ShieldX className={`${iconClass} text-gray-500`} />;
-  }
-  if (type?.toLowerCase().includes("offline") || type?.toLowerCase().includes("lost")) {
-    return <AlertCircle className={`${iconClass} text-red-500`} />;
-  }
-  if (type?.toLowerCase().includes("sos") || type?.toLowerCase().includes("emergency")) {
-    return <AlertTriangle className={`${iconClass} text-red-600`} />;
-  }
-  if (type?.toLowerCase().includes("geofence") || type?.toLowerCase().includes("location")) {
-    return <MapPin className={`${iconClass} text-blue-500`} />;
-  }
-
-  return <AlertCircle className={`${iconClass} text-gray-500`} />;
+type FiltersState = {
+  organizationId: string;
+  type: string;
+  severity: string;
+  status: string;
+  dateFrom: string;
+  dateTo: string;
 };
 
-// Severity badge styles
-const getSeverityBadge = (severity: string) => {
-  const severityLower = severity?.toLowerCase();
-
-  if (severityLower?.includes("critical") || severityLower?.includes("emergency")) {
-    return <Badge variant="destructive" className="text-xs font-bold">CRITICAL</Badge>;
-  }
-  if (severityLower?.includes("warning") || severityLower?.includes("medium")) {
-    return <Badge variant="warning" className="text-xs font-bold">WARNING</Badge>;
-  }
-  if (severityLower?.includes("info") || severityLower?.includes("low")) {
-    return <Badge variant="default" className="text-xs font-bold">INFO</Badge>;
-  }
-
-  return <Badge variant="secondary" className="text-xs font-bold">NORMAL</Badge>;
+const DEFAULT_FILTERS: FiltersState = {
+  organizationId: "",
+  type: "",
+  severity: "",
+  status: "",
+  dateFrom: "",
+  dateTo: "",
 };
 
-// Format time to relative
-const formatRelativeTime = (timestamp: string) => {
-  const now = new Date();
-  const time = new Date(timestamp);
-  const diffMs = now.getTime() - time.getTime();
-  const diffMins = Math.floor(diffMs / (1000 * 60));
+const buildQuery = (filters: Partial<NotificationQueryParams>) =>
+  Object.fromEntries(
+    Object.entries(filters).filter(([, value]) => value !== undefined && value !== null && value !== "")
+  );
 
-  if (diffMins < 1) return "Just now";
-  if (diffMins < 60) return `${diffMins} min ago`;
-
-  const diffHours = Math.floor(diffMins / 60);
-  if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
-
-  const diffDays = Math.floor(diffHours / 24);
-  return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
-};
-
-// Format date for display
-const formatDate = (date: string) => {
-  return new Date(date).toLocaleDateString("en-GB", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric"
-  });
-};
+const CountCard = ({
+  label,
+  value,
+  accent,
+}: {
+  label: string;
+  value: number;
+  accent: string;
+}) => (
+  <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+    <div className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">{label}</div>
+    <div className={`mt-2 text-2xl font-black ${accent}`}>{value}</div>
+  </div>
+);
 
 export default function NotificationsPage() {
-  const [selectedDate, setSelectedDate] = useState(() => {
-    const today = new Date();
-    return today.toISOString().split('T')[0];
-  });
-  const [selectedVehicle, setSelectedVehicle] = useState("");
-  const [selectedAlertType, setSelectedAlertType] = useState("");
-  const [selectedStatus, setSelectedStatus] = useState("");
+  const router = useRouter();
+  const [filters, setFilters] = useState<FiltersState>(DEFAULT_FILTERS);
   const [searchQuery, setSearchQuery] = useState("");
+  const deferredSearch = useDeferredValue(searchQuery);
+  const [page, setPage] = useState(0);
+  const [pendingId, setPendingId] = useState<string | null>(null);
+  const [bulkPending, setBulkPending] = useState<"read" | "acknowledge" | null>(null);
 
-  // API hooks
-  const { data: notificationsData, isLoading, error, refetch } = useGetNotificationsQuery(undefined, {
-    pollingInterval: 30000,
+  const listParams = useMemo(
+    () =>
+      buildQuery({
+        ...filters,
+        page,
+        limit: PAGE_SIZE,
+        search: deferredSearch.trim(),
+      }),
+    [filters, page, deferredSearch]
+  );
+
+  const countsParams = useMemo(
+    () =>
+      buildQuery({
+        organizationId: filters.organizationId,
+        type: filters.type,
+        severity: filters.severity,
+        dateFrom: filters.dateFrom,
+        dateTo: filters.dateTo,
+      }),
+    [filters.organizationId, filters.type, filters.severity, filters.dateFrom, filters.dateTo]
+  );
+
+  const bulkParams = useMemo(
+    () =>
+      buildQuery({
+        ...filters,
+        search: deferredSearch.trim(),
+      }),
+    [filters, deferredSearch]
+  );
+
+  const {
+    data: notificationsData,
+    isLoading,
+    isFetching,
+    error,
+    refetch,
+  } = useGetAdminNotificationsQuery(listParams, {
+    refetchOnMountOrArgChange: true,
   });
-  const { data: vehiclesData } = useGetVehiclesQuery(undefined);
-  const [markAsRead] = useMarkAsReadMutation();
-  const [deleteNotification] = useDeleteNotificationMutation();
-  const [clearAllNotifications] = useClearAllNotificationsMutation();
+  const { data: countsData } = useGetAdminNotificationCountsQuery(countsParams, {
+    refetchOnMountOrArgChange: true,
+  });
+  const { data: organizationsData } = useGetOrganizationsQuery(undefined);
+
+  const [markAsRead] = useMarkAdminNotificationAsReadMutation();
+  const [markAsAcknowledged] = useMarkAdminNotificationAsAcknowledgedMutation();
+  const [markAsResolved] = useMarkAdminNotificationAsResolvedMutation();
+  const [bulkMarkRead] = useBulkMarkAdminNotificationsAsReadMutation();
+  const [bulkMarkAcknowledged] = useBulkMarkAdminNotificationsAsAcknowledgedMutation();
+  const [deleteNotification] = useDeleteAdminNotificationMutation();
 
   const notifications = notificationsData?.data || [];
-  const vehicles = vehiclesData?.data || vehiclesData?.vehicles || [];
+  const pagination = notificationsData?.pagination;
+  const counts = countsData?.data;
+  const organizations = organizationsData?.data || [];
+  const hasFilters = Boolean(
+    searchQuery.trim() ||
+      filters.organizationId ||
+      filters.type ||
+      filters.severity ||
+      filters.status ||
+      filters.dateFrom ||
+      filters.dateTo
+  );
 
-  // Filter notifications
-  const filteredNotifications = useMemo(() => {
-    return notifications.filter((notif: any) => {
-      const notifDate = new Date(notif.createdAt || notif.timestamp).toISOString().split('T')[0];
-      const matchesDate = !selectedDate || notifDate === selectedDate;
-      const matchesVehicle = !selectedVehicle || notif.vehicleNumber?.toLowerCase().includes(selectedVehicle.toLowerCase());
-      const matchesType = !selectedAlertType || notif.title?.toLowerCase().includes(selectedAlertType.toLowerCase());
-      const matchesSearch = !searchQuery ||
-        notif.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        notif.vehicleNumber?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        notif.message?.toLowerCase().includes(searchQuery.toLowerCase());
+  const runAction = async (
+    notification: AdminNotification,
+    action: (id: string) => Promise<unknown>,
+    successMessage: string,
+  ) => {
+    setPendingId(notification._id);
 
-      return matchesDate && matchesVehicle && matchesType && matchesSearch;
-    });
-  }, [notifications, selectedDate, selectedVehicle, selectedAlertType, searchQuery]);
-
-  // Group notifications by vehicle for visual grouping
-  const groupedNotifications = useMemo(() => {
-    const groups: { [key: string]: any[] } = {};
-
-    filteredNotifications.forEach((notif: any) => {
-      const vehicleKey = notif.vehicleNumber || notif.imei || 'Unknown';
-      if (!groups[vehicleKey]) {
-        groups[vehicleKey] = [];
-      }
-      groups[vehicleKey].push(notif);
-    });
-
-    return groups;
-  }, [filteredNotifications]);
-
-  const handleMarkAsRead = async (notificationId: string) => {
     try {
-      await markAsRead(notificationId).unwrap();
-    } catch (error) {
-      console.error("Failed to mark as read:", error);
+      await action(notification._id);
+      toast.success(successMessage);
+    } catch (actionError) {
+      toast.error(getApiErrorMessage(actionError, "Unable to update this notification right now"));
+    } finally {
+      setPendingId(null);
     }
   };
 
-  const handleDelete = async (notificationId: string) => {
-    if (confirm("Are you sure you want to delete this notification?")) {
-      try {
-        await deleteNotification(notificationId).unwrap();
-        refetch();
-      } catch (error) {
-        console.error("Failed to delete notification:", error);
-      }
+  const runBulkAction = async (
+    kind: "read" | "acknowledge",
+    action: () => Promise<unknown>,
+    successMessage: string,
+  ) => {
+    setBulkPending(kind);
+
+    try {
+      await action();
+      toast.success(successMessage);
+    } catch (actionError) {
+      toast.error(getApiErrorMessage(actionError, "Unable to update notifications right now"));
+    } finally {
+      setBulkPending(null);
     }
   };
 
-  const handleClearAll = async () => {
-    if (confirm("Are you sure you want to clear all notifications?")) {
-      try {
-        await clearAllNotifications(undefined).unwrap();
-        refetch();
-      } catch (error) {
-        console.error("Failed to clear notifications:", error);
-      }
+  const updateFilter = (key: keyof FiltersState, value: string) => {
+    setPage(0);
+    setFilters((previous) => ({ ...previous, [key]: value }));
+  };
+
+  const clearFilters = () => {
+    setFilters(DEFAULT_FILTERS);
+    setSearchQuery("");
+    setPage(0);
+  };
+
+  const handleOpenRelated = async (notification: AdminNotification) => {
+    const route = getNotificationPrimaryRoute(notification);
+    if (!route) {
+      return;
     }
+
+    if (!notification.isRead) {
+      await runAction(notification, (id) => markAsRead(id).unwrap(), "Notification marked as read");
+    }
+
+    router.push(route);
   };
 
-  const handleRetry = () => {
-    refetch();
+  const handleDelete = async (notification: AdminNotification) => {
+    if (!window.confirm("Delete this notification?")) {
+      return;
+    }
+
+    await runAction(notification, (id) => deleteNotification(id).unwrap(), "Notification deleted");
   };
-
-  // Get unique alert types for filter
-  const alertTypes = useMemo(() => {
-    const types = new Set<string>();
-    notifications.forEach((notif: any) => {
-      if (notif.title) types.add(notif.title);
-    });
-    return Array.from(types);
-  }, [notifications]);
-
-  if (error) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <AlertTriangle className="w-16 h-16 mx-auto mb-4 text-red-500" />
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">Unable to load notifications</h1>
-          <p className="text-gray-600 mb-4">There was an error loading your notifications.</p>
-          <Button onClick={handleRetry} className="bg-blue-600 hover:bg-blue-700 text-white">
-            <RefreshCw size={16} className="mr-2" />
-            Retry
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-gray-50 p-6">
-        <div className="max-w-7xl mx-auto">
-          <div className="mb-6">
-            <h1 className="text-2xl font-black text-gray-900 mb-2">Notifications</h1>
-            <p className="text-gray-600">Loading your notifications...</p>
-          </div>
-
-          {/* Skeleton table */}
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-[11px] font-black uppercase tracking-widest text-gray-600">Time</th>
-                    <th className="px-6 py-3 text-left text-[11px] font-black uppercase tracking-widest text-gray-600">Vehicle</th>
-                    <th className="px-6 py-3 text-left text-[11px] font-black uppercase tracking-widest text-gray-600">Alert Type</th>
-                    <th className="px-6 py-3 text-left text-[11px] font-black uppercase tracking-widest text-gray-600">Message</th>
-                    <th className="px-6 py-3 text-left text-[11px] font-black uppercase tracking-widest text-gray-600">Severity</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {[...Array(10)].map((_, index) => (
-                    <tr key={index} className="animate-pulse">
-                      <td className="px-6 py-4"><div className="h-4 bg-gray-200 rounded w-16"></div></td>
-                      <td className="px-6 py-4"><div className="h-4 bg-gray-200 rounded w-24"></div></td>
-                      <td className="px-6 py-4"><div className="h-4 bg-gray-200 rounded w-20"></div></td>
-                      <td className="px-6 py-4"><div className="h-4 bg-gray-200 rounded w-32"></div></td>
-                      <td className="px-6 py-4"><div className="h-4 bg-gray-200 rounded w-16"></div></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div className="min-h-screen bg-slate-50">
+      <div className="border-b border-slate-200 bg-white shadow-sm">
+        <div className="mx-auto max-w-7xl px-4 py-5 sm:px-6 lg:px-8">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <h1 className="text-2xl font-black text-gray-900">Notifications</h1>
-              <p className="text-gray-600">View and manage all system alerts</p>
+              <h1 className="text-2xl font-black text-slate-900">Notifications</h1>
+              <p className="mt-1 text-sm text-slate-600">
+                Review alert, import, mapping, and admin activity in one place.
+              </p>
             </div>
 
-            <div className="flex items-center gap-3 text-sm text-gray-600">
-              <span>Total: {notifications.length}</span>
-              <span>•</span>
-              <span>Unread: {notifications.filter((n: any) => !n.read).length}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Filters */}
-      <div className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex flex-col lg:flex-row gap-4">
-            {/* Date Range Filter */}
-            <div className="flex-1 min-w-0">
-              <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-gray-600">
-                <Calendar className="inline w-3 h-3 mr-1" />
-                Date Range
-              </label>
-              <input
-                type="date"
-                value={selectedDate}
-                onChange={(e) => setSelectedDate(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                placeholder="Filter by date"
-              />
-            </div>
-
-            {/* Vehicle Filter */}
-            <div className="flex-1 min-w-0">
-              <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-gray-600">
-                <Car className="inline w-3 h-3 mr-1" />
-                Vehicle Filter
-              </label>
-              <select
-                value={selectedVehicle}
-                onChange={(e) => setSelectedVehicle(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-              >
-                <option value="">All Vehicles</option>
-                {vehicles.map((vehicle: any) => (
-                  <option key={vehicle._id} value={vehicle.vehicleNumber || vehicle.registrationNumber}>
-                    {vehicle.vehicleNumber || vehicle.registrationNumber}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Alert Type Filter */}
-            <div className="flex-1 min-w-0">
-              <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-gray-600">
-                <AlertTriangle className="inline w-3 h-3 mr-1" />
-                Alert Type
-              </label>
-              <select
-                value={selectedAlertType}
-                onChange={(e) => setSelectedAlertType(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-              >
-                <option value="">All Types</option>
-                {alertTypes.map((type: string) => (
-                  <option key={type} value={type}>{type}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Status Filter */}
-            <div className="flex-1 min-w-0">
-              <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-gray-600">
-                <Filter className="inline w-3 h-3 mr-1" />
-                Status
-              </label>
-              <select
-                value={selectedStatus}
-                onChange={(e) => setSelectedStatus(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-              >
-                <option value="">All Status</option>
-                <option value="unread">Unread</option>
-                <option value="read">Read</option>
-              </select>
-            </div>
-
-            {/* Search */}
-            <div className="flex-1 min-w-0">
-              <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-gray-600">
-                <Search className="inline w-3 h-3 mr-1" />
-                Search
-              </label>
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                placeholder="Search notifications..."
-              />
-            </div>
-
-            {/* Actions */}
-            <div className="flex items-end gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Button
-                onClick={handleClearAll}
-                variant="outline"
+                type="button"
                 size="sm"
-                className="border-red-300 text-red-700 hover:bg-red-50"
-                disabled={notifications.length === 0}
+                variant="outline"
+                onClick={() =>
+                  runBulkAction(
+                    "read",
+                    () => bulkMarkRead(bulkParams).unwrap(),
+                    "Unread notifications marked as read"
+                  )
+                }
+                disabled={(counts?.unread || 0) === 0 || bulkPending !== null}
+                className="font-semibold text-slate-800 hover:text-slate-950"
               >
-                <X size={14} className="mr-2" />
-                Clear All
+                Mark all read
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() =>
+                  runBulkAction(
+                    "acknowledge",
+                    () => bulkMarkAcknowledged(bulkParams).unwrap(),
+                    "New notifications acknowledged"
+                  )
+                }
+                disabled={(counts?.new || 0) === 0 || bulkPending !== null}
+                className="font-semibold text-slate-800 hover:text-slate-950"
+              >
+                <CheckCheck className="mr-2 h-4 w-4" />
+                Bulk acknowledge
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="font-semibold text-slate-800 hover:text-slate-950"
+                onClick={() => refetch()}
+              >
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Refresh
               </Button>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {filteredNotifications.length === 0 ? (
-          /* Empty State */
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-8 text-center">
-            <Bell className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">No notifications found</h3>
-            <p className="text-gray-600 mb-4">Try changing the date or clearing filters</p>
-            <p className="text-sm text-gray-500">No alerts match your current filter criteria</p>
+      <div className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+          <CountCard label="Total" value={counts?.total || 0} accent="text-slate-900" />
+          <CountCard label="Unread" value={counts?.unread || 0} accent="text-blue-600" />
+          <CountCard label="New" value={counts?.new || 0} accent="text-amber-600" />
+          <CountCard label="Acknowledged" value={counts?.acknowledged || 0} accent="text-orange-600" />
+          <CountCard label="Resolved" value={counts?.resolved || 0} accent="text-emerald-600" />
+        </div>
+
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="mb-4 flex items-center gap-2">
+            <Filter className="h-4 w-4 text-slate-500" />
+            <h2 className="text-sm font-semibold text-slate-900">Filters</h2>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div>
+              <label className="mb-1 block text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">
+                Search
+              </label>
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  value={searchQuery}
+                  onChange={(event) => {
+                    setPage(0);
+                    setSearchQuery(event.target.value);
+                  }}
+                  placeholder="Search title or message"
+                  className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-3 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="mb-1 block text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">
+                Organization
+              </label>
+              <select
+                value={filters.organizationId}
+                onChange={(event) => updateFilter("organizationId", event.target.value)}
+                className="admin-select w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10"
+              >
+                <option value="">All organizations</option>
+                {organizations.map((organization: { _id: string; name?: string }) => (
+                  <option key={organization._id} value={organization._id}>
+                    {organization.name || "Unnamed organization"}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="mb-1 block text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">
+                Type
+              </label>
+              <select
+                value={filters.type}
+                onChange={(event) => updateFilter("type", event.target.value)}
+                className="admin-select w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10"
+              >
+                <option value="">All types</option>
+                {NOTIFICATION_TYPE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="mb-1 block text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">
+                Severity
+              </label>
+              <select
+                value={filters.severity}
+                onChange={(event) => updateFilter("severity", event.target.value)}
+                className="admin-select w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10"
+              >
+                <option value="">All severities</option>
+                {NOTIFICATION_SEVERITY_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="mb-1 block text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">
+                Workflow Status
+              </label>
+              <select
+                value={filters.status}
+                onChange={(event) => updateFilter("status", event.target.value)}
+                className="admin-select w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10"
+              >
+                <option value="">All statuses</option>
+                {NOTIFICATION_STATUS_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="mb-1 block text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">
+                From date
+              </label>
+              <input
+                type="date"
+                value={filters.dateFrom}
+                onChange={(event) => updateFilter("dateFrom", event.target.value)}
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1 block text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">
+                To date
+              </label>
+              <input
+                type="date"
+                value={filters.dateTo}
+                onChange={(event) => updateFilter("dateTo", event.target.value)}
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10"
+              />
+            </div>
+
+            <div className="flex items-end">
+              <Button type="button" variant="outline" onClick={clearFilters} disabled={!hasFilters}>
+                Clear filters
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        {error ? (
+          <div className="rounded-2xl border border-red-200 bg-red-50 p-8 text-center">
+            <AlertTriangle className="mx-auto h-10 w-10 text-red-500" />
+            <h3 className="mt-3 text-lg font-semibold text-slate-900">Unable to load notifications</h3>
+            <p className="mt-2 text-sm text-slate-600">
+              The notifications service could not be reached. You can retry without losing your filters.
+            </p>
+            <Button type="button" variant="outline" className="mt-4" onClick={() => refetch()}>
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Retry
+            </Button>
+          </div>
+        ) : isLoading ? (
+          <div className="space-y-4">
+            {Array.from({ length: 5 }).map((_, index) => (
+              <div
+                key={index}
+                className="h-36 animate-pulse rounded-2xl border border-slate-200 bg-white shadow-sm"
+              />
+            ))}
+          </div>
+        ) : notifications.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-6 py-12 text-center shadow-sm">
+            <Bell className="mx-auto h-10 w-10 text-slate-300" />
+            <h3 className="mt-4 text-lg font-semibold text-slate-900">
+              {hasFilters ? "No notifications match these filters" : "No notifications yet"}
+            </h3>
+            <p className="mt-2 text-sm text-slate-500">
+              {hasFilters
+                ? "Try clearing one or more filters to widen the result set."
+                : "Alert, mapping, import, and admin events will appear here as they happen."}
+            </p>
           </div>
         ) : (
-          /* Grouped Notifications */
           <div className="space-y-4">
-            {Object.entries(groupedNotifications).map(([vehicleNumber, vehicleNotifications]) => (
-              <div key={vehicleNumber} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                {/* Vehicle Group Header */}
-                <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <Car className="w-5 h-5 text-gray-600" />
-                    <div>
-                      <h3 className="text-sm font-semibold text-gray-900">{vehicleNumber}</h3>
-                      <p className="text-xs text-gray-500">
-                        {vehicleNotifications.length} alert{vehicleNotifications.length > 1 ? 's' : ''}
-                      </p>
-                    </div>
-                    {getSeverityBadge(vehicleNotifications[0]?.severity || vehicleNotifications[0]?.priority)}
-                  </div>
-                  <div className="text-xs text-gray-500">
-                    Last alert: {formatRelativeTime(vehicleNotifications[0]?.createdAt || vehicleNotifications[0]?.timestamp)}
-
-                    {/* Status Filter */}
-                    <div className="flex-1 min-w-0">
-                      <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-gray-600">
-                        <Filter className="inline w-3 h-3 mr-1" />
-                        Status
-                      </label>
-                      <select
-                        value={selectedStatus}
-                        onChange={(e) => setSelectedStatus(e.target.value)}
-                        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      >
-                        <option value="">All Status</option>
-                        <option value="unread">Unread</option>
-                        <option value="read">Read</option>
-                      </select>
-                    </div>
-
-                    {/* Search */}
-                    <div className="flex-1 min-w-0">
-                      <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-gray-600">
-                        <Search className="inline w-3 h-3 mr-1" />
-                        Search
-                      </label>
-                      <input
-                        type="text"
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        placeholder="Search notifications..."
-                      />
-                    </div>
-
-                    {/* Actions */}
-                    <div className="flex items-end gap-2">
-                      <Button
-                        onClick={handleClearAll}
-                        variant="outline"
-                        size="sm"
-                        className="border-red-300 text-red-700 hover:bg-red-50"
-                        disabled={notifications.length === 0}
-                      >
-                        <X size={14} className="mr-2" />
-                        Clear All
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Notifications List */}
-                <div className="divide-y divide-gray-100">
-                  {vehicleNotifications.slice(0, 5).map((notif: any) => (
-                    <div
-                      key={notif._id}
-                      className={`px-4 py-3 hover:bg-gray-50 transition-colors ${!notif.read ? 'bg-blue-50' : ''
-                        }`}
-                    >
-                      <div className="flex items-start gap-3">
-                        {/* Alert Icon */}
-                        <div className="flex-shrink-0">
-                          {getAlertIcon(notif.title || notif.type || 'Alert', notif.severity || notif.priority)}
-                        </div>
-
-                        {/* Content */}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between mb-1">
-                            <h4 className="text-sm font-semibold text-gray-900">
-                              {notif.title || 'System Alert'}
-                            </h4>
-                            <div className="flex items-center gap-2">
-                              {getSeverityBadge(notif.severity || notif.priority)}
-                              {!notif.read && (
-                                <div className="w-2 h-2 bg-blue-600 rounded-full"></div>
-                              )}
-                            </div>
-                          </div>
-
-                          <p className="text-sm text-gray-600 mb-1">
-                            {notif.message || notif.description || 'No description available'}
-                          </p>
-
-                          <div className="flex items-center justify-between text-xs text-gray-500">
-                            <span className="font-medium">
-                              Speed: {notif.speed || 'N/A'} km/h
-                            </span>
-                            <span>{formatRelativeTime(notif.createdAt || notif.timestamp)}</span>
-                          </div>
-
-                          {/* Location */}
-                          {notif.address && (
-                            <div className="text-xs text-gray-500">
-                              📍 {notif.address}
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Actions */}
-                        <div className="flex items-center gap-2 ml-4">
-                          {!notif.read && (
-                            <Button
-                              onClick={() => handleMarkAsRead(notif._id)}
-                              variant="outline"
-                              size="sm"
-                              className="text-xs"
-                            >
-                              Mark as Read
-                            </Button>
-                          )}
-                          <Button
-                            onClick={() => handleDelete(notif._id)}
-                            variant="outline"
-                            size="sm"
-                            className="text-xs border-red-300 text-red-700 hover:bg-red-50"
-                          >
-                            <X size={12} />
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
+            {notifications.map((notification) => (
+              <NotificationListItem
+                key={notification._id}
+                notification={notification}
+                actionPending={pendingId === notification._id || isFetching}
+                onMarkRead={(item) =>
+                  runAction(item, (id) => markAsRead(id).unwrap(), "Notification marked as read")
+                }
+                onAcknowledge={(item) =>
+                  runAction(item, (id) => markAsAcknowledged(id).unwrap(), "Notification acknowledged")
+                }
+                onResolve={(item) =>
+                  runAction(item, (id) => markAsResolved(id).unwrap(), "Notification resolved")
+                }
+                onDelete={handleDelete}
+                onOpenRelated={handleOpenRelated}
+              />
             ))}
           </div>
         )}
+
+        {!error && pagination && pagination.totalPages > 1 && (
+          <div className="flex flex-col items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row">
+            <p className="text-sm text-slate-600">
+              Showing page {pagination.currentPage + 1} of {Math.max(pagination.totalPages, 1)} with{" "}
+              {pagination.totalrecords} notification{pagination.totalrecords === 1 ? "" : "s"}.
+            </p>
+
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={page === 0}
+                onClick={() => setPage((previous) => Math.max(previous - 1, 0))}
+              >
+                Previous
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={page >= pagination.totalPages - 1}
+                onClick={() => setPage((previous) => previous + 1)}
+              >
+                Next
+              </Button>
+            </div>
+          </div>
+        )}
+
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 text-xs text-slate-500 shadow-sm">
+          Related notification links route to the closest verified admin page. Alert and device-health
+          notifications currently open the history view because that route exists and is the safest place
+          to investigate recent event context.
+        </div>
       </div>
     </div>
   );
-};
+}

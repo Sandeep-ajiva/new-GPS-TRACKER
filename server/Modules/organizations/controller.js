@@ -8,6 +8,10 @@ const Validator = require("../../helpers/validators");
 const paginate = require("../../helpers/limitoffset");
 const bcrypt = require("bcryptjs");
 const mongoose = require("mongoose");
+const {
+  buildContextFromReq,
+  createOrganizationCreatedNotification,
+} = require("../notifications/producers");
 
 /* ======================================================
    COMMON HELPERS
@@ -256,6 +260,15 @@ exports.createOrganizationWithAdmin = async (req, res) => {
 
     await session.commitTransaction();
 
+    await createOrganizationCreatedNotification(
+      {
+        organization,
+        createdWithAdmin: true,
+        isSubOrganization: false,
+      },
+      buildContextFromReq(req),
+    );
+
     return res.status(201).json({
       status: true,
       message: "Organization and Admin created successfully",
@@ -321,6 +334,15 @@ exports.createOrganization = async (req, res) => {
       createdBy: req.user._id,
       status: "active",
     });
+
+    await createOrganizationCreatedNotification(
+      {
+        organization,
+        createdWithAdmin: false,
+        isSubOrganization: false,
+      },
+      buildContextFromReq(req),
+    );
 
     return res.status(201).json({
       status: true,
@@ -710,6 +732,15 @@ exports.createSubOrganizationWithManager = async (req, res) => {
     await session.commitTransaction();
     session.endSession();
 
+    await createOrganizationCreatedNotification(
+      {
+        organization: subOrganization,
+        createdWithAdmin: true,
+        isSubOrganization: true,
+      },
+      buildContextFromReq(req),
+    );
+
     return res.status(201).json({
       status: true,
       message: "Sub-organization and admin created successfully",
@@ -805,6 +836,15 @@ exports.createSubOrganization = async (req, res) => {
       createdBy: req.user._id,
       adminUser: null,
     });
+
+    await createOrganizationCreatedNotification(
+      {
+        organization,
+        createdWithAdmin: false,
+        isSubOrganization: true,
+      },
+      buildContextFromReq(req),
+    );
 
     return res.status(201).json({
       status: true,

@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Table from "@/components/ui/Table";
 import ApiErrorBoundary from "@/components/admin/ErrorBoundary/ApiErrorBoundary";
-import { Link2, Trash2, Loader2, Filter, Car, Cpu, ArrowRight, X, Info, Briefcase } from "lucide-react";
+import { Link2, Trash2, Loader2, Filter, Car, Cpu, ArrowRight, X, Briefcase } from "lucide-react";
 import { toast } from "sonner";
 import {
     useGetDeviceMappingsQuery,
@@ -14,6 +14,7 @@ import { useGetVehiclesQuery } from "@/redux/api/vehicleApi";
 import { useGetGpsDevicesQuery } from "@/redux/api/gpsDeviceApi";
 import { useGetOrganizationsQuery } from "@/redux/api/organizationApi";
 import ImportExportButton from "@/components/admin/import-export/ImportExportButton";
+import SearchableEntitySelect from "@/components/admin/UI/SearchableEntitySelect";
 // 🔐 ORG CONTEXT UPDATE
 import { useOrgContext } from "@/hooks/useOrgContext";
 // 🔧 ACTIVE STATUS FILTERING
@@ -21,7 +22,7 @@ import { isActiveStatus, filterExcludedIds } from "@/utils/mappingHelpers";
 
 export default function DeviceMappingPage() {
     // 🔐 ORG CONTEXT UPDATE
-  const { role, orgId, isSuperAdmin, isRootOrgAdmin } = useOrgContext();
+  const { role, isSuperAdmin, isRootOrgAdmin } = useOrgContext();
 
     // API Hooks
     const { data: mappingData, isLoading: isMappingLoading, refetch: refetchMappings } = useGetDeviceMappingsQuery({ page: 0, limit: 1000 }, { refetchOnMountOrArgChange: true });
@@ -54,6 +55,7 @@ export default function DeviceMappingPage() {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [showFilters, setShowFilters] = useState(false);
     const [formData, setFormData] = useState({ vehicleId: "", deviceId: "" });
+    const [fieldErrors, setFieldErrors] = useState({ vehicleId: "", deviceId: "" });
     const [modalOrgFilter, setModalOrgFilter] = useState(""); // 🔐 Organization filter for modal
     const [filters, setFilters] = useState({
         vehicleNumber: "",
@@ -127,6 +129,62 @@ export default function DeviceMappingPage() {
     const selectedDevice = useMemo(
         () => devicesBySelectedVehicleOrg.find((d: any) => d._id === formData.deviceId) || null,
         [devicesBySelectedVehicleOrg, formData.deviceId],
+    );
+
+    const selectedVehicleOrgName = useMemo(() => {
+        if (!selectedVehicle) return "";
+
+        if (typeof selectedVehicle.organizationId === "object" && selectedVehicle.organizationId?.name) {
+            return selectedVehicle.organizationId.name;
+        }
+
+        const org = organizations.find((item: any) => item._id === selectedVehicle.organizationId);
+        return org?.name || "";
+    }, [organizations, selectedVehicle]);
+
+    const vehiclePickerOptions = useMemo(
+        () =>
+            vehiclesByModalOrg.map((vehicle: any) => {
+                const orgName =
+                    typeof vehicle.organizationId === "object"
+                        ? vehicle.organizationId?.name
+                        : organizations.find((item: any) => item._id === vehicle.organizationId)?.name;
+
+                return {
+                    value: String(vehicle._id),
+                    label: vehicle.vehicleNumber,
+                    description: vehicle.model || vehicle.vehicleType || "Vehicle",
+                    meta: [orgName, vehicle.status].filter(Boolean).join(" | "),
+                    keywords: [
+                        vehicle.vehicleNumber,
+                        vehicle.model || "",
+                        vehicle.vehicleType || "",
+                        orgName || "",
+                    ],
+                    badge: vehicle.status,
+                };
+            }),
+        [organizations, vehiclesByModalOrg],
+    );
+
+    const devicePickerOptions = useMemo(
+        () =>
+            devicesBySelectedVehicleOrg.map((device: any) => ({
+                value: String(device._id),
+                label: device.imei,
+                description: device.deviceModel || "GPS Device",
+                meta: [device.simNumber ? `SIM ${device.simNumber}` : "", device.connectionStatus, device.status]
+                    .filter(Boolean)
+                    .join(" | "),
+                keywords: [
+                    device.imei,
+                    device.deviceModel || "",
+                    device.simNumber || "",
+                    device.connectionStatus || "",
+                ],
+                badge: device.connectionStatus || device.status,
+            })),
+        [devicesBySelectedVehicleOrg],
     );
 
     const getMappedVehicle = (row: any) => {
@@ -224,6 +282,10 @@ export default function DeviceMappingPage() {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!formData.vehicleId || !formData.deviceId) {
+            setFieldErrors({
+                vehicleId: formData.vehicleId ? "" : "Vehicle selection is required.",
+                deviceId: formData.deviceId ? "" : "Device selection is required.",
+            });
             toast.error("Select both vehicle and device");
             return;
         }
@@ -259,12 +321,14 @@ export default function DeviceMappingPage() {
 
     const openCreateModal = () => {
         setFormData({ vehicleId: "", deviceId: "" });
+        setFieldErrors({ vehicleId: "", deviceId: "" });
         setModalOrgFilter(""); // 🔐 Reset org filter when opening modal
         setIsModalOpen(true);
     };
 
     const closeModal = () => {
         setIsModalOpen(false);
+        setFieldErrors({ vehicleId: "", deviceId: "" });
         setModalOrgFilter(""); // 🔐 Reset org filter when closing modal
     };
 
@@ -466,6 +530,7 @@ export default function DeviceMappingPage() {
                                                 setModalOrgFilter(value);
                                                 // Reset selections when organization filter changes
                                                 setFormData({ vehicleId: "", deviceId: "" });
+                                                setFieldErrors({ vehicleId: "", deviceId: "" });
                                             }}
                                         >
                                             <option value="">All organizations (scoped)</option>
@@ -482,19 +547,23 @@ export default function DeviceMappingPage() {
                                         <label className="mb-2 block text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">
                                             <span className="inline-flex items-center gap-2"><Car size={12} className="text-blue-500" /> Select Vehicle</span>
                                         </label>
-                                        <select
-                                            required
-                                            className="admin-select-readable w-full h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20"
+                                        <SearchableEntitySelect
                                             value={formData.vehicleId}
-                                            onChange={(e) => setFormData({ vehicleId: e.target.value, deviceId: "" })}
-                                        >
-                                            <option value="">Search vehicle plate...</option>
-                                          {vehiclesByModalOrg.map((v: any) => (
-                                                <option key={v._id} value={v._id}>
-                                                    {v.vehicleNumber} {v.model ? `(${v.model})` : ""}
-                                                </option>
-                                            ))}
-                                        </select>
+                                            onChange={(value) => {
+                                                setFormData({ vehicleId: value, deviceId: "" });
+                                                setFieldErrors({ vehicleId: "", deviceId: "" });
+                                            }}
+                                            options={vehiclePickerOptions}
+                                            placeholder="Search vehicle by plate or model"
+                                            searchPlaceholder="Search plate, model, or organization"
+                                            emptyMessage="No available vehicles found for mapping."
+                                            invalid={Boolean(fieldErrors.vehicleId)}
+                                        />
+                                        {fieldErrors.vehicleId && (
+                                            <p className="mt-1 text-[11px] font-semibold text-rose-600">
+                                                {fieldErrors.vehicleId}
+                                            </p>
+                                        )}
                                     </div>
 
                                     <div className="md:col-span-1 flex items-center justify-center pb-1">
@@ -507,29 +576,63 @@ export default function DeviceMappingPage() {
                                         <label className="mb-2 block text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">
                                             <span className="inline-flex items-center gap-2"><Cpu size={12} className="text-indigo-500" /> Select Device</span>
                                         </label>
-                                        <select
-                                            required
-                                            className="admin-select-readable w-full h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20"
+                                        <SearchableEntitySelect
                                             value={formData.deviceId}
-                                            onChange={(e) => setFormData({ ...formData, deviceId: e.target.value })}
+                                            onChange={(value) => {
+                                                setFormData({ ...formData, deviceId: value });
+                                                setFieldErrors((prev) => ({ ...prev, deviceId: "" }));
+                                            }}
+                                            options={devicePickerOptions}
+                                            placeholder="Search device by IMEI or model"
+                                            searchPlaceholder="Search IMEI, model, or SIM"
+                                            emptyMessage={
+                                                selectedVehicle
+                                                    ? "No available devices found in this vehicle's organization."
+                                                    : "Select a vehicle first to load available devices."
+                                            }
                                             disabled={!selectedVehicle}
-                                        >
-                                            <option value="">Search device IMEI...</option>
-                                            {devicesBySelectedVehicleOrg.map((d: any) => (
-                                                <option key={d._id} value={d._id}>
-                                                    {d.imei}
-                                                </option>
-                                            ))}
-                                        </select>
+                                            invalid={Boolean(fieldErrors.deviceId)}
+                                        />
+                                        {fieldErrors.deviceId && (
+                                            <p className="mt-1 text-[11px] font-semibold text-rose-600">
+                                                {fieldErrors.deviceId}
+                                            </p>
+                                        )}
                                     </div>
                                 </div>
 
-                                <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div className="h-10 rounded-full border border-dashed border-slate-200 bg-slate-50/60 px-4 text-[11px] font-black uppercase tracking-[0.16em] text-slate-900 flex items-center justify-center gap-2">
-                                        <Info size={14} /> {selectedVehicle ? selectedVehicle.vehicleNumber : "Select Vehicle"}
-                                    </div>
-                                    <div className="h-10 rounded-full border border-dashed border-slate-200 bg-slate-50/60 px-4 text-[11px] font-black uppercase tracking-[0.16em] text-slate-900 flex items-center justify-center gap-2">
-                                        <Info size={14} /> {selectedDevice ? selectedDevice.imei : "Select Device"}
+                                <div className="mt-8 rounded-3xl border border-slate-200 bg-slate-50/80 p-4">
+                                    <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">
+                                        Selected Summary
+                                    </p>
+                                    <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
+                                        <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-3">
+                                            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Vehicle</p>
+                                            <p className="mt-1 text-sm font-bold text-slate-900">
+                                                {selectedVehicle ? selectedVehicle.vehicleNumber : "Select Vehicle"}
+                                            </p>
+                                            <p className="mt-1 text-[11px] font-medium text-slate-500">
+                                                {selectedVehicle?.model || selectedVehicle?.vehicleType || "Awaiting selection"}
+                                            </p>
+                                        </div>
+                                        <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-3">
+                                            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Device</p>
+                                            <p className="mt-1 text-sm font-bold text-slate-900">
+                                                {selectedDevice ? selectedDevice.imei : "Select Device"}
+                                            </p>
+                                            <p className="mt-1 text-[11px] font-medium text-slate-500">
+                                                {selectedDevice?.deviceModel || selectedDevice?.connectionStatus || "Awaiting selection"}
+                                            </p>
+                                        </div>
+                                        <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-3">
+                                            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Organization</p>
+                                            <p className="mt-1 text-sm font-bold text-slate-900">
+                                                {selectedVehicleOrgName || "Scoped selection"}
+                                            </p>
+                                            <p className="mt-1 text-[11px] font-medium text-slate-500">
+                                                {modalOrgFilter ? "Filtered by selected organization" : "Uses current admin scope"}
+                                            </p>
+                                        </div>
                                     </div>
                                 </div>
 

@@ -638,7 +638,7 @@ export default function DriversPage() {
                         isOpen={isPopupOpen("driverModal")}
                         onClose={closeModal}
                         title={editingDriver ? "Edit Driver" : "New Driver"}
-                        description={editingDriver ? "Update driver information." : "Create a new driver and automatically generate their login account."}
+                        description={editingDriver ? "Update driver information." : undefined}
                         fields={driverFormFields}
                         schema={driverSchema}
                         initialData={
@@ -654,7 +654,9 @@ export default function DriversPage() {
                                         : "",
                                     status: editingDriver.status,
                                 }
-                                : undefined
+                                : {
+                                    organizationId: orgId || "",
+                                }
                         }
                         onSubmit={handleSubmit}
                         submitLabel={editingDriver ? "Update Driver" : "Create Driver"}

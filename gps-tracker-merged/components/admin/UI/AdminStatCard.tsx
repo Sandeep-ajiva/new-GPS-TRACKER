@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import Link from "next/link";
 import clsx from "clsx";
 
 type AdminStatCardProps = {
@@ -10,6 +11,7 @@ type AdminStatCardProps = {
   tone?: "blue" | "green" | "amber" | "violet" | "slate";
   meta?: ReactNode;
   className?: string;
+  href?: string;
 };
 
 const tones = {
@@ -27,14 +29,10 @@ export default function AdminStatCard({
   tone = "blue",
   meta,
   className,
+  href,
 }: AdminStatCardProps) {
-  return (
-    <div
-      className={clsx(
-        "rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.05)]",
-        className,
-      )}
-    >
+  const content = (
+    <>
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-[11px] font-black uppercase tracking-[0.28em] text-slate-400">
@@ -47,6 +45,34 @@ export default function AdminStatCard({
           {icon}
         </div>
       </div>
+    </>
+  );
+
+  const sharedClassName = clsx(
+    "rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.05)]",
+    href && "group block cursor-pointer transition-all hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_16px_36px_rgba(15,23,42,0.08)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900/10",
+    className,
+  );
+
+  if (href) {
+    return (
+      <Link
+        href={href}
+        className={sharedClassName}
+        aria-label={`Open ${label}`}
+      >
+        {content}
+      </Link>
+    );
+  }
+
+  return (
+    <div
+      className={clsx(
+        sharedClassName,
+      )}
+    >
+      {content}
     </div>
   );
 }

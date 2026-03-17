@@ -103,6 +103,12 @@ function buildColumnMapping(entity, rawHeaders, providedMapping = {}) {
   const mapping = {};
 
   rawHeaders.forEach((header) => {
+    if (Object.prototype.hasOwnProperty.call(providedMapping, header)) {
+      const manualValue = sanitizeString(providedMapping[header]);
+      mapping[header] = manualValue && allowedFields.has(manualValue) ? manualValue : "";
+      return;
+    }
+
     const manualValue = sanitizeString(providedMapping[header]);
     if (manualValue && allowedFields.has(manualValue)) {
       mapping[header] = manualValue;

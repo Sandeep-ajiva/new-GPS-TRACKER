@@ -1,6 +1,10 @@
 const Alert = require('./model');
 const Validator = require('../../helpers/validators');
 const paginate = require("../../helpers/limitoffset");
+const {
+    buildContextFromReq,
+    createNotificationFromAlert,
+} = require("../notifications/producers");
 
 const validateAlertData = async (data) => {
     const rules = {
@@ -42,6 +46,9 @@ exports.create = async (req, res) => {
             locationCoordinates,
             acknowledged: false,
         })
+
+        await createNotificationFromAlert(alert, buildContextFromReq(req));
+
         return res.status(201).json({
             status: true,
             message: "Alert Created Successfully",

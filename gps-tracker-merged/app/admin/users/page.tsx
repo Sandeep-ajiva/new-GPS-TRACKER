@@ -455,6 +455,8 @@ export default function UsersPage() {
               moduleName="users"
               importUrl="/importexport/import/users"
               exportUrl="/importexport/export/users"
+              allowImport={false}
+              allowExport={true}
               allowedFields={[
                 "organizationName",
                 "firstName",

@@ -38,6 +38,8 @@ type ImportModalProps = {
   exportUrl: string;
   allowedFields: string[];
   requiredFields: string[];
+  allowImport?: boolean;
+  allowExport?: boolean;
   filters?: Record<string, string | number | boolean | null | undefined>;
   onCompleted?: () => void;
   organizationSelectionMode?: "standard" | "disabled";
@@ -96,6 +98,12 @@ function buildDefaultMapping(columns: string[], allowedFields: string[]) {
     next[column] = normalizedTargets.get(normalizeKey(column)) || "";
   });
   return next;
+}
+
+function getActiveMappings(mapping: Record<string, string>) {
+  return Object.fromEntries(
+    Object.entries(mapping).filter(([, target]) => Boolean(target)),
+  );
 }
 
 function validatePreviewRows(
@@ -285,6 +293,8 @@ export default function ImportModal({
   exportUrl,
   allowedFields,
   requiredFields,
+  allowImport = true,
+  allowExport = true,
   filters,
   onCompleted,
   organizationSelectionMode = "standard",
@@ -300,7 +310,7 @@ export default function ImportModal({
     { skip: !canChooseOrganization },
   );
 
-  const [tab, setTab] = useState<"import" | "export">("import");
+  const [tab, setTab] = useState<"import" | "export">(allowImport ? "import" : "export");
   const [selectedOrgId, setSelectedOrgId] = useState<string>(orgId || "");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [parsedFile, setParsedFile] = useState<ParsedImportFile | null>(null);
@@ -320,23 +330,48 @@ export default function ImportModal({
   const organizations = useMemo(() => organizationResponse?.data || [], [organizationResponse]);
   const moduleLabel = useMemo(() => formatModuleLabel(moduleName), [moduleName]);
   const moduleGuide = useMemo(() => IMPORT_MODULE_GUIDES[moduleName], [moduleName]);
+  // TODO: Full organization import onboarding requires backend support for creating
+  // admin credentials safely during import. Password handling must be designed as a
+  // secure backend workflow, not as plaintext spreadsheet-driven logic in the UI.
+  const organizationImportNotice = useMemo(
+    () =>
+      allowImport && moduleName === "organizations"
+        ? "Organization import creates organization records only. Login admin accounts are not created automatically and must be created separately after import."
+        : null,
+    [allowImport, moduleName],
+  );
 
   useEffect(() => {
     if (!isOpen) return;
     setSelectedOrgId(orgId || "");
   }, [isOpen, orgId]);
 
-  const previewRows = useMemo(() => {
+  const rawPreviewRows = useMemo(() => {
     if (!parsedFile) return [];
     return parsedFile.rows.map((row, index) => ({ __index: index, ...row }));
   }, [parsedFile]);
+  const activeMappings = useMemo(() => getActiveMappings(mapping), [mapping]);
+  const visiblePreviewColumns = useMemo(
+    () => parsedFile?.columns.filter((column) => Boolean(activeMappings[column])) || [],
+    [activeMappings, parsedFile],
+  );
+  const previewRows = useMemo(
+    () =>
+      rawPreviewRows.map((row) => ({
+        __index: row.__index,
+        ...Object.fromEntries(
+          visiblePreviewColumns.map((column) => [column, row[column] ?? ""]),
+        ),
+      })),
+    [rawPreviewRows, visiblePreviewColumns],
+  );
 
   const effectiveRequiredFields = useMemo(() => {
     if (!selectedOrgId) return requiredFields;
     return requiredFields.filter((field) => !AUTO_ORG_FIELDS.has(field));
   }, [requiredFields, selectedOrgId]);
 
-  const mappedFields = useMemo(() => new Set(Object.values(mapping).filter(Boolean)), [mapping]);
+  const mappedFields = useMemo(() => new Set(Object.values(activeMappings)), [activeMappings]);
   const hasOrganizationMapping = useMemo(
     () => mappedFields.has("organizationId") || mappedFields.has("organizationName"),
     [mappedFields],
@@ -356,8 +391,8 @@ export default function ImportModal({
   );
   const ignoredColumns = useMemo(() => {
     if (!parsedFile) return [];
-    return parsedFile.columns.filter((column) => !mapping[column]);
-  }, [mapping, parsedFile]);
+    return parsedFile.columns.filter((column) => !activeMappings[column]);
+  }, [activeMappings, parsedFile]);
 
   const localIssues = useMemo(
     () => (parsedFile ? validatePreviewRows(moduleName, previewRows as Array<{ __index: number } & Record<string, string>>, mapping) : []),
@@ -499,7 +534,7 @@ export default function ImportModal({
   }, [mappedFields, mappedRequiredFields, missingRequiredFields, moduleName, parsedFile]);
 
   const resetState = () => {
-    setTab("import");
+    setTab(allowImport ? "import" : "export");
     setSelectedFile(null);
     setParsedFile(null);
     setMapping({});
@@ -623,24 +658,42 @@ export default function ImportModal({
 
   if (typeof document === "undefined") return null;
 
+  const modalTitle = allowImport && allowExport
+    ? `Import / Export ${moduleLabel}`
+    : allowExport
+      ? `Export ${moduleLabel}`
+      : `Import ${moduleLabel}`;
+
+  const modalDescription = allowImport && allowExport
+    ? "Upload CSV or Excel files, map columns, and import data safely."
+    : allowExport
+      ? "Download filtered records in CSV or Excel format."
+      : "Upload CSV or Excel files, map columns, and import data safely.";
+
   return createPortal(
     <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-[2px]">
       <div className={`relative flex w-full max-w-[46rem] flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl ${tab === "export" ? "max-h-[72vh]" : "h-[78vh]"}`}>
         <div className="sticky top-0 z-20 border-b border-slate-200 bg-white px-5 py-3">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h3 className="text-lg font-black text-slate-900">Import / Export {moduleLabel}</h3>
-              <p className="mt-1 text-xs text-slate-500">Upload CSV or Excel files, map columns, and import data safely.</p>
+              <h3 className="text-lg font-black text-slate-900">{modalTitle}</h3>
+              <p className="mt-1 text-xs text-slate-500">{modalDescription}</p>
             </div>
             <button type="button" onClick={closeModal} className="rounded-full border border-slate-200 p-2 text-slate-500 hover:bg-slate-100">
               <X size={16} />
             </button>
           </div>
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-            <div className="inline-flex rounded-2xl bg-slate-100 p-1 text-xs font-black uppercase tracking-wide">
-              <button type="button" onClick={() => setTab("import")} className={`rounded-xl px-4 py-2 ${tab === "import" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"}`}>Import</button>
-              <button type="button" onClick={() => setTab("export")} className={`rounded-xl px-4 py-2 ${tab === "export" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"}`}>Export</button>
-            </div>
+            {allowImport && allowExport ? (
+              <div className="inline-flex rounded-2xl bg-slate-100 p-1 text-xs font-black uppercase tracking-wide">
+                <button type="button" onClick={() => setTab("import")} className={`rounded-xl px-4 py-2 ${tab === "import" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"}`}>Import</button>
+                <button type="button" onClick={() => setTab("export")} className={`rounded-xl px-4 py-2 ${tab === "export" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"}`}>Export</button>
+              </div>
+            ) : (
+              <div className="inline-flex rounded-2xl bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-wide text-slate-700">
+                {allowExport ? "Export" : "Import"}
+              </div>
+            )}
             <div className="min-w-[240px] flex-1 max-w-[340px]">
               {canChooseOrganization ? (
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 px-2.5 py-2">
@@ -700,6 +753,16 @@ export default function ImportModal({
               </div>
             ) : (
               <div className="space-y-5">
+                {organizationImportNotice ? (
+                  <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-700">
+                      Organization Import Note
+                    </p>
+                    <p className="mt-1 font-medium leading-6">
+                      {organizationImportNotice}
+                    </p>
+                  </div>
+                ) : null}
                 <div className="grid gap-4 xl:grid-cols-[1.6fr,0.9fr]">
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="space-y-4">
@@ -775,20 +838,7 @@ export default function ImportModal({
                     </div>
                     <div className="rounded-2xl border border-slate-200 bg-white p-4">
                       <div className="flex flex-col gap-3">
-                        <div className="min-w-0">
-                          <p className="text-sm font-black text-slate-900">Templates & Instructions</p>
-                          <p className="mt-1 text-xs text-slate-500">
-                            Required columns: {(moduleGuide?.required || effectiveRequiredFields).join(", ")}
-                          </p>
-                          {moduleGuide?.optional?.length ? (
-                            <p className="mt-1 text-xs text-slate-500">
-                              Optional columns: {moduleGuide.optional.join(", ")}
-                            </p>
-                          ) : null}
-                          <p className="mt-1 text-xs text-slate-500">
-                            Mapping fields: {moduleGuide?.mappingFields?.length ? moduleGuide.mappingFields.join(", ") : "none"}
-                          </p>
-                        </div>
+                        <p className="text-sm font-black text-slate-900">Templates & Instructions</p>
                         <div className="flex flex-wrap gap-2">
                           <button type="button" onClick={() => void generateSampleFile({ moduleName, allowedFields, requiredFields, format: "csv" })} className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] font-black uppercase tracking-wide text-emerald-800">CSV Template</button>
                           <button type="button" onClick={() => void generateSampleFile({ moduleName, allowedFields, requiredFields, format: "excel" })} className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-[11px] font-black uppercase tracking-wide text-sky-800">Excel Template</button>
@@ -899,7 +949,7 @@ export default function ImportModal({
                       <p className="text-sm font-black text-slate-900">Column Mapping</p>
                       <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200">
                         <div className="max-w-full overflow-x-auto">
-                          <div className="min-w-[720px]">
+                          <div className="min-w-[560px] sm:min-w-[600px]">
                             <MappingTable csvColumns={parsedFile.columns} allowedFields={allowedFields} requiredFields={effectiveRequiredFields} mapping={mapping} onChange={(column, value) => setMapping((current) => ({ ...current, [column]: value }))} />
                           </div>
                         </div>
@@ -933,7 +983,7 @@ export default function ImportModal({
                               <thead className="bg-slate-50 text-slate-600">
                                 <tr>
                                   <th className="border-b border-slate-200 px-3 py-3 font-black uppercase tracking-wide">Skip</th>
-                                  {parsedFile.columns.map((column) => (
+                                  {visiblePreviewColumns.map((column) => (
                                     <th key={column} className="border-b border-slate-200 px-3 py-3 font-black uppercase tracking-wide">{column}</th>
                                   ))}
                                 </tr>
@@ -952,7 +1002,7 @@ export default function ImportModal({
                                           return next;
                                         })} />
                                       </td>
-                                      {parsedFile.columns.map((column) => (
+                                      {visiblePreviewColumns.map((column) => (
                                         <td key={column} className="border-b border-slate-100 px-3 py-3 whitespace-nowrap">{String(row[column] ?? "")}</td>
                                       ))}
                                     </tr>

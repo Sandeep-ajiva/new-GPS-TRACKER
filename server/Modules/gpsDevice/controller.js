@@ -16,6 +16,10 @@ const {
   sanitizeInventoryPayload,
   toInventorySetOperations,
 } = require("./service");
+const {
+  buildContextFromReq,
+  createGpsDeviceCreatedNotification,
+} = require("../notifications/producers");
 
 const normalizeGpsDevicePayload = (data = {}) => {
   const payload = { ...data };
@@ -153,6 +157,11 @@ exports.create = async (req, res) => {
       organizationId,
       createdBy: req.user._id,
     });
+
+    await createGpsDeviceCreatedNotification(
+      { device },
+      buildContextFromReq(req),
+    );
 
     return res.status(201).json({
       status: true,
@@ -343,7 +352,7 @@ exports.update = async (req, res) => {
 
     // 🔐 ORG SCOPE FIX
     const orgFilter = req.orgScope === "ALL" ? {} : { organizationId: { $in: req.orgScope } };
-    const device = await GpsDevice.findOne({ _id: req.params.id, ...orgFilter }).session(session);
+    const device = await GpsDevice.findOne({ _id: req.params.id, ...orgFilter });
 
     if (!device) {
       return res.status(404).json({

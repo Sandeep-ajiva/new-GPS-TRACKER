@@ -135,7 +135,7 @@ export default function OrganizationsPage() {
       email: z.string().email("Valid email is required"),
       phone: z.string().regex(/^\+?[1-9]\d{7,14}$/, "Enter valid phone with country code"),
       addressLine: z.string().min(1, "Address line is required"),
-      city: z.string().min(1, "City is required"),
+      city: z.string().optional(),
       state: z.string().min(1, "State is required"),
       country: z.string().min(1, "Country is required"),
       pincode: z.string().regex(/^\d{4,10}$/, "Pincode must be numeric"),
@@ -310,18 +310,15 @@ export default function OrganizationsPage() {
         <AdminPageHeader
           eyebrow="Hierarchy Management"
           title="Organizations"
-          description={
-            <>
-              Manage your fleet organizations here.{" "}
-              <span className="font-semibold text-slate-700">(Parent: {orgName})</span>
-            </>
-          }
+          description="Manage your fleet organizations here."
           actions={<div className="flex flex-col gap-3 sm:flex-row">
             {canUseImportExport && (
               <ImportExportButton
                 moduleName="organizations"
                 importUrl="/importexport/import/organizations"
                 exportUrl="/importexport/export/organizations"
+                allowImport={false}
+                allowExport={true}
                 allowedFields={[
                   "name",
                   "organizationType",
@@ -341,11 +338,6 @@ export default function OrganizationsPage() {
             status: filters.status,
                 }}
                 organizationSelectionMode="disabled"
-                organizationSelectionNote={
-                  isSuperAdmin
-                    ? "Use the organization import template without parent-organization columns."
-                    : `Use the organization import template without parent-organization columns under ${orgName}.`
-                }
                 onCompleted={() => {
                   void refetchSubOrgs();
                 }}
@@ -517,7 +509,7 @@ function getFormFields(isEdit: boolean, canSelectParent: boolean, currentOrgName
     { name: "addressLine", label: "Address Line", type: "text", required: true },
     { name: "country", label: "Country", type: "text", required: true },
     { name: "state", label: "State", type: "text", required: true },
-    { name: "city", label: "City", type: "text", required: true },
+    { name: "city", label: "City", type: "text" },
     { name: "pincode", label: "Pincode", type: "text", required: true, helperText: "Digits only" },
     ...(isEdit
       ? [

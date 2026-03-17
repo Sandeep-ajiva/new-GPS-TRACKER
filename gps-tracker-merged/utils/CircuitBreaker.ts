@@ -5,6 +5,12 @@ interface CircuitBreakerOptions {
     resetTimeout: number;
 }
 
+export interface CircuitBreakerSnapshot {
+    state: CircuitBreakerState;
+    failureCount: number;
+    nextAttempt: number;
+}
+
 export class CircuitBreaker {
     private state: CircuitBreakerState = "CLOSED";
     private failureCount = 0;
@@ -22,7 +28,7 @@ export class CircuitBreaker {
             if (Date.now() > this.nextAttempt) {
                 this.state = "HALF_OPEN";
             } else {
-                throw new Error("Circuit Breaker is OPEN. Request blocked.");
+                throw new Error("Service is temporarily cooling down. Please retry shortly.");
             }
         }
 
@@ -47,6 +53,20 @@ export class CircuitBreaker {
             this.state = "OPEN";
             this.nextAttempt = Date.now() + this.resetTimeout;
         }
+    }
+
+    public reset() {
+        this.failureCount = 0;
+        this.state = "CLOSED";
+        this.nextAttempt = Date.now();
+    }
+
+    public getSnapshot(): CircuitBreakerSnapshot {
+        return {
+            state: this.state,
+            failureCount: this.failureCount,
+            nextAttempt: this.nextAttempt,
+        };
     }
 }
 

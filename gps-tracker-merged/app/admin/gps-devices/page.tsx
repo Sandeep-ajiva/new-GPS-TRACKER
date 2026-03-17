@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Table from "@/components/ui/Table";
@@ -34,8 +34,11 @@ import { InventoryLayer } from "@/components/gps-devices/InventoryLayer";
 import { InventoryStatusBadge } from "@/components/gps-devices/InventoryStatusBadge";
 import type { GpsDeviceRecord } from "@/components/gps-devices/inventoryTypes";
 import { DEVICE_IMPORT_FIELDS } from "@/utils/importExport/contracts";
+import { getApiErrorMessage } from "@/utils/apiError";
 
 import { Building2 } from "lucide-react";
+
+type ModalFormValues = Record<string, string | number | boolean | File>;
 
 type DeviceFormValues = {
   organizationId?: string | { _id: string };
@@ -59,21 +62,289 @@ type PaginatedDeviceResponse = {
   total?: number;
 };
 
-const getApiErrorMessage = (error: unknown, fallback: string) => {
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "data" in error &&
-    typeof (error as { data?: { message?: string } }).data?.message === "string"
-  ) {
-    return (error as { data: { message: string } }).data.message;
+type DeviceTableColumn = {
+  header: string;
+  accessor: keyof GpsDeviceRecord | ((row: GpsDeviceRecord) => ReactNode);
+  headerClassName?: string;
+  cellClassName?: string;
+};
+
+const EMPTY_VALUE = "—";
+const WARRANTY_WARNING_DAYS = 30;
+
+const getEntityId = (value?: string | { _id: string } | null) => {
+  if (!value) {
+    return undefined;
   }
 
-  if (error instanceof Error && error.message) {
-    return error.message;
+  return typeof value === "object" ? value._id : value;
+};
+
+const getOrganizationValue = (
+  organizationId?: string | { _id: string },
+) => {
+  return getEntityId(organizationId);
+};
+
+const toDisplayText = (value: unknown) => {
+  if (typeof value !== "string") {
+    return "";
   }
 
-  return fallback;
+  return value.trim();
+};
+
+const formatRelativeTime = (value?: string | Date | null) => {
+  if (!value) return null;
+
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+
+  const diffMs = Date.now() - date.getTime();
+  const diffMinutes = Math.floor(diffMs / (1000 * 60));
+
+  if (diffMinutes < 1) return "Just now";
+  if (diffMinutes < 60) return `${diffMinutes} min ago`;
+
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours} hr ago`;
+  if (diffHours < 48) return "Yesterday";
+
+  const diffDays = Math.floor(diffHours / 24);
+  return `${diffDays}d ago`;
+};
+
+const getDeviceLastSeen = (device: GpsDeviceRecord) => {
+  const record = device as unknown as Record<string, unknown>;
+  const candidate =
+    record.lastSeen ||
+    record.lastPacketTime ||
+    record.lastPacketAt ||
+    record.lastLoginTime ||
+    record.updatedAt ||
+    null;
+
+  if (typeof candidate === "string" || candidate instanceof Date) {
+    return candidate;
+  }
+
+  return null;
+};
+
+const getAssignedVehicleLabel = (
+  device: GpsDeviceRecord,
+  vehicles: Array<{
+    _id: string;
+    vehicleNumber: string;
+    registrationNumber?: string;
+    plateNumber?: string;
+  }>,
+) => {
+  const directVehicle = typeof device.vehicleId === "object" ? device.vehicleId : null;
+  const directLabel =
+    toDisplayText((directVehicle as { vehicleNumber?: string } | null)?.vehicleNumber) ||
+    toDisplayText((device as unknown as Record<string, unknown>).plateNumber) ||
+    toDisplayText(device.vehicleNumber) ||
+    toDisplayText((device as unknown as Record<string, unknown>).vehicleRegistrationNumber);
+
+  if (directLabel) {
+    return directLabel;
+  }
+
+  const vehicleId = typeof device.vehicleId === "object" ? device.vehicleId?._id : device.vehicleId;
+  const vehicle = vehicles.find((item) => item._id === vehicleId);
+
+  return (
+    toDisplayText(vehicle?.plateNumber) ||
+    toDisplayText(vehicle?.registrationNumber) ||
+    toDisplayText(vehicle?.vehicleNumber) ||
+    ""
+  );
+};
+
+const getConnectionState = (device: GpsDeviceRecord) => {
+  if (device.connectionStatus === "online" || device.isOnline) {
+    return "Online";
+  }
+
+  if (device.connectionStatus === "offline" || device.isOnline === false) {
+    return "Offline";
+  }
+
+  return "";
+};
+
+const formatWarrantyDetails = (value?: string | null) => {
+  if (!value) {
+    return null;
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  const formattedDate = new Intl.DateTimeFormat("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(date);
+
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+
+  const startOfExpiry = new Date(date);
+  startOfExpiry.setHours(0, 0, 0, 0);
+
+  const diffDays = Math.ceil((startOfExpiry.getTime() - startOfToday.getTime()) / (1000 * 60 * 60 * 24));
+
+  if (diffDays < 0) {
+    return {
+      date: formattedDate,
+      detail: `Expired ${Math.abs(diffDays)} day${Math.abs(diffDays) === 1 ? "" : "s"} ago`,
+      tone: "text-red-600",
+    };
+  }
+
+  if (diffDays <= WARRANTY_WARNING_DAYS) {
+    return {
+      date: formattedDate,
+      detail: diffDays === 0 ? "Expires today" : `Expires in ${diffDays} day${diffDays === 1 ? "" : "s"}`,
+      tone: "text-amber-600",
+    };
+  }
+
+  return {
+    date: formattedDate,
+    detail: "",
+    tone: "text-slate-500",
+  };
+};
+
+const getStatusBadgeClasses = (status?: string) => {
+  switch (status) {
+    case "active":
+      return "border-emerald-200 bg-emerald-50 text-emerald-700";
+    case "inactive":
+      return "border-slate-200 bg-slate-100 text-slate-700";
+    case "blocked":
+    case "suspended":
+      return "border-rose-200 bg-rose-50 text-rose-700";
+    default:
+      return "border-slate-200 bg-slate-100 text-slate-700";
+  }
+};
+
+const getDeviceStatusLabel = (status?: string) => {
+  if (status === "suspended") {
+    return "Blocked";
+  }
+
+  return capitalizeFirstLetter(status || "unknown");
+};
+
+const buildGpsDevicePayload = (
+  data: DeviceFormValues,
+  fallbackOrganizationId?: string | null,
+) => {
+  const payload: Record<string, unknown> = {
+    imei: data.imei.trim(),
+    softwareVersion: data.softwareVersion.trim(),
+  };
+
+  const organizationId =
+    getOrganizationValue(data.organizationId) || fallbackOrganizationId || undefined;
+
+  if (organizationId) {
+    payload.organizationId = organizationId;
+  }
+
+  [
+    "simNumber",
+    "deviceModel",
+    "manufacturer",
+    "serialNumber",
+    "firmwareVersion",
+    "hardwareVersion",
+  ].forEach((fieldName) => {
+    const value = data[fieldName as keyof DeviceFormValues];
+    if (typeof value === "string" && value.trim()) {
+      payload[fieldName] = value.trim();
+    }
+  });
+
+  if (data.warrantyExpiry?.trim()) {
+    payload.warrantyExpiry = data.warrantyExpiry;
+  }
+
+  if (data.status) {
+    payload.status = data.status;
+  }
+
+  return payload;
+};
+
+const toOptionalString = (value: string | number | boolean | File | undefined) =>
+  typeof value === "string" && value.trim() ? value : undefined;
+
+const toDeviceStatus = (
+  value: string | number | boolean | File | undefined,
+): DeviceFormValues["status"] => {
+  if (value === "active" || value === "inactive" || value === "suspended") {
+    return value;
+  }
+
+  return undefined;
+};
+
+const toDeviceFormValues = (formValues: ModalFormValues): DeviceFormValues => ({
+  organizationId: typeof formValues.organizationId === "string" ? formValues.organizationId : undefined,
+  imei: typeof formValues.imei === "string" ? formValues.imei : "",
+  softwareVersion: typeof formValues.softwareVersion === "string" ? formValues.softwareVersion : "",
+  simNumber: toOptionalString(formValues.simNumber),
+  deviceModel: typeof formValues.deviceModel === "string" ? formValues.deviceModel : "",
+  manufacturer: toOptionalString(formValues.manufacturer),
+  serialNumber: toOptionalString(formValues.serialNumber),
+  firmwareVersion: toOptionalString(formValues.firmwareVersion),
+  hardwareVersion: toOptionalString(formValues.hardwareVersion),
+  warrantyExpiry: toOptionalString(formValues.warrantyExpiry),
+  status: toDeviceStatus(formValues.status),
+});
+
+const getDeviceInitialValues = (
+  device: GpsDeviceRecord | null,
+  fallbackOrganizationId?: string | null,
+): ModalFormValues => {
+  if (!device) {
+    return {
+      organizationId: fallbackOrganizationId || "",
+      imei: "",
+      softwareVersion: "",
+      simNumber: "",
+      deviceModel: "",
+      manufacturer: "",
+      serialNumber: "",
+      firmwareVersion: "",
+      hardwareVersion: "",
+      warrantyExpiry: "",
+    };
+  }
+
+  return {
+    organizationId: getEntityId(device.organizationId) || fallbackOrganizationId || "",
+    imei: device.imei,
+    softwareVersion: device.softwareVersion || device.firmwareVersion || "",
+    simNumber: device.simNumber || "",
+    deviceModel: device.deviceModel || "",
+    manufacturer: device.manufacturer || "",
+    serialNumber: device.serialNumber || "",
+    firmwareVersion: device.firmwareVersion || "",
+    hardwareVersion: device.hardwareVersion || "",
+    warrantyExpiry: device.warrantyExpiry
+      ? device.warrantyExpiry.split("T")[0]
+      : "",
+    status: device.status || "",
+  };
 };
 
 /* ================= PAGE ================= */
@@ -85,7 +356,6 @@ export default function GpsDevicesPage() {
   // 🔐 ORG CONTEXT UPDATE
   const { orgId, role, user, isSuperAdmin, isRootOrgAdmin, isSubOrgAdmin } = useOrgContext();
   const canUseImportExport = role === "admin" || role === "superadmin";
-  const canSelectImportOrganization = isSuperAdmin || (role === "admin" && !user?.parentOrganizationId);
   const searchParams = useSearchParams();
   const searchQueryParam = searchParams.get("search");
   const [page, setPage] = useState(1);
@@ -155,6 +425,8 @@ export default function GpsDevicesPage() {
       (vehData?.data as {
         _id: string;
         vehicleNumber: string;
+        registrationNumber?: string;
+        plateNumber?: string;
         deviceId?: string;
         model?: string;
         vehicleType?: string;
@@ -173,6 +445,11 @@ export default function GpsDevicesPage() {
   const canCreateDevice = isSuperAdmin || isRootOrgAdmin || isSubOrgAdmin;
   const canEditDevice = isSuperAdmin || isRootOrgAdmin || isSubOrgAdmin;
   const canDeleteDevice = isSuperAdmin || isRootOrgAdmin;
+
+  const currentOrganizationId = useMemo(
+    () => getEntityId((user?.organizationId as string | { _id: string } | undefined) || orgId) || null,
+    [orgId, user],
+  );
 
   const [editingDevice, setEditingDevice] = useState<GpsDeviceRecord | null>(null);
   /* ================= FILTER ================= */
@@ -194,18 +471,11 @@ export default function GpsDevicesPage() {
 
   /* ================= SUBMIT ================= */
 
-  const handleSubmit = async (data: DeviceFormValues) => {
+  const handleSubmit = async (formValues: ModalFormValues) => {
+    const data = toDeviceFormValues(formValues);
     try {
       if (editingDevice) {
-        const { organizationId: submittedOrgId, ...payloadData } = data;
-        const payload = {
-          ...payloadData,
-          organizationId:
-            typeof submittedOrgId === "object"
-              ? submittedOrgId._id
-              : submittedOrgId,
-        };
-
+        const payload = buildGpsDevicePayload(data);
         await updateGpsDevice({
           id: editingDevice._id, // ✅ always string
           ...payload,
@@ -215,11 +485,15 @@ export default function GpsDevicesPage() {
       } else {
         // 🔐 ORG CONTEXT UPDATE
         // If user is NOT superadmin or root-org-admin, lock organization from context
-        const finalData: Record<string, unknown> = {
-          ...data,
-        };
+        const finalData = buildGpsDevicePayload(data);
         if (!(isSuperAdmin || isRootOrgAdmin)) {
-          finalData.organizationId = orgId || "";
+          if (!currentOrganizationId) {
+            const missingContextMessage = "Organization context is unavailable. Please sign in again.";
+            toast.error(missingContextMessage);
+            throw new Error(missingContextMessage);
+          }
+
+          finalData.organizationId = currentOrganizationId;
         }
         await createGpsDevice(finalData).unwrap();
         toast.success("Device created successfully");
@@ -262,25 +536,65 @@ export default function GpsDevicesPage() {
         icon: <Building2 size={14} />,
       }
     ] : []),
-    { name: "imei", label: "IMEI", type: "text", required: true, helperText: "Exactly 15 digits" },
-    { name: "softwareVersion", label: "Software Version", type: "text", required: true },
+    {
+      name: "imei",
+      label: "IMEI",
+      type: "text",
+      required: true,
+      helperText: "Exactly 15 digits",
+      section: "Core Details",
+    },
+    {
+      name: "softwareVersion",
+      label: "Software Version",
+      type: "text",
+      required: true,
+      section: "Core Details",
+    },
+    {
+      name: "simNumber",
+      label: "SIM Number",
+      type: "text",
+      section: "Optional Details",
+    },
+    {
+      name: "deviceModel",
+      label: "Device Model",
+      type: "text",
+      section: "Optional Details",
+    },
+    {
+      name: "serialNumber",
+      label: "Serial Number",
+      type: "text",
+      section: "Optional Details",
+    },
+    {
+      name: "manufacturer",
+      label: "Manufacturer",
+      type: "text",
+      section: "Optional Details",
+    },
+    {
+      name: "firmwareVersion",
+      label: "Firmware Version",
+      type: "text",
+      section: "Optional Details",
+    },
+    {
+      name: "hardwareVersion",
+      label: "Hardware Version",
+      type: "text",
+      section: "Optional Details",
+    },
+    {
+      name: "warrantyExpiry",
+      label: "Warranty Expiry",
+      type: "date",
+      section: "Optional Details",
+    },
     ...(editingDevice
       ? [
-          { name: "simNumber", label: "SIM Number", type: "text" },
-          {
-            name: "deviceModel",
-            label: "Device Model",
-            type: "text",
-          },
-          { name: "manufacturer", label: "Manufacturer", type: "text" },
-          { name: "serialNumber", label: "Serial Number", type: "text" },
-          { name: "firmwareVersion", label: "Firmware Version", type: "text" },
-          { name: "hardwareVersion", label: "Hardware Version", type: "text" },
-          {
-            name: "warrantyExpiry",
-            label: "Warranty Expiry",
-            type: "date",
-          },
           {
             name: "status",
             label: "Status",
@@ -291,6 +605,7 @@ export default function GpsDevicesPage() {
               { label: "Inactive", value: "inactive" },
               { label: "Suspended", value: "suspended" },
             ],
+            section: "Optional Details",
           },
         ]
       : []),
@@ -321,6 +636,11 @@ export default function GpsDevicesPage() {
     });
   }, [editingDevice, isSuperAdmin, isRootOrgAdmin]);
 
+  const deviceInitialData = useMemo(
+    () => getDeviceInitialValues(editingDevice, currentOrganizationId),
+    [currentOrganizationId, editingDevice],
+  );
+
 
   /* ================= MODALS ================= */
 
@@ -330,13 +650,9 @@ export default function GpsDevicesPage() {
   };
 
   const openEditModal = (device: GpsDeviceRecord) => {
-    const orgId = device.organizationId && typeof device.organizationId === "object"
-      ? device.organizationId._id
-      : device.organizationId;
-
     setEditingDevice({
       ...device,
-      organizationId: orgId as string,
+      organizationId: getEntityId(device.organizationId) || "",
     });
 
     openPopup("deviceModal");
@@ -390,7 +706,7 @@ export default function GpsDevicesPage() {
 
   /* ================= TABLE ================= */
 
-  const columns: any[] = [
+  const columns: DeviceTableColumn[] = [
     {
       header: "IMEI",
       headerClassName: "min-w-[190px]",
@@ -403,96 +719,139 @@ export default function GpsDevicesPage() {
     },
     {
       header: "Model",
-      headerClassName: "min-w-[120px]",
-      cellClassName: "min-w-[120px] whitespace-nowrap",
+      headerClassName: "min-w-[140px]",
+      cellClassName: "min-w-[140px]",
       accessor: (row: GpsDeviceRecord) => (
-        <span className="block whitespace-nowrap text-sm font-semibold text-slate-800">
-          {row.deviceModel || row.manufacturer || "-"}
+        <span className="block max-w-[140px] truncate text-sm font-semibold text-slate-800">
+          {toDisplayText(row.deviceModel) || toDisplayText(row.manufacturer) || EMPTY_VALUE}
         </span>
       ),
     },
     {
-      header: "Firmware",
-      headerClassName: "min-w-[120px]",
-      cellClassName: "min-w-[120px] whitespace-nowrap",
-      accessor: (row: GpsDeviceRecord) => row.firmwareVersion || row.softwareVersion || "-",
-    },
-    {
       header: "SIM",
-      headerClassName: "min-w-[120px]",
-      cellClassName: "min-w-[120px] whitespace-nowrap",
-      accessor: (row: GpsDeviceRecord) => row.simNumber || "-",
-    },
-    {
-      header: "Inventory",
-      headerClassName: "min-w-[120px]",
-      cellClassName: "min-w-[120px]",
+      headerClassName: "min-w-[130px]",
+      cellClassName: "min-w-[130px]",
       accessor: (row: GpsDeviceRecord) => (
-        <InventoryStatusBadge device={row} compact />
+        <span className="block max-w-[130px] truncate text-sm text-slate-700">
+          {toDisplayText(row.simNumber) || EMPTY_VALUE}
+        </span>
       ),
     },
     {
+      header: "Inventory",
+      headerClassName: "min-w-[130px]",
+      cellClassName: "min-w-[130px]",
+      accessor: (row: GpsDeviceRecord) => {
+        const inventoryLabel =
+          toDisplayText((row as unknown as Record<string, unknown>).inventoryNumber) ||
+          toDisplayText(row.inventory?.invoiceNumber) ||
+          toDisplayText(row.inventory?.stockLocation) ||
+          toDisplayText(row.inventory?.rackNumber);
+
+        if (!inventoryLabel) {
+          return <InventoryStatusBadge device={row} compact />;
+        }
+
+        return (
+          <div className="space-y-1">
+            <span className="block max-w-[130px] truncate text-sm font-semibold text-slate-800">
+              {inventoryLabel}
+            </span>
+            <InventoryStatusBadge device={row} compact />
+          </div>
+        );
+      },
+    },
+    {
       header: "Organization",
-      headerClassName: "min-w-[140px]",
-      cellClassName: "min-w-[140px]",
+      headerClassName: "min-w-[150px]",
+      cellClassName: "min-w-[150px]",
       accessor: (row: GpsDeviceRecord) => {
         const org =
           typeof row.organizationId === "object" ? row.organizationId : null;
         return (
-          <span className="block max-w-[140px] break-words leading-5 text-slate-700">
-            {org?.name || "-"}
+          <span className="block max-w-[150px] truncate text-sm text-slate-700">
+            {toDisplayText(org?.name) || EMPTY_VALUE}
           </span>
         );
       },
     },
     {
-      header: "Vehicle",
-      headerClassName: "min-w-[120px]",
-      cellClassName: "min-w-[120px] whitespace-nowrap",
-      accessor: (row: GpsDeviceRecord) => {
-        const fromDevice =
-          (typeof row.vehicleId === "object" ? row.vehicleId?.vehicleNumber : null) ||
-          row.vehicleNumber;
-        if (fromDevice) return fromDevice;
-
-        const vehicleId =
-          typeof row.vehicleId === "object" ? row.vehicleId?._id : row.vehicleId;
-        const vehicle = vehiclesData.find((v) => v._id === vehicleId);
-        return vehicle?.vehicleNumber || "-";
-      },
-    },
-    {
-      header: "Connection",
-      headerClassName: "min-w-[100px]",
-      cellClassName: "min-w-[100px] whitespace-nowrap",
+      header: "Assigned Vehicle",
+      headerClassName: "min-w-[150px]",
+      cellClassName: "min-w-[150px]",
       accessor: (row: GpsDeviceRecord) => (
-        <span
-          className={`capitalize text-xs font-semibold ${(row.connectionStatus || (row.isOnline ? "online" : "offline")) === "online"
-            ? "text-green-600"
-            : "text-red-600"
-            }`}
-        >
-          {row.connectionStatus || (row.isOnline ? "online" : "offline")}
+        <span className="block max-w-[150px] truncate text-sm font-semibold text-slate-800">
+          {getAssignedVehicleLabel(row, vehiclesData) || "Unassigned"}
         </span>
       ),
     },
     {
+      header: "Connection / Last Seen",
+      headerClassName: "min-w-[170px]",
+      cellClassName: "min-w-[170px]",
+      accessor: (row: GpsDeviceRecord) => {
+        const connectionState = getConnectionState(row);
+        const lastSeen = formatRelativeTime(getDeviceLastSeen(row));
+
+        if (!connectionState && !lastSeen) {
+          return <span className="text-sm text-slate-500">Unknown</span>;
+        }
+
+        return (
+          <div className="space-y-1">
+            <span
+              className={`block text-sm font-semibold ${
+                connectionState === "Online"
+                  ? "text-emerald-600"
+                  : connectionState === "Offline"
+                    ? "text-rose-600"
+                    : "text-slate-700"
+              }`}
+            >
+              {connectionState || "Unknown"}
+            </span>
+            <span className="block text-xs text-slate-500">
+              {lastSeen ? `Last seen ${lastSeen}` : "Last seen —"}
+            </span>
+          </div>
+        );
+      },
+    },
+    {
       header: "Warranty",
-      headerClassName: "min-w-[110px]",
-      cellClassName: "min-w-[110px] whitespace-nowrap",
-      accessor: (row: GpsDeviceRecord) =>
-        row.warrantyExpiry ? row.warrantyExpiry.split("T")[0] : "-",
+      headerClassName: "min-w-[150px]",
+      cellClassName: "min-w-[150px]",
+      accessor: (row: GpsDeviceRecord) => {
+        const warranty = formatWarrantyDetails(row.warrantyExpiry);
+
+        if (!warranty) {
+          return <span className="text-sm text-slate-500">{EMPTY_VALUE}</span>;
+        }
+
+        return (
+          <div className="space-y-1">
+            <span className="block text-sm font-semibold text-slate-800">
+              {warranty.date}
+            </span>
+            {warranty.detail ? (
+              <span className={`block text-xs font-medium ${warranty.tone}`}>
+                {warranty.detail}
+              </span>
+            ) : null}
+          </div>
+        );
+      },
     },
     {
       header: "Status",
-      headerClassName: "min-w-[90px]",
-      cellClassName: "min-w-[90px] whitespace-nowrap",
+      headerClassName: "min-w-[110px]",
+      cellClassName: "min-w-[110px]",
       accessor: (row: GpsDeviceRecord) => (
         <span
-          className={`capitalize text-xs font-semibold ${row.status === "active" ? "text-green-600" : "text-red-600"
-            }`}
+          className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-black uppercase tracking-[0.14em] ${getStatusBadgeClasses(row.status)}`}
         >
-          {capitalizeFirstLetter(row.status)}
+          {getDeviceStatusLabel(row.status)}
         </span>
       ),
     },
@@ -742,7 +1101,7 @@ export default function GpsDevicesPage() {
                       Assignment
                     </label>
                     <select
-                      className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 outline-none"
+                      className="admin-filter-select w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 outline-none"
                       value={filters.assigned}
                       onChange={(e) =>
                         setFilters({ ...filters, assigned: e.target.value })
@@ -758,7 +1117,7 @@ export default function GpsDevicesPage() {
                       Status
                     </label>
                     <select
-                      className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 outline-none"
+                      className="admin-filter-select w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 outline-none"
                       value={filters.status}
                       onChange={(e) =>
                         setFilters({ ...filters, status: e.target.value })
@@ -774,7 +1133,7 @@ export default function GpsDevicesPage() {
                       Connection
                     </label>
                     <select
-                      className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 outline-none"
+                      className="admin-filter-select w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 outline-none"
                       value={filters.connectionStatus}
                       onChange={(e) =>
                         setFilters({ ...filters, connectionStatus: e.target.value })
@@ -818,7 +1177,7 @@ export default function GpsDevicesPage() {
                         Organization
                       </label>
                       <select
-                        className="w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 outline-none"
+                        className="admin-filter-select w-full border border-slate-200 rounded-xl p-2 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 outline-none"
                         value={filters.organizationId}
                         onChange={(e) =>
                           setFilters({ ...filters, organizationId: e.target.value })
@@ -882,7 +1241,11 @@ export default function GpsDevicesPage() {
                 </button>
               </div>
               <div ref={tableScrollRef} className="overflow-x-auto">
-                <Table columns={columns} data={devices as any} />
+                <Table<GpsDeviceRecord>
+                  columns={columns}
+                  data={devices}
+                  horizontalScrollMode="external"
+                />
               </div>
               <Pagination
                 page={page}
@@ -903,28 +1266,7 @@ export default function GpsDevicesPage() {
           title={editingDevice ? "Edit Device" : "New Device"}
           fields={deviceFormFields}
           schema={deviceSchema}
-          initialData={
-            editingDevice
-              ? {
-                imei: editingDevice.imei,
-                softwareVersion: editingDevice.softwareVersion || editingDevice.firmwareVersion || "",
-                simNumber: editingDevice.simNumber || "",
-                deviceModel: editingDevice.deviceModel || "",
-                manufacturer: editingDevice.manufacturer || "",
-                serialNumber: editingDevice.serialNumber || "",
-                firmwareVersion: editingDevice.firmwareVersion || "",
-                hardwareVersion: editingDevice.hardwareVersion || "",
-                warrantyExpiry: editingDevice.warrantyExpiry
-                  ? editingDevice.warrantyExpiry.split("T")[0]
-                  : "",
-                status: editingDevice.status,
-              }
-              : {
-                organizationId: "",
-                imei: "",
-                softwareVersion: "",
-              }
-          }
+          initialData={deviceInitialData}
           onSubmit={handleSubmit}
         />
       )}

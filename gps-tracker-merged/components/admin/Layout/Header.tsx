@@ -1,19 +1,11 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
-import { Bell, Search, X, Building2, Car, Radio, User, Trash2, Menu, LayoutDashboard } from "lucide-react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Bell, Search, Building2, Car, Radio, User, Menu, LayoutDashboard } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { toast } from "sonner";
-import { getSecureItem } from "@/app/admin/Helpers/encryptionHelper";
 import { useGetMeQuery } from "@/redux/api/usersApi";
-import {
-    useGetNotificationsQuery,
-    useMarkAsReadMutation,
-    useDeleteNotificationMutation,
-    useClearAllNotificationsMutation
-} from "@/redux/api/notificationsApi";
+import { useGetAdminNotificationCountsQuery } from "@/redux/api/adminNotificationsApi";
 import { useGetOrganizationsQuery } from "@/redux/api/organizationApi";
-import { useOrgContext } from "@/hooks/useOrgContext";
 import { useGetVehiclesQuery } from "@/redux/api/vehicleApi";
 import { useGetGpsDevicesQuery } from "@/redux/api/gpsDeviceApi";
 import { useGetUsersQuery } from "@/redux/api/usersApi";
@@ -24,43 +16,68 @@ type HeaderProps = {
     onOpenSidebar?: () => void;
 };
 
-const EMPTY_ARRAY: any[] = [];
+type SearchResult = {
+    type: "Organization" | "Vehicle" | "GPS Device" | "User";
+    id: string;
+    name: string;
+    details: string;
+    path: string;
+};
+
+type OrganizationOption = {
+    _id: string;
+    name?: string;
+    email?: string;
+};
+
+type VehicleOption = {
+    _id: string;
+    vehicleNumber?: string;
+    registrationNumber?: string;
+    vehicleType?: string;
+};
+
+type DeviceOption = {
+    _id: string;
+    imei?: string;
+    model?: string;
+    deviceModel?: string;
+};
+
+type UserOption = {
+    _id: string;
+    firstName?: string;
+    lastName?: string;
+    email?: string;
+    role?: string;
+};
+
+const EMPTY_ARRAY: never[] = [];
 
 export default function Header({ onOpenSidebar }: HeaderProps) {
     const router = useRouter();
     const [searchQuery, setSearchQuery] = useState("");
-    const [searchResults, setSearchResults] = useState<Array<{ type: string; id: string; name: string; details: string }>>([]);
     const [showSearchResults, setShowSearchResults] = useState(false);
     const [showNotifications, setShowNotifications] = useState(false);
 
     // Redux Hooks
     const { data: userData } = useGetMeQuery(undefined, { refetchOnMountOrArgChange: true });
-    const { data: notifData } = useGetNotificationsQuery(undefined, {
+    const { data: notificationCounts } = useGetAdminNotificationCountsQuery(undefined, {
         pollingInterval: 30000, // Poll every 30 seconds for real-time updates
         refetchOnMountOrArgChange: true,
     });
 
     // 🔐 ORG CONTEXT UPDATE
-    const { orgName } = useOrgContext();
     const { data: vehData } = useGetVehiclesQuery(undefined);
     const { data: devicesData } = useGetGpsDevicesQuery(undefined);
     const { data: usersData } = useGetUsersQuery(undefined);
     const { data: orgData } = useGetOrganizationsQuery(undefined);
 
-    const [markAsRead] = useMarkAsReadMutation();
-    const [deleteNotification] = useDeleteNotificationMutation();
-    const [clearAllNotifications] = useClearAllNotificationsMutation();
-
-    const notifications = notifData?.data || EMPTY_ARRAY;
     const adminUser = userData?.data || {};
-    const organizations = orgData?.data || EMPTY_ARRAY;
-    const vehicles = vehData?.data || vehData?.vehicles || EMPTY_ARRAY;
-    const devices = devicesData?.data || EMPTY_ARRAY;
-    const allUsers = usersData?.data || usersData?.users || EMPTY_ARRAY;
-
-    // Derived state
-    const rootOrg = organizations.find((o: any) => !o.parentOrganizationId) || {};
-
+    const organizations = (orgData?.data || EMPTY_ARRAY) as OrganizationOption[];
+    const vehicles = (vehData?.data || vehData?.vehicles || EMPTY_ARRAY) as VehicleOption[];
+    const devices = (devicesData?.data || EMPTY_ARRAY) as DeviceOption[];
+    const allUsers = (usersData?.data || usersData?.users || EMPTY_ARRAY) as UserOption[];
     const searchRef = useRef<HTMLDivElement>(null);
     const notifRef = useRef<HTMLDivElement>(null);
 
@@ -77,88 +94,77 @@ export default function Header({ onOpenSidebar }: HeaderProps) {
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
 
-    useEffect(() => {
+    const searchResults = useMemo(() => {
         const query = searchQuery.trim().toLowerCase();
-        if (query.length > 1) {
-            const results: any[] = [];
-
-            // 1. Search Organizations
-            (organizations || []).forEach((org: any) => {
-                if (org.name?.toLowerCase().includes(query)) {
-                    results.push({ type: "Organization", id: org._id, name: org.name, details: org.email || "Org", path: `/dashboard?organizationId=${org._id}` });
-                }
-            });
-
-            // 2. Search Vehicles
-            (vehicles || []).forEach((v: any) => {
-                if (v.vehicleNumber?.toLowerCase().includes(query) || v.registrationNumber?.toLowerCase().includes(query)) {
-                    results.push({ type: "Vehicle", id: v._id, name: v.vehicleNumber, details: v.vehicleType || "Vehicle", path: `/admin/vehicles?search=${encodeURIComponent(v.vehicleNumber)}` });
-                }
-            });
-
-            // 3. Search Devices
-            (devices || []).forEach((d: any) => {
-                if (d.imei?.toLowerCase().includes(query) || d.model?.toLowerCase().includes(query)) {
-                    results.push({ type: "GPS Device", id: d._id, name: d.imei, details: d.model || "Device", path: `/admin/gps-devices?search=${encodeURIComponent(d.imei)}` });
-                }
-            });
-
-            // 4. Search Users
-            (allUsers || []).forEach((u: any) => {
-                const fullName = `${u.firstName} ${u.lastName}`;
-                if (u.firstName?.toLowerCase().includes(query) || u.lastName?.toLowerCase().includes(query) || u.email?.toLowerCase().includes(query)) {
-                    results.push({ type: "User", id: u._id, name: fullName, details: u.role || "User", path: `/admin/users?search=${encodeURIComponent(u.firstName)}` });
-                }
-            });
-
-            setSearchResults(results.slice(0, 10)); // Top 10 results
-            if (!showSearchResults) setShowSearchResults(true);
-        } else {
-            if (searchResults.length > 0) setSearchResults([]);
-            if (showSearchResults) setShowSearchResults(false);
+        if (query.length <= 1) {
+            return [] as SearchResult[];
         }
-    }, [searchQuery, organizations, vehicles, devices, allUsers, searchResults.length, showSearchResults]);
 
+        const results: SearchResult[] = [];
 
-    const handleSearchResultClick = (result: { type: string; id: string }) => {
-        // Search disabled for now
-        setShowSearchResults(false);
-    };
-
-    const handleNotificationClick = async (notif: any) => {
-        if (!notif.read) {
-            try {
-                await markAsRead(notif._id).unwrap();
-            } catch (error) {
-                console.error("Failed to mark read", error);
+        organizations.forEach((organization) => {
+            if (organization.name?.toLowerCase().includes(query)) {
+                results.push({
+                    type: "Organization",
+                    id: organization._id,
+                    name: organization.name,
+                    details: organization.email || "Organization",
+                    path: `/admin/organizations?search=${encodeURIComponent(organization.name)}`,
+                });
             }
-        }
-        setShowNotifications(false);
-        // Navigate if notification has link (logic not yet in backend data, assuming plain notification for now)
-    };
+        });
 
-    const handleDeleteNotification = async (e: React.MouseEvent, notifId: string) => {
-        e.stopPropagation();
-        try {
-            await deleteNotification(notifId).unwrap();
-            toast.success("Notification deleted");
-        } catch (error) {
-            toast.error("Failed to delete notification");
-        }
-    };
-
-    const handleClearAllNotifications = async () => {
-        if (confirm("Are you sure you want to clear all notifications?")) {
-            try {
-                await clearAllNotifications(undefined).unwrap();
-                toast.success("All notifications cleared");
-            } catch (error) {
-                toast.error("Failed to clear notifications");
+        vehicles.forEach((vehicle) => {
+            const vehicleNumber = vehicle.vehicleNumber || vehicle.registrationNumber || "";
+            if (
+                vehicleNumber.toLowerCase().includes(query) ||
+                vehicle.registrationNumber?.toLowerCase().includes(query)
+            ) {
+                results.push({
+                    type: "Vehicle",
+                    id: vehicle._id,
+                    name: vehicleNumber,
+                    details: vehicle.vehicleType || "Vehicle",
+                    path: `/admin/vehicles?search=${encodeURIComponent(vehicleNumber)}`,
+                });
             }
-        }
-    };
+        });
 
-    const unreadCount = notifications.filter((n: any) => !n.acknowledged).length;
+        devices.forEach((device) => {
+            const deviceLabel = device.imei || "";
+            const model = device.deviceModel || device.model || "";
+            if (deviceLabel.toLowerCase().includes(query) || model.toLowerCase().includes(query)) {
+                results.push({
+                    type: "GPS Device",
+                    id: device._id,
+                    name: deviceLabel,
+                    details: model || "GPS Device",
+                    path: `/admin/gps-devices?search=${encodeURIComponent(deviceLabel)}`,
+                });
+            }
+        });
+
+        allUsers.forEach((user) => {
+            const fullName = [user.firstName, user.lastName].filter(Boolean).join(" ").trim();
+            if (
+                user.firstName?.toLowerCase().includes(query) ||
+                user.lastName?.toLowerCase().includes(query) ||
+                user.email?.toLowerCase().includes(query)
+            ) {
+                results.push({
+                    type: "User",
+                    id: user._id,
+                    name: fullName || user.email || "User",
+                    details: user.role || "User",
+                    path: `/admin/users?search=${encodeURIComponent(fullName || user.email || "")}`,
+                });
+            }
+        });
+
+        return results.slice(0, 10);
+    }, [searchQuery, organizations, vehicles, devices, allUsers]);
+
+    const unreadCount = notificationCounts?.data?.unread ?? 0;
 
     const getIcon = (type: string) => {
         switch (type) {
@@ -199,7 +205,7 @@ export default function Header({ onOpenSidebar }: HeaderProps) {
                                     Search Results ({searchResults.length})
                                 </div>
                                 <div className="max-h-60 overflow-y-auto">
-                                    {searchResults.map((result: any) => (
+                                    {searchResults.map((result) => (
                                         <button
                                             key={`${result.type}-${result.id}`}
                                             onClick={() => {
@@ -232,8 +238,16 @@ export default function Header({ onOpenSidebar }: HeaderProps) {
                         <input
                             type="text"
                             value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            onFocus={() => searchQuery && setShowSearchResults(true)}
+                            onChange={(e) => {
+                                const value = e.target.value;
+                                setSearchQuery(value);
+                                setShowSearchResults(value.trim().length > 1);
+                            }}
+                            onFocus={() => {
+                                if (searchResults.length > 0) {
+                                    setShowSearchResults(true);
+                                }
+                            }}
                             placeholder="Search organizations..."
                             className="w-full rounded-2xl border border-slate-200 bg-white pl-10 pr-4 py-3 text-sm font-semibold text-slate-700 shadow-sm transition placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-4 focus:ring-blue-500/10"
                         />
@@ -287,11 +301,8 @@ export default function Header({ onOpenSidebar }: HeaderProps) {
                     className="flex cursor-pointer items-center gap-3 rounded-2xl border border-slate-200 bg-white px-2.5 py-2 shadow-sm transition-colors hover:bg-slate-50"
                 >
                     <div className="text-right hidden sm:block">
-                        <div className="flex items-center justify-end gap-1.5 mb-0.5">
-                            <span className="text-[10px] font-black uppercase tracking-widest text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">
-                                {orgName}
-                            </span>
-                            <p className="text-sm font-semibold text-slate-900">{adminUser.name || "Admin User"}</p>
+                        <div className="mb-0.5">
+                            <p className="text-sm font-semibold text-slate-900">{displayName}</p>
                         </div>
                         <p className="text-xs text-slate-500">{adminUser.email || "admin@example.com"}</p>
                     </div>
