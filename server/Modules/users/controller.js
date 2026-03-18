@@ -347,6 +347,7 @@ exports.createUser = async (req, res) => {
     } else if (
       organizationId &&
       req.orgScope !== "ALL" &&
+      Array.isArray(req.orgScope) &&
       req.orgScope.some(id => id.toString() === organizationId.toString())
     ) {
       finalOrgId = organizationId;

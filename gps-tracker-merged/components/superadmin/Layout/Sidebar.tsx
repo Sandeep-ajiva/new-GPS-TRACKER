@@ -43,7 +43,7 @@ export default function Sidebar({ className, isMobile = false, onClose }: Sideba
         <div className="rounded-2xl border border-slate-800/80 bg-slate-900/50 p-4">
           <p className="text-[10px] font-black uppercase tracking-[0.34em] text-slate-500">Platform Scope</p>
           <p className="mt-2 text-sm font-semibold text-slate-200">
-            Global access across organizations, users, vehicles, devices, mappings, and platform controls.
+            Platform-owner access for organizations, org admin accounts, and global platform oversight.
           </p>
         </div>
 

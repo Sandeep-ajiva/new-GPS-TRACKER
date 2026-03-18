@@ -48,6 +48,7 @@ router.post(
   "/",
   verifyToken,
   checkAuthorization(["admin", "superadmin"], "users", "create"),
+  checkOrganization,
   Controller.createUser
 );
 

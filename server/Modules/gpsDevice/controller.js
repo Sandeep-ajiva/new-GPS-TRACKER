@@ -124,6 +124,7 @@ exports.create = async (req, res) => {
     } else if (
       payload.organizationId &&
       req.orgScope !== "ALL" &&
+      Array.isArray(req.orgScope) &&
       req.orgScope.some(id => id.toString() === payload.organizationId.toString())
     ) {
       organizationId = payload.organizationId;
@@ -158,10 +159,15 @@ exports.create = async (req, res) => {
       createdBy: req.user._id,
     });
 
-    await createGpsDeviceCreatedNotification(
-      { device },
-      buildContextFromReq(req),
-    );
+    // 🌊 Post-create logic (isolated)
+    try {
+      createGpsDeviceCreatedNotification(
+        { device },
+        buildContextFromReq(req),
+      );
+    } catch (notifErr) {
+      console.warn("Notification failed for GPS device creation:", notifErr.message);
+    }
 
     return res.status(201).json({
       status: true,

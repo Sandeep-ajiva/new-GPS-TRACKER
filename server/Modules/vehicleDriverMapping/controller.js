@@ -138,13 +138,26 @@ exports.assignDriverToVehicle = async (req, res) => {
 
     await session.commitTransaction();
 
-    await mapping.populate([
-      { path: "vehicleId" },
-      { path: "driverId" },
-      { path: "organizationId" },
-    ]);
+    // ✅ Populate outside transaction — wrapped so it cannot hit outer catch after commit
+    try {
+      await mapping.populate([
+        { path: "vehicleId" },
+        { path: "driverId" },
+        { path: "organizationId" },
+      ]);
+    } catch (populateErr) {
+      console.warn("Driver mapping populate warning (non-critical):", populateErr);
+    }
 
-    await createDriverMappingNotification(
+    // ✅ GUARANTEED SUCCESS RESPONSE — returned before fire-and-forget notification
+    res.status(201).json({
+      status: true,
+      message: "Driver assigned to vehicle successfully",
+      data: mapping,
+    });
+
+    // 🔔 Fire-and-forget notification — cannot fail the HTTP response
+    createDriverMappingNotification(
       {
         action: "assigned",
         mappingId: mapping._id,
@@ -153,19 +166,19 @@ exports.assignDriverToVehicle = async (req, res) => {
         driver,
       },
       buildContextFromReq(req),
+    ).catch((notifErr) =>
+      console.error("Driver assign notification error (non-critical):", notifErr)
     );
 
-    return res.status(201).json({
-      status: true,
-      message: "Driver assigned to vehicle successfully",
-      data: mapping,
-    });
   } catch (error) {
-    await session.abortTransaction();
+    // ⛔ Only abort if still inside a transaction (prevents abort-after-commit)
+    if (session.inTransaction()) {
+      await session.abortTransaction();
+    }
 
     console.error("Assign Driver Error:", error);
 
-    return res.status(error.status || 400).json({
+    return res.status(error.status || 500).json({
       status: false,
       message: error.message || "Internal server error",
     });

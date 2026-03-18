@@ -153,13 +153,26 @@ exports.assign = async (req, res) => {
 
     await session.commitTransaction();
 
-    await vehicleMapping.populate([
-      { path: "organizationId" },
-      { path: "vehicleId" },
-      { path: "gpsDeviceId" },
-    ]);
+    // ✅ Populate outside transaction — wrapped so it cannot hit outer catch after commit
+    try {
+      await vehicleMapping.populate([
+        { path: "organizationId" },
+        { path: "vehicleId" },
+        { path: "gpsDeviceId" },
+      ]);
+    } catch (populateErr) {
+      console.warn("Device mapping populate warning (non-critical):", populateErr);
+    }
 
-    await createDeviceMappingNotification(
+    // ✅ GUARANTEED SUCCESS RESPONSE — returned before fire-and-forget notification
+    res.status(201).json({
+      status: true,
+      message: "Device assigned to vehicle successfully",
+      data: vehicleMapping,
+    });
+
+    // 🔔 Fire-and-forget notification — cannot fail the HTTP response
+    createDeviceMappingNotification(
       {
         action: "assigned",
         mappingId: vehicleMapping._id,
@@ -168,19 +181,19 @@ exports.assign = async (req, res) => {
         device,
       },
       buildContextFromReq(req),
+    ).catch((notifErr) =>
+      console.error("Device assign notification error (non-critical):", notifErr)
     );
 
-    return res.status(201).json({
-      status: true,
-      message: "Device assigned to vehicle successfully",
-      data: vehicleMapping,
-    });
   } catch (error) {
-    await session.abortTransaction();
+    // ⛔ Only abort if still inside a transaction (prevents abort-after-commit)
+    if (session.inTransaction()) {
+      await session.abortTransaction();
+    }
 
     console.error("Assign Device Mapping Error:", error);
 
-    return res.status(error.status || 400).json({
+    return res.status(error.status || 500).json({
       status: false,
       message: error.message || "Internal server error",
     });
@@ -286,9 +299,18 @@ exports.unassignById = async (req, res) => {
       );
     }
 
+    // ✅ COMMIT
     await session.commitTransaction();
+    session.endSession();
 
-    await createDeviceMappingNotification(
+    // ✅ GUARANTEED SUCCESS RESPONSE
+    res.status(200).json({
+      status: true,
+      message: "Device unassigned successfully",
+    });
+
+    // 🔔 Fire-and-forget notifications — isolated so they cannot fail the response
+    createDeviceMappingNotification(
       {
         action: "unassigned",
         mappingId: mapping._id,
@@ -297,10 +319,12 @@ exports.unassignById = async (req, res) => {
         device: deviceSnapshot || { _id: gpsDeviceId },
       },
       buildContextFromReq(req),
+    ).catch((notifErr) =>
+      console.error("Device unassign (by ID) notification error (non-critical):", notifErr)
     );
 
     if (activeDriverMapping && driverSnapshot) {
-      await createDriverMappingNotification(
+      createDriverMappingNotification(
         {
           action: "unassigned",
           mappingId: activeDriverMapping._id,
@@ -309,22 +333,23 @@ exports.unassignById = async (req, res) => {
           driver: driverSnapshot,
         },
         buildContextFromReq(req),
+      ).catch((notifErr) =>
+        console.error("Driver cascade unassign notification error (non-critical):", notifErr)
       );
     }
 
-    return res.status(200).json({
-      status: true,
-      message: "Device unassigned successfully",
-    });
   } catch (error) {
-    await session.abortTransaction();
+    // ⛔ Only abort if still inside a transaction
+    if (session.inTransaction()) {
+      await session.abortTransaction();
+    }
+    session.endSession();
+
     console.error("Unassign By ID Error:", error);
     return res.status(error.status || 500).json({
       status: false,
       message: error.message || "Internal server error",
     });
-  } finally {
-    session.endSession();
   }
 };
 
@@ -403,9 +428,18 @@ exports.unassign = async (req, res) => {
       );
     }
 
+    // ✅ COMMIT
     await session.commitTransaction();
+    session.endSession();
 
-    await createDeviceMappingNotification(
+    // ✅ GUARANTEED SUCCESS RESPONSE
+    res.status(200).json({
+      status: true,
+      message: "Device unassigned successfully",
+    });
+
+    // 🔔 Fire-and-forget notifications — isolated so they cannot fail the response
+    createDeviceMappingNotification(
       {
         action: "unassigned",
         mappingId: mapping._id,
@@ -414,10 +448,12 @@ exports.unassign = async (req, res) => {
         device: deviceSnapshot || { _id: gpsDeviceId },
       },
       buildContextFromReq(req),
+    ).catch((notifErr) =>
+      console.error("Device unassign notification error (non-critical):", notifErr)
     );
 
     if (activeDriverMapping && driverSnapshot) {
-      await createDriverMappingNotification(
+      createDriverMappingNotification(
         {
           action: "unassigned",
           mappingId: activeDriverMapping._id,
@@ -426,22 +462,23 @@ exports.unassign = async (req, res) => {
           driver: driverSnapshot,
         },
         buildContextFromReq(req),
+      ).catch((notifErr) =>
+        console.error("Driver cascade unassign (by body) notification error (non-critical):", notifErr)
       );
     }
 
-    return res.status(200).json({
-      status: true,
-      message: "Device unassigned successfully",
-    });
   } catch (error) {
-    await session.abortTransaction();
+    // ⛔ Only abort if still inside a transaction
+    if (session.inTransaction()) {
+      await session.abortTransaction();
+    }
+    session.endSession();
+
     console.error("Unassign Device Mapping Error:", error);
     return res.status(error.status || 500).json({
       status: false,
       message: error.message || "Internal server error",
     });
-  } finally {
-    session.endSession();
   }
 };
 

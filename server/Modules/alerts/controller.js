@@ -27,6 +27,7 @@ exports.create = async (req, res) => {
         } else if (
             req.body.organizationId &&
             req.orgScope !== "ALL" &&
+            Array.isArray(req.orgScope) &&
             req.orgScope.some(id => id.toString() === req.body.organizationId.toString())
         ) {
             organizationId = req.body.organizationId;

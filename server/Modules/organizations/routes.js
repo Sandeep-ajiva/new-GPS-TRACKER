@@ -77,6 +77,7 @@ router.get(
   "/:id",
   requireAuth,
   checkAuthorization(["superadmin"], "organizations", "read"),
+  checkOrganization,
   Controller.getById
 );
 

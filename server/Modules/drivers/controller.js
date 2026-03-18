@@ -130,6 +130,7 @@ exports.create = async (req, res) => {
         } else if (
             req.body.organizationId &&
             req.orgScope !== "ALL" &&
+            Array.isArray(req.orgScope) &&
             req.orgScope.some(id => id.toString() === req.body.organizationId.toString())
         ) {
             organizationId = req.body.organizationId;
@@ -511,14 +512,6 @@ exports.delete = async (req, res) => {
             });
         }
 
-        // // Only superadmin can delete drivers
-        // if (req.user.role !== "superadmin") {
-        //     return res.status(403).json({
-        //         status: false,
-        //         message: "Forbidden: Only superadmin can delete drivers"
-        //     });
-        // }
-
         await cleanupForDriverDeletion(driver, session);
         await driver.deleteOne({ session });
         await session.commitTransaction();
@@ -543,6 +536,9 @@ exports.delete = async (req, res) => {
 
 // Create Driver + User in one request (Industry Standard: Single Form Submission)
 exports.createDriverUser = async (req, res) => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
     try {
         await validateDriverUserData(req.body);
 
@@ -558,6 +554,7 @@ exports.createDriverUser = async (req, res) => {
         } else if (
             organizationPayload &&
             req.orgScope !== "ALL" &&
+            Array.isArray(req.orgScope) &&
             req.orgScope.some(id => id.toString() === organizationPayload.toString())
         ) {
             organizationId = organizationPayload;
@@ -566,50 +563,38 @@ exports.createDriverUser = async (req, res) => {
         }
 
         if (!organizationId) {
-            return res.status(400).json({
-                status: false,
-                message: "OrganizationId is required"
-            });
+            throw { status: 400, message: "OrganizationId is required" };
         }
 
         // Check for duplicate Driver (email, phone, license number)
         const existingDriver = await Driver.findOne({
             organizationId,
             $or: [{ email: email.toLowerCase() }, { phone }, { licenseNumber: licenseNumber.toUpperCase() }]
-        });
+        }).session(session);
 
         if (existingDriver) {
-            return res.status(409).json({
-                status: false,
-                message: "Driver with this email, phone, or license number already exists in this organization"
-            });
+            throw { status: 409, message: "Driver with this email, phone, or license number already exists in this organization" };
         }
 
         // Check for duplicate User (email, mobile)
         const existingUser = await User.findOne({
             $or: [{ email: email.toLowerCase() }, { mobile: phone }]
-        });
+        }).session(session);
 
         if (existingUser) {
-            return res.status(409).json({
-                status: false,
-                message: "User with this email or mobile already exists"
-            });
+            throw { status: 409, message: "User with this email or mobile already exists" };
         }
 
         // Validate assignedVehicleId if provided
         if (assignedVehicleId && !mongoose.isValidObjectId(assignedVehicleId)) {
-            return res.status(400).json({
-                status: false,
-                message: "Invalid assigned vehicle ID"
-            });
+            throw { status: 400, message: "Invalid assigned vehicle ID" };
         }
 
         // Hash password
         const hashedPassword = await bcrypt.hash(passwordHash, 10);
 
         // Create Driver record
-        const driver = await Driver.create({
+        const [driver] = await Driver.create([{
             organizationId,
             assignedVehicleId: assignedVehicleId || null,
             firstName: firstName.trim(),
@@ -626,10 +611,10 @@ exports.createDriverUser = async (req, res) => {
             rating: 0,
             joiningDate: new Date(),
             createdBy: req.user._id,
-        });
+        }], { session });
 
         // Create User record with role="driver" and link to driver
-        const user = await User.create({
+        const [user] = await User.create([{
             organizationId,
             firstName: firstName.trim(),
             lastName: lastName.trim(),
@@ -641,14 +626,12 @@ exports.createDriverUser = async (req, res) => {
             driverId: driver._id,
             assignedVehicleId: assignedVehicleId || null,
             lastLoginAt: null
-        });
+        }], { session });
 
-        // Update driver with userId reference (if needed in future)
-        // You can add userId field to driver model if required
+        await session.commitTransaction();
 
-        // Populate references
-        await driver.populate(['organizationId', 'assignedVehicleId']);
-        await user.populate('organizationId');
+        // Populate references (not really needed for return data but good for consistency)
+        // Note: population usually won't reflect session data until committed, so we do it after if needed.
 
         return res.status(201).json({
             status: true,
@@ -677,10 +660,15 @@ exports.createDriverUser = async (req, res) => {
             }
         });
     } catch (error) {
+        if (session.inTransaction()) {
+            await session.abortTransaction();
+        }
         console.error("Create Driver User Error:", error);
         return res.status(error.status || 500).json({
             status: false,
             message: error.message || "Internal server error"
         });
+    } finally {
+        session.endSession();
     }
 };

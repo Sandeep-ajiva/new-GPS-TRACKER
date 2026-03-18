@@ -210,10 +210,6 @@ export default function VehiclesPage() {
   useEffect(() => {
     let nextContextOrgId = routeOrgParam || "";
 
-    if (!nextContextOrgId && typeof window !== "undefined") {
-      nextContextOrgId = sessionStorage.getItem("adminSelectedOrgId") || "";
-    }
-
     if (!nextContextOrgId) {
       nextContextOrgId = orgId || "";
     }

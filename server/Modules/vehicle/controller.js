@@ -51,6 +51,7 @@ exports.create = async (req, res) => {
     } else if (
       vehiclePayload.organizationId &&
       req.orgScope !== "ALL" &&
+      Array.isArray(req.orgScope) &&
       req.orgScope.some(id => id.toString() === vehiclePayload.organizationId.toString())
     ) {
       organizationId = vehiclePayload.organizationId;
@@ -92,10 +93,15 @@ exports.create = async (req, res) => {
 
     const vehicle = await VehicleModel.create(vehicleData);
 
-    await createVehicleCreatedNotification(
-      { vehicle },
-      buildContextFromReq(req),
-    );
+    // 🌊 Post-create logic (isolated)
+    try {
+      createVehicleCreatedNotification(
+        { vehicle },
+        buildContextFromReq(req),
+      );
+    } catch (notifErr) {
+      console.warn("Notification failed for vehicle creation:", notifErr.message);
+    }
 
     return res.status(201).json({
       status: true,

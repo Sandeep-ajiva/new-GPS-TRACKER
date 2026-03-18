@@ -3,12 +3,10 @@
 import type { LucideIcon } from "lucide-react";
 import {
   Building2,
-  Car,
+  History,
   LayoutDashboard,
-  Link2,
-  Radio,
+  Monitor,
   Settings,
-  ShieldCheck,
   Users,
 } from "lucide-react";
 
@@ -24,49 +22,37 @@ export const superAdminNavItems: SuperAdminNavItem[] = [
     label: "Dashboard",
     href: "/superadmin",
     icon: LayoutDashboard,
-    description: "Global platform overview",
+    description: "Platform oversight & metrics",
+  },
+  {
+    label: "Audit Trail",
+    href: "/superadmin/history",
+    icon: History,
+    description: "Platform activity logs",
   },
   {
     label: "Organizations",
     href: "/superadmin/organizations",
     icon: Building2,
-    description: "Manage all organizations",
+    description: "Client organization records",
   },
   {
-    label: "Users",
+    label: "Org Admins",
     href: "/superadmin/users",
     icon: Users,
-    description: "Manage global platform users",
+    description: "Client administrative access",
   },
   {
-    label: "Vehicles",
-    href: "/superadmin/vehicles",
-    icon: Car,
-    description: "Global fleet visibility",
-  },
-  {
-    label: "GPS Devices",
+    label: "Global Inventory",
     href: "/superadmin/gps-devices",
-    icon: Radio,
-    description: "Hardware and inventory control",
+    icon: Monitor,
+    description: "Scope-wide hardware oversight",
   },
   {
-    label: "Device Mapping",
-    href: "/superadmin/device-mapping",
-    icon: Link2,
-    description: "Map hardware to fleet assets",
-  },
-  {
-    label: "Settings",
+    label: "System Status",
     href: "/superadmin/settings",
     icon: Settings,
-    description: "Platform control settings",
-  },
-  {
-    label: "Permissions",
-    href: "/superadmin/permissions",
-    icon: ShieldCheck,
-    description: "Authority and access matrix",
+    description: "Environment & context",
   },
 ];
 

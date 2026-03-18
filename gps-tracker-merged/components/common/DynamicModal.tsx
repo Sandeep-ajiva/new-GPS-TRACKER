@@ -430,7 +430,7 @@ export function DynamicModal({
 
 
   return createPortal(
-    <div className="fixed inset-0 z-[100] flex items-end justify-center p-2 sm:items-center sm:p-4">
+    <div className="fixed inset-0 z-[200] flex items-end justify-center p-2 sm:items-center sm:p-4">
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-slate-950/45 backdrop-blur-md animate-in fade-in duration-200"
@@ -441,6 +441,7 @@ export function DynamicModal({
         <div
           className={cn(
             "relative flex max-h-[min(100dvh-1rem,80rem)] w-full max-w-[42rem] flex-col overflow-hidden rounded-[20px] shadow-2xl animate-in fade-in zoom-in duration-200 sm:max-h-[85vh] sm:rounded-xl",
+            isDark && "popup-dark-modal",
             isDark
               ? "bg-slate-900 border border-slate-800 text-slate-100"
               : "bg-white border border-slate-200 text-slate-900",

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import Table from "@/components/ui/Table";
 import ApiErrorBoundary from "@/components/admin/ErrorBoundary/ApiErrorBoundary";
 import { Trash2, Loader2, UserPlus, Filter, Car, User, ArrowRight, X, Briefcase } from "lucide-react";
@@ -19,6 +20,7 @@ import AdminPageHeader from "@/components/admin/UI/AdminPageHeader";
 import AdminPageShell from "@/components/admin/UI/AdminPageShell";
 import AdminSectionCard from "@/components/admin/UI/AdminSectionCard";
 import SearchableEntitySelect from "@/components/admin/UI/SearchableEntitySelect";
+import { getApiErrorMessage } from "@/utils/apiError";
 // 🔐 ORG CONTEXT UPDATE
 import { useOrgContext } from "@/hooks/useOrgContext";
 // 🔧 ACTIVE STATUS FILTERING
@@ -369,6 +371,8 @@ export default function DriverMappingPage() {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+
+        // 1. Duplicate click prevention is already handled by button disabling via isAssigning
         if (!formData.vehicleId || !formData.driverId) {
             setFieldErrors({
                 vehicleId: formData.vehicleId ? "" : "Vehicle selection is required.",
@@ -379,14 +383,50 @@ export default function DriverMappingPage() {
         }
 
         try {
-            await assignDriver({
+            // 🔐 Add organizationId if available for backend parity
+            const response = await assignDriver({
                 vehicleId: formData.vehicleId,
-                driverId: formData.driverId
+                driverId: formData.driverId,
+                organizationId: selectedVehicle?.organizationId && typeof selectedVehicle.organizationId === "object"
+                    ? selectedVehicle.organizationId._id
+                    : selectedVehicle?.organizationId
             }).unwrap();
-            toast.success("Driver assigned successfully");
+
+            // 1. Show success feedback
+            toast.success(response?.message || "Driver assigned successfully");
+
+            // 2. CLOSE MODAL IMMEDIATELY
             closeModal();
-        } catch (err: any) {
-            toast.error(err?.data?.message || "Assignment failed");
+
+            // 3. SECURE DATA REFRESH
+            void refetchMappings();
+            void refetchVehicles();
+            void refetchDrivers();
+
+        } catch (err: unknown) {
+            // 🔧 Log the raw error — never destructure to individual fields as RTK Query
+            // error shapes vary (FetchBaseQueryError vs SerializedError vs plain Error)
+            console.error("Driver Mapping Submit Error:", err);
+
+            // 🔧 Robust extraction covering ALL RTK Query error shapes:
+            //   { status, data: { message } }  — HTTP error
+            //   { status: 'FETCH_ERROR', error }  — network error
+            //   { status: 'PARSING_ERROR', ... }  — parse error
+            //   { message }  — plain JS Error or SerializedError
+            const errorMessage = getApiErrorMessage(err, "Assignment failed. Please check inputs.");
+
+            // 🚀 UX FIX: If it's a conflict (already assigned), close modal since intent is satisfied
+            const errStatus = (err as any)?.status;
+            const errDataStatus = (err as any)?.data?.status;
+            if (errStatus === 409 || errDataStatus === 409 || errorMessage.toLowerCase().includes("already assigned")) {
+                toast.info(errorMessage);
+                closeModal();
+                void refetchMappings();
+                return;
+            }
+
+            // Standard failure flow: keep modal open + show error toast
+            toast.error(errorMessage);
         }
     };
 
@@ -605,9 +645,13 @@ export default function DriverMappingPage() {
                     </div>
                 </AdminSectionCard>
 
-                {isModalOpen && (
-                    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-2 backdrop-blur-md sm:items-center sm:p-4">
-                        <div className="mapping-modal flex max-h-[min(100dvh-1rem,80rem)] w-full max-w-3xl flex-col overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_25px_60px_rgba(15,23,42,0.25)] sm:rounded-[32px]">
+                {isModalOpen && typeof document !== "undefined" && createPortal(
+                    <div className="fixed inset-0 z-[100] flex items-end justify-center p-2 sm:items-center sm:p-4">
+                        <div
+                            className="absolute inset-0 bg-slate-950/45 backdrop-blur-md"
+                            onClick={closeModal}
+                        />
+                        <div className="mapping-modal relative flex max-h-[min(100dvh-1rem,80rem)] w-full max-w-3xl flex-col overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_25px_60px_rgba(15,23,42,0.25)] sm:rounded-[32px]">
                             <div className="flex items-start justify-between border-b border-slate-100 px-4 py-4 sm:px-8 sm:py-7">
                                 <div>
                                     <h2 className="text-2xl font-black leading-[1.02] tracking-tight text-slate-900 sm:text-[40px]">Establish New Link</h2>
@@ -770,7 +814,8 @@ export default function DriverMappingPage() {
                                 </div>
                             </form>
                         </div>
-                    </div>
+                    </div>,
+                    document.body,
                 )}
             </AdminPageShell>
         </ApiErrorBoundary>

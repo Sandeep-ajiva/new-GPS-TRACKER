@@ -19,6 +19,7 @@ import AdminPageShell from "@/components/admin/UI/AdminPageShell";
 import AdminSectionCard from "@/components/admin/UI/AdminSectionCard";
 import AdminStatCard from "@/components/admin/UI/AdminStatCard";
 import AdminStatusBadge from "@/components/admin/UI/AdminStatusBadge";
+import { useOrgContext } from "@/hooks/useOrgContext";
 
 type DashboardVehicle = {
   id: string;
@@ -40,6 +41,7 @@ const defaultCenter = { lat: 28.6139, lng: 77.209 };
 export default function DashboardPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { isSuperAdmin, isRootOrgAdmin } = useOrgContext();
 
   const queryFromSuperadmin = searchParams.get("from") === "superadmin";
   const queryOrgId = searchParams.get("org");
@@ -82,6 +84,7 @@ export default function DashboardPage() {
 
   const isLoading =
     isLoadingOrgs || isLoadingVehicles || isLoadingDevices || isLoadingLive;
+  const showOrganizationsCard = isSuperAdmin || isRootOrgAdmin;
 
   /* =========================
      URL + SESSION HANDLING
@@ -89,14 +92,6 @@ export default function DashboardPage() {
   useEffect(() => {
     let selectedOrg = queryOrgId;
     let fromSuper = queryFromSuperadmin;
-
-    if (typeof window !== "undefined") {
-      const storedOrg = sessionStorage.getItem("adminSelectedOrgId");
-      const storedFrom = sessionStorage.getItem("adminFromSuperadmin");
-
-      if (!selectedOrg && storedOrg) selectedOrg = storedOrg;
-      if (!fromSuper && storedFrom === "true") fromSuper = true;
-    }
 
     setTargetOrgId(selectedOrg);
     setFromSuperadmin(fromSuper);
@@ -260,8 +255,10 @@ export default function DashboardPage() {
         }
       />
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <AdminStatCard label="Organizations" value={orgTotal} icon={<Users size={20} />} tone="blue" meta="Active hierarchy and sub-org visibility" href="/admin/organizations" />
+      <div className={`grid gap-4 md:grid-cols-2 ${showOrganizationsCard ? "xl:grid-cols-4" : "xl:grid-cols-3"}`}>
+        {showOrganizationsCard && (
+          <AdminStatCard label="Organizations" value={orgTotal} icon={<Users size={20} />} tone="blue" meta="Active hierarchy and sub-org visibility" href="/admin/organizations" />
+        )}
         <AdminStatCard label="Vehicles" value={vehicleTotal} icon={<Car size={20} />} tone="amber" meta={`${offlineVehicles} currently offline`} href="/admin/vehicles" />
         <AdminStatCard label="GPS Devices" value={deviceTotal} icon={<Radio size={20} />} tone="violet" meta="Provisioned and mapped tracking units" href="/admin/gps-devices" />
         <AdminStatCard label="Online Vehicles" value={onlineVehicles} icon={<Activity size={20} />} tone="green" meta="Live telemetry reporting now" href="/admin/live-tracking" />

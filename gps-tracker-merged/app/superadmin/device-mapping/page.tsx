@@ -56,6 +56,12 @@ export default function DeviceMappingPage() {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        
+        if (!formData.vehicleId || !formData.deviceId) {
+            toast.error("Select both vehicle and device");
+            return;
+        }
+
         try {
             const vehicle = allVehicles.find((v: any) => v._id === formData.vehicleId);
             if (!vehicle) {
@@ -63,16 +69,42 @@ export default function DeviceMappingPage() {
                  return;
             }
 
-            await assignDevice({
+            const response = await assignDevice({
                 vehicleId: formData.vehicleId,
                 gpsDeviceId: formData.deviceId,
                 organizationId: vehicle.organizationId // Required by backend
             }).unwrap();
 
-            toast.success("Device assigned successfully");
+            // 1. Show success feedback
+            toast.success(response?.message || "Device assigned successfully");
+            
+            // 2. Immediate close
             closeModal();
+            
         } catch (error: any) {
-            toast.error(error.data?.message || "Failed to assign device");
+            // 🔧 Robust error extraction
+            const errorMessage = 
+                error?.message || 
+                error?.data?.message || 
+                (error?.status === "FETCH_ERROR" ? "Network error. Check server connection." : null) ||
+                "Failed to assign device. Please check inputs.";
+
+            console.error("Superadmin Mapping Error Info:", {
+                message: error?.message,
+                status: error?.status,
+                data: error?.data,
+                fullError: error
+            });
+
+            // 🚀 UX FIX: If it's a conflict (already assigned), close the modal
+            if (error?.status === 409 || error?.data?.status === 409 || errorMessage.toLowerCase().includes("already assigned")) {
+                toast.info(errorMessage);
+                closeModal();
+                // Note: Superadmin page might have its own refetch logic or dependencies
+                return;
+            }
+
+            toast.error(errorMessage);
         }
     };
 

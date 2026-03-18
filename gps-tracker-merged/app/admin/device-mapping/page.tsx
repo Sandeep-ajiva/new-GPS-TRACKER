@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import Table from "@/components/ui/Table";
 import ApiErrorBoundary from "@/components/admin/ErrorBoundary/ApiErrorBoundary";
 import { Link2, Trash2, Loader2, Filter, Car, Cpu, ArrowRight, X, Briefcase } from "lucide-react";
@@ -18,10 +19,45 @@ import AdminPageHeader from "@/components/admin/UI/AdminPageHeader";
 import AdminPageShell from "@/components/admin/UI/AdminPageShell";
 import AdminSectionCard from "@/components/admin/UI/AdminSectionCard";
 import SearchableEntitySelect from "@/components/admin/UI/SearchableEntitySelect";
+import { getApiErrorMessage } from "@/utils/apiError";
 // 🔐 ORG CONTEXT UPDATE
 import { useOrgContext } from "@/hooks/useOrgContext";
 // 🔧 ACTIVE STATUS FILTERING
 import { isActiveStatus, filterExcludedIds } from "@/utils/mappingHelpers";
+
+interface Organization {
+    _id: string;
+    name: string;
+    orgPath?: string;
+}
+
+interface Vehicle {
+    _id: string;
+    vehicleNumber: string;
+    model?: string;
+    vehicleType?: string;
+    status?: string;
+    organizationId: string | Organization;
+}
+
+interface Device {
+    _id: string;
+    imei: string;
+    deviceModel?: string;
+    simNumber?: string;
+    connectionStatus?: string;
+    status?: string;
+    organizationId: string | Organization;
+}
+
+interface Mapping {
+    _id: string;
+    vehicleId: string | Vehicle;
+    gpsDeviceId: string | Device;
+    organizationId?: string | Organization;
+    createdAt?: string;
+    assignedAt?: string;
+}
 
 export default function DeviceMappingPage() {
     // 🔐 ORG CONTEXT UPDATE
@@ -44,10 +80,10 @@ export default function DeviceMappingPage() {
     const [assignDevice, { isLoading: isAssigning }] = useAssignDeviceMutation();
     const [unassignDevice, { isLoading: isUnassigning }] = useUnassignDeviceMutation();
 
-    const mappings = Array.isArray(mappingData?.data) ? mappingData.data : [];
-    const vehicles = Array.isArray(vehData?.data) ? vehData.data : [];
-    const devices = Array.isArray(devData?.data) ? devData.data : [];
-    const organizations = useMemo(() => (orgData?.data as any[]) || [], [orgData]);
+    const mappings = useMemo(() => (Array.isArray(mappingData?.data) ? (mappingData.data as Mapping[]) : []), [mappingData]);
+    const vehicles = useMemo(() => (Array.isArray(vehData?.data) ? (vehData.data as Vehicle[]) : []), [vehData]);
+    const devices = useMemo(() => (Array.isArray(devData?.data) ? (devData.data as Device[]) : []), [devData]);
+    const organizations = useMemo(() => (orgData?.data as Organization[]) || [], [orgData]);
 
     const isAdminUser = role === "admin";
 
@@ -67,22 +103,22 @@ export default function DeviceMappingPage() {
         assignedDate: "",
     });
 
-    const getEntityId = (value: any) => {
+    const getEntityId = (value: any): string | null => {
         if (!value) return null;
         if (typeof value === "object") return value._id?.toString?.() || null;
         return value.toString?.() || null;
     };
 
-    const assignedVehicleIds = new Set(
-        mappings.map((m: any) => getEntityId(m.vehicleId)).filter(Boolean),
-    );
-    const assignedDeviceIds = new Set(
-        mappings.map((m: any) => getEntityId(m.gpsDeviceId)).filter(Boolean),
-    );
+    const assignedVehicleIds = useMemo(() => new Set<string>(
+        mappings.map((m) => getEntityId(m.vehicleId)).filter((id): id is string => Boolean(id)),
+    ), [mappings]);
+    
+    const assignedDeviceIds = useMemo(() => new Set<string>(
+        mappings.map((m) => getEntityId(m.gpsDeviceId)).filter((id): id is string => Boolean(id)),
+    ), [mappings]);
 
     const availableVehicles = useMemo(
         () => {
-            // ✅ FIXED: Filter by both unassigned AND active status
             const unassignedVehicles = filterExcludedIds(vehicles || [], assignedVehicleIds);
             return unassignedVehicles.filter((v: any) => isActiveStatus(v.status));
         },
@@ -90,7 +126,6 @@ export default function DeviceMappingPage() {
     );
     const availableDevices = useMemo(
         () => {
-            // ✅ FIXED: Filter by both unassigned AND active status
             const unassignedDevices = filterExcludedIds(devices || [], assignedDeviceIds);
             return unassignedDevices.filter((d: any) => isActiveStatus(d.status));
         },
@@ -284,6 +319,8 @@ export default function DeviceMappingPage() {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        
+        // 1. Duplicate click prevention is already handled by button disabling via isAssigning
         if (!formData.vehicleId || !formData.deviceId) {
             setFieldErrors({
                 vehicleId: formData.vehicleId ? "" : "Vehicle selection is required.",
@@ -294,14 +331,50 @@ export default function DeviceMappingPage() {
         }
 
         try {
-            await assignDevice({
+            // 🔐 Include organization context from vehicle to ensure backend parity
+            const response = await assignDevice({
                 vehicleId: formData.vehicleId,
-                gpsDeviceId: formData.deviceId
+                gpsDeviceId: formData.deviceId,
+                organizationId: selectedVehicle?.organizationId && typeof selectedVehicle.organizationId === "object" 
+                    ? selectedVehicle.organizationId._id 
+                    : selectedVehicle?.organizationId
             }).unwrap();
-            toast.success("Device assigned successfully");
+
+            // 1. Show success feedback
+            toast.success(response?.message || "Device assigned successfully");
+            
+            // 2. CLOSE MODAL IMMEDIATELY
             closeModal();
-        } catch (err: any) {
-            toast.error(err?.data?.message || "Assignment failed");
+
+            // 3. SECURE DATA REFRESH
+            void refetchMappings();
+            void refetchVehicles();
+            void refetchDevices();
+            
+        } catch (err: unknown) {
+            // 🔧 Log the raw error — never destructure to individual fields as RTK Query
+            // error shapes vary (FetchBaseQueryError vs SerializedError vs plain Error)
+            console.error("Device Mapping Submit Error:", err);
+
+            // 🔧 Robust extraction covering ALL RTK Query error shapes:
+            //   { status, data: { message } }  — HTTP error
+            //   { status: 'FETCH_ERROR', error }  — network error
+            //   { status: 'PARSING_ERROR', ... }  — parse error
+            //   { message }  — plain JS Error or SerializedError
+            const errorMessage = getApiErrorMessage(err, "Assignment failed. Please check inputs.");
+
+            // 🚀 UX FIX: If it's a conflict (already assigned), close modal since intent is satisfied
+            const errStatus = (err as any)?.status;
+            const errDataStatus = (err as any)?.data?.status;
+            if (errStatus === 409 || errDataStatus === 409 || errorMessage.toLowerCase().includes("already assigned")) {
+                toast.info(errorMessage);
+                closeModal();
+                void refetchMappings();
+                return;
+            }
+
+            // Standard failure flow: keep modal open + show error toast
+            toast.error(errorMessage);
         }
     };
 
@@ -312,8 +385,6 @@ export default function DeviceMappingPage() {
         }
         if (confirm("Are you sure you want to unassign this device?")) {
             try {
-                // unassignDevice endpoint usually expects mappingId or vehicle/deviceId combo.
-                // deviceMappingApi.ts has unassignDevice accepting ID.
                 await unassignDevice(id).unwrap();
                 toast.success("Device unassigned");
             } catch (err: any) {
@@ -505,9 +576,13 @@ export default function DeviceMappingPage() {
                     </div>
                 </AdminSectionCard>
 
-                {isModalOpen && (
-                    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-2 backdrop-blur-md sm:items-center sm:p-4">
-                        <div className="mapping-modal flex max-h-[min(100dvh-1rem,80rem)] w-full max-w-3xl flex-col overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_25px_60px_rgba(15,23,42,0.25)] sm:rounded-[32px]">
+                {isModalOpen && typeof document !== "undefined" && createPortal(
+                    <div className="fixed inset-0 z-[100] flex items-end justify-center p-2 sm:items-center sm:p-4">
+                        <div
+                            className="absolute inset-0 bg-slate-950/45 backdrop-blur-md"
+                            onClick={closeModal}
+                        />
+                        <div className="mapping-modal relative flex max-h-[min(100dvh-1rem,80rem)] w-full max-w-3xl flex-col overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_25px_60px_rgba(15,23,42,0.25)] sm:rounded-[32px]">
                             <div className="flex items-start justify-between border-b border-slate-100 px-4 py-4 sm:px-8 sm:py-7">
                                 <div>
                                     <h2 className="text-2xl font-black leading-[1.02] tracking-tight text-slate-900 sm:text-[40px]">Establish New Link</h2>
@@ -670,7 +745,8 @@ export default function DeviceMappingPage() {
                                 </div>
                             </form>
                         </div>
-                    </div>
+                    </div>,
+                    document.body,
                 )}
             </AdminPageShell>
         </ApiErrorBoundary>

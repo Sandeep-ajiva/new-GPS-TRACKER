@@ -1,32 +1,38 @@
 "use client";
 
-import { useMemo, type ReactNode } from "react";
 import Link from "next/link";
+import { useMemo } from "react";
 import {
-  Activity,
   ArrowRight,
   Building2,
   Car,
-  Link2,
   Radio,
   Settings,
-  ShieldCheck,
+  ShieldAlert,
   Users,
+  UserRoundCog,
   type LucideIcon,
 } from "lucide-react";
 import { useGetMeQuery, useGetUsersQuery } from "@/redux/api/usersApi";
 import { useGetOrganizationsQuery } from "@/redux/api/organizationApi";
 import { useGetVehiclesQuery } from "@/redux/api/vehicleApi";
 import { useGetGpsDevicesQuery } from "@/redux/api/gpsDeviceApi";
-import { useGetLiveVehiclesQuery } from "@/redux/api/gpsLiveApi";
-import { superAdminNavItems } from "@/components/superadmin/Layout/navigation";
+import { useGetAdminNotificationsQuery } from "@/redux/api/adminNotificationsApi";
 import {
   formatDateTime,
   formatStatus,
   getCollection,
   getDisplayName,
   getInitials,
+  sortByCreatedAtDesc,
 } from "@/components/superadmin/superadmin-data";
+import {
+  ActionLink,
+  MetricCard,
+  SectionCard,
+  StateBlock,
+  StatusBadge,
+} from "@/components/superadmin/superadmin-ui";
 
 type OrganizationRecord = {
   _id: string;
@@ -34,6 +40,7 @@ type OrganizationRecord = {
   email?: string;
   status?: string;
   createdAt?: string;
+  adminUser?: unknown;
 };
 
 type UserRecord = {
@@ -41,51 +48,58 @@ type UserRecord = {
   firstName?: string;
   lastName?: string;
   email?: string;
-  role?: string;
   status?: string;
   createdAt?: string;
+  organizationId?: string | { _id?: string; name?: string };
 };
 
 type VehicleRecord = {
   _id: string;
-  vehicleNumber?: string;
-  model?: string;
-  status?: string;
-  createdAt?: string;
 };
 
 type DeviceRecord = {
   _id: string;
-  imei?: string;
-  deviceModel?: string;
-  status?: string;
-  createdAt?: string;
-};
-
-type LiveRecord = {
-  movementStatus?: string;
-  status?: string;
-  currentSpeed?: number;
 };
 
 export default function SuperAdminDashboardPage() {
-  const { data: meData } = useGetMeQuery(undefined, { refetchOnMountOrArgChange: true });
-  const { data: orgData, isLoading: isOrgsLoading } = useGetOrganizationsQuery({ page: 0, limit: 1000 });
-  const { data: usersData, isLoading: isUsersLoading } = useGetUsersQuery({ page: 0, limit: 1000 });
-  const { data: vehiclesData, isLoading: isVehiclesLoading } = useGetVehiclesQuery({ page: 0, limit: 1000 });
-  const { data: devicesData, isLoading: isDevicesLoading } = useGetGpsDevicesQuery({ page: 0, limit: 1000 });
-  const { data: liveData, isLoading: isLiveLoading } = useGetLiveVehiclesQuery(undefined);
+  const { data: meData } = useGetMeQuery(undefined);
+  const {
+    data: orgData,
+    isLoading: isOrganizationsLoading,
+    isError: organizationsError,
+  } = useGetOrganizationsQuery({ page: 0, limit: 1000 });
+  const {
+    data: usersData,
+    isLoading: isUsersLoading,
+    isError: usersError,
+  } = useGetUsersQuery({ page: 0, limit: 1000, role: "admin" });
+  const {
+    data: vehiclesData,
+    isLoading: isVehiclesLoading,
+    isError: vehiclesError,
+  } = useGetVehiclesQuery({ page: 0, limit: 1000 });
+  const {
+    data: devicesData,
+    isLoading: isDevicesLoading,
+    isError: devicesError,
+  } = useGetGpsDevicesQuery({ page: 0, limit: 1000 });
+  
+  // Real platform activity pull
+  const {
+    data: activityData,
+    isLoading: isActivityLoading,
+  } = useGetAdminNotificationsQuery({ limit: 5 });
 
   const me = meData?.data;
   const displayName = getDisplayName(me);
   const initials = getInitials(displayName);
 
   const organizations = useMemo(
-    () => getCollection<OrganizationRecord>(orgData, ["data", "docs", "organizations"]),
+    () => sortByCreatedAtDesc(getCollection<OrganizationRecord>(orgData, ["data", "docs", "organizations"])),
     [orgData],
   );
-  const users = useMemo(
-    () => getCollection<UserRecord>(usersData, ["data", "docs", "users"]),
+  const orgAdmins = useMemo(
+    () => sortByCreatedAtDesc(getCollection<UserRecord>(usersData, ["data", "docs", "users"])),
     [usersData],
   );
   const vehicles = useMemo(
@@ -96,46 +110,52 @@ export default function SuperAdminDashboardPage() {
     () => getCollection<DeviceRecord>(devicesData, ["data", "docs"]),
     [devicesData],
   );
-  const liveVehicles = useMemo(
-    () => getCollection<LiveRecord>(liveData, ["data", "docs"]),
-    [liveData],
-  );
-
-  const onlineVehicles = useMemo(
-    () =>
-      liveVehicles.filter((item) => {
-        const status = (item.movementStatus || item.status || "").toLowerCase();
-        return status === "moving" || status === "running" || status === "online" || (item.currentSpeed || 0) > 0;
-      }).length,
-    [liveVehicles],
-  );
+  
+  const activities = useMemo(() => {
+    // Backend returns { status: true, data: [...], total: ... } based on adminNotificationsApi
+    return activityData?.data || [];
+  }, [activityData]);
 
   const activeOrganizations = useMemo(
     () => organizations.filter((item) => (item.status || "").toLowerCase() === "active").length,
     [organizations],
   );
-
-  const activeUsers = useMemo(
-    () => users.filter((item) => (item.status || "").toLowerCase() === "active").length,
-    [users],
+  const inactiveOrganizations = useMemo(
+    () => organizations.filter((item) => (item.status || "").toLowerCase() !== "active"),
+    [organizations],
   );
+  const organizationsWithoutAdmin = useMemo(
+    () => organizations.filter((item) => !item.adminUser),
+    [organizations],
+  );
+  const activeOrgAdmins = useMemo(
+    () => orgAdmins.filter((item) => (item.status || "").toLowerCase() === "active").length,
+    [orgAdmins],
+  );
+  
+  const recentOrganizations = organizations.slice(0, 5);
+  const needsAttention = inactiveOrganizations.slice(0, 3);
+  const missingAdminAttention = organizationsWithoutAdmin.slice(0, 3);
 
-  const recentOrganizations = useMemo(() => organizations.slice(0, 5), [organizations]);
-  const recentUsers = useMemo(() => users.slice(0, 5), [users]);
-  const recentVehicles = useMemo(() => vehicles.slice(0, 5), [vehicles]);
-
-  const isLoading = isOrgsLoading || isUsersLoading || isVehiclesLoading || isDevicesLoading || isLiveLoading;
+  const isLoading =
+    isOrganizationsLoading || isUsersLoading || isVehiclesLoading || isDevicesLoading;
+  const hasError = organizationsError || usersError || vehiclesError || devicesError;
 
   return (
     <div className="space-y-6 pb-8 sm:space-y-8">
       <section className="rounded-[28px] border border-slate-800/80 bg-slate-900/65 p-5 shadow-[0_30px_80px_-50px_rgba(15,23,42,0.85)] sm:p-6 lg:p-7">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-3">
-            <p className="text-[11px] font-black uppercase tracking-[0.34em] text-emerald-400/70">Platform Authority</p>
+            <p className="text-[11px] font-black uppercase tracking-[0.34em] text-emerald-400/70">
+              Platform Owner Panel
+            </p>
             <div className="space-y-2">
-              <h1 className="text-3xl font-black tracking-tight text-slate-50 sm:text-4xl">SuperAdmin Console</h1>
+              <h1 className="text-3xl font-black tracking-tight text-slate-50 sm:text-4xl">
+                Superadmin Console
+              </h1>
               <p className="max-w-3xl text-sm font-medium leading-6 text-slate-400">
-                Global control across organizations, users, vehicles, GPS devices, mappings, permissions, and platform settings.
+                Operate the platform at organization level: onboard clients, monitor org admin coverage,
+                and review platform-wide counts without mixing in day-to-day organization operations.
               </p>
             </div>
           </div>
@@ -155,200 +175,228 @@ export default function SuperAdminDashboardPage() {
         </div>
       </section>
 
+      {hasError ? (
+        <StateBlock
+          title="Platform metrics are temporarily unavailable"
+          description="The dashboard could not load one or more backend-backed superadmin datasets. Refresh the page after verifying the APIs are reachable."
+          tone="danger"
+        />
+      ) : null}
+
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
-        <StatCard title="Organizations" value={organizations.length} helper={`${activeOrganizations} active`} icon={Building2} />
-        <StatCard title="Users" value={users.length} helper={`${activeUsers} active`} icon={Users} />
-        <StatCard title="Vehicles" value={vehicles.length} helper="Global fleet visibility" icon={Car} />
-        <StatCard title="GPS Devices" value={devices.length} helper="Hardware tracked" icon={Radio} />
-        <StatCard title="Online Vehicles" value={onlineVehicles} helper="From live telemetry" icon={Activity} />
+        {isLoading ? (
+          Array.from({ length: 5 }).map((_, index) => <StatCardSkeleton key={index} />)
+        ) : (
+          <>
+            <MetricCard label="Organizations" value={organizations.length} helper={`${activeOrganizations} active organizations`} />
+            <MetricCard label="Inactive Orgs" value={inactiveOrganizations.length} helper="Require platform owner follow-up" />
+            <MetricCard label="Org Admins" value={orgAdmins.length} helper={`${activeOrgAdmins} active org-admin accounts`} />
+            <MetricCard label="Vehicles" value={vehicles.length} helper="Global read-only fleet count" />
+            <MetricCard label="GPS Devices" value={devices.length} helper="Global read-only device count" />
+          </>
+        )}
       </section>
 
-      <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1.05fr_0.95fr]">
-        <div className="space-y-6">
-          <SectionCard
-            title="Quick Actions"
-            description="Jump directly into the highest-authority tasks of the platform."
-          >
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {superAdminNavItems.map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className="flex items-start gap-3 rounded-2xl border border-slate-800 bg-slate-950/70 p-4 transition hover:border-emerald-500/25 hover:bg-slate-950"
-                >
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/15 text-emerald-200">
-                    <item.icon size={18} />
+      <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+        <SectionCard
+          title="Recent Platform Activity"
+          description="Critical backend-backed events from across the ecosystem."
+          action={<ActionLink href="/superadmin/history" label="View Full Log" />}
+        >
+          {isActivityLoading ? (
+            <ListSkeleton />
+          ) : (
+            <div className="space-y-3">
+              {activities.length > 0 ? (
+                activities.map((item: any) => (
+                  <div
+                    key={item._id}
+                    className="group flex items-start gap-4 rounded-2xl border border-slate-800 bg-slate-950/70 p-4 transition hover:border-emerald-500/25"
+                  >
+                    <div className={`mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border ${
+                      item.severity === "critical" 
+                        ? "border-rose-500/30 bg-rose-500/10 text-rose-400" 
+                        : item.severity === "warning"
+                          ? "border-amber-500/30 bg-amber-500/10 text-amber-400"
+                          : "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
+                    }`}>
+                      <Radio size={16} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-3">
+                        <p className="truncate text-sm font-black text-slate-100">{item.title || "Platform Event"}</p>
+                        <span className="shrink-0 text-[10px] font-medium text-slate-500">
+                          {formatDateTime(item.occurredAt || item.createdAt)}
+                        </span>
+                      </div>
+                      <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-400">{item.message}</p>
+                      <div className="mt-3 flex items-center gap-3">
+                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-600">
+                          Type: {item.type || "System"}
+                        </span>
+                        {item.organizationId && (
+                          <span className="text-[10px] font-black uppercase tracking-widest text-emerald-500/60">
+                            Org Linked
+                          </span>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                  <div className="min-w-0">
-                    <p className="text-sm font-black text-slate-100">{item.label}</p>
-                    <p className="mt-1 text-xs leading-5 text-slate-400">{item.description}</p>
-                  </div>
-                </Link>
+                ))
+              ) : (
+                <p className="py-4 text-center text-sm font-medium text-slate-500">No recent activities found.</p>
+              )}
+            </div>
+          )}
+        </SectionCard>
+
+        <SectionCard
+          title="Attention Needed"
+          description="Real platform follow-up items that need superadmin visibility."
+          action={<ActionLink href="/superadmin/organizations?status=inactive" label="Review Inactive Orgs" />}
+        >
+          {isLoading ? (
+            <ListSkeleton />
+          ) : needsAttention.length > 0 || missingAdminAttention.length > 0 ? (
+            <div className="space-y-3">
+              {needsAttention.map((item) => (
+                <AttentionCard
+                  key={`inactive-${item._id}`}
+                  icon={ShieldAlert}
+                  title={item.name || "Organization"}
+                  description="Organization is inactive and may need subscription revival or cleanup."
+                  href={`/superadmin/organizations/${item._id}`}
+                />
+              ))}
+              {missingAdminAttention.map((item) => (
+                <AttentionCard
+                  key={`missing-admin-${item._id}`}
+                  icon={UserRoundCog}
+                  title={item.name || "Organization"}
+                  description="No primary admin is linked to this organization record. Onboarding possibly incomplete."
+                  href={`/superadmin/organizations/${item._id}`}
+                />
               ))}
             </div>
-          </SectionCard>
-
-          <SectionCard
-            title="Recent Organizations"
-            description="Latest global organizations visible to the superadmin."
-            actionHref="/superadmin/organizations"
-          >
-            <RecordList
-              items={recentOrganizations.map((item) => ({
-                title: item.name || "Organization",
-                meta: [item.email || "No email", formatStatus(item.status)].filter(Boolean).join(" • "),
-                extra: formatDateTime(item.createdAt) || "Recently created",
-              }))}
-              emptyLabel={isLoading ? "Loading organizations..." : "No organizations available yet."}
-            />
-          </SectionCard>
-        </div>
-
-        <div className="space-y-6">
-          <SectionCard
-            title="Recent Users"
-            description="Newest platform user records across all organizations."
-            actionHref="/superadmin/users"
-          >
-            <RecordList
-              items={recentUsers.map((item) => ({
-                title: [item.firstName, item.lastName].filter(Boolean).join(" ").trim() || item.email || "User",
-                meta: [formatStatus(item.role), item.email || ""].filter(Boolean).join(" • "),
-                extra: formatDateTime(item.createdAt) || "Recently created",
-              }))}
-              emptyLabel={isLoading ? "Loading users..." : "No users available yet."}
-            />
-          </SectionCard>
-
-          <SectionCard
-            title="Fleet Snapshot"
-            description="Latest visible vehicle records and operational context."
-            actionHref="/superadmin/vehicles"
-          >
-            <RecordList
-              items={recentVehicles.map((item) => ({
-                title: item.vehicleNumber || "Vehicle",
-                meta: [item.model || "", formatStatus(item.status)].filter(Boolean).join(" • "),
-                extra: formatDateTime(item.createdAt) || "Recently updated",
-              }))}
-              emptyLabel={isLoading ? "Loading vehicles..." : "No vehicles available yet."}
-            />
-          </SectionCard>
-
-          <SectionCard
-            title="Platform Control Areas"
-            description="High-impact superadmin sections that should remain role-correct and operational."
-          >
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <AuthorityCard
-                icon={Link2}
-                title="Device Mapping"
-                description="Control hardware assignment across all organizations."
-                href="/superadmin/device-mapping"
-              />
-              <AuthorityCard
-                icon={Settings}
-                title="Settings"
-                description="Platform-level system and environment context."
-                href="/superadmin/settings"
-              />
-              <AuthorityCard
-                icon={ShieldCheck}
-                title="Permissions"
-                description="Review supported authority levels and access scope."
-                href="/superadmin/permissions"
-              />
+          ) : (
+            <div className="flex h-full flex-col items-center justify-center p-8 text-center">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-800 text-slate-500">
+                <ShieldAlert size={24} />
+              </div>
+              <p className="mt-4 text-sm font-black text-slate-400">All clear</p>
+              <p className="mt-1 text-xs text-slate-500">No organizations require immediate attention right now.</p>
             </div>
-          </SectionCard>
-        </div>
+          )}
+        </SectionCard>
+      </section>
+
+      <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_1fr]">
+        <SectionCard
+          title="Recent Organizations"
+          description="Newest client organizations created on the platform."
+          action={<ActionLink href="/superadmin/organizations" label="Open Organizations" />}
+        >
+          {isLoading ? (
+            <ListSkeleton />
+          ) : (
+            <div className="space-y-3">
+              {recentOrganizations.length > 0 ? (
+                recentOrganizations.map((item) => (
+                  <Link
+                    key={item._id}
+                    href={`/superadmin/organizations/${item._id}`}
+                    className="block rounded-2xl border border-slate-800 bg-slate-950/70 p-4 transition hover:border-emerald-500/25"
+                  >
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <p className="text-sm font-black text-slate-100">{item.name || "Organization"}</p>
+                        <p className="mt-1 text-xs font-medium text-slate-400">{item.email || "No email configured"}</p>
+                      </div>
+                      <StatusBadge value={item.status} />
+                    </div>
+                    <div className="mt-4 flex items-center justify-between gap-3 text-xs text-slate-400">
+                      <span>{formatDateTime(item.createdAt) || "Recently created"}</span>
+                      <span className="inline-flex items-center gap-1 font-black uppercase tracking-[0.18em] text-emerald-200">
+                        Open
+                        <ArrowRight size={13} />
+                      </span>
+                    </div>
+                  </Link>
+                ))
+              ) : (
+                <p className="text-sm font-medium text-slate-400">No organizations available yet.</p>
+              )}
+            </div>
+          )}
+        </SectionCard>
+
+        <SectionCard
+          title="Quick Actions"
+          description="The fastest backend-backed platform owner workflows."
+        >
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <QuickActionCard
+              icon={Building2}
+              title="Onboard Client"
+              description="Start a new organization creation and admin provisioning flow."
+              href="/superadmin/organizations?action=create"
+            />
+            <QuickActionCard
+              icon={Radio}
+              title="Inventory Oversight"
+              description="Review global GPS device stock and organization allocation."
+              href="/superadmin/gps-devices"
+            />
+            <QuickActionCard
+              icon={Users}
+              title="Audit Personnel"
+              description="Review and maintain organization-admin accounts across the platform."
+              href="/superadmin/users"
+            />
+            <QuickActionCard
+              icon={Settings}
+              title="Platform Scope"
+              description="Review current platform context and environment-backed settings."
+              href="/superadmin/settings"
+            />
+          </div>
+        </SectionCard>
       </section>
     </div>
   );
 }
 
-function StatCard({
-  title,
-  value,
-  helper,
-  icon: Icon,
-}: {
-  title: string;
-  value: number;
-  helper: string;
-  icon: LucideIcon;
-}) {
-  return (
-    <div className="rounded-[24px] border border-slate-800/80 bg-slate-900/65 p-5 shadow-[0_24px_60px_-45px_rgba(15,23,42,0.85)]">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-[11px] font-black uppercase tracking-[0.28em] text-slate-500">{title}</p>
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/15 text-emerald-200">
-          <Icon size={18} />
-        </div>
-      </div>
-      <p className="mt-4 text-3xl font-black tracking-tight text-slate-50">{value}</p>
-      <p className="mt-1 text-xs font-medium text-slate-400">{helper}</p>
-    </div>
-  );
-}
 
-function SectionCard({
+function AttentionCard({
+  icon: Icon,
   title,
   description,
-  children,
-  actionHref,
+  href,
 }: {
+  icon: LucideIcon;
   title: string;
   description: string;
-  children: ReactNode;
-  actionHref?: string;
+  href: string;
 }) {
   return (
-    <section className="rounded-[24px] border border-slate-800/80 bg-slate-900/65 shadow-[0_24px_60px_-45px_rgba(15,23,42,0.85)]">
-      <div className="flex flex-col gap-3 border-b border-slate-800 px-5 py-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h2 className="text-base font-black text-slate-50">{title}</h2>
+    <Link
+      href={href}
+      className="block rounded-2xl border border-slate-800 bg-slate-950/70 p-4 transition hover:border-emerald-500/25"
+    >
+      <div className="flex items-start gap-3">
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/15 text-amber-200">
+          <Icon size={18} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-black text-slate-100">{title}</p>
           <p className="mt-1 text-sm leading-6 text-slate-400">{description}</p>
         </div>
-        {actionHref ? (
-          <Link
-            href={actionHref}
-            className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-[0.2em] text-emerald-200 transition hover:text-emerald-100"
-          >
-            Open
-            <ArrowRight size={14} />
-          </Link>
-        ) : null}
       </div>
-      <div className="p-5">{children}</div>
-    </section>
+    </Link>
   );
 }
 
-function RecordList({
-  items,
-  emptyLabel,
-}: {
-  items: Array<{ title: string; meta: string; extra: string }>;
-  emptyLabel: string;
-}) {
-  if (items.length === 0) {
-    return <p className="text-sm font-medium text-slate-400">{emptyLabel}</p>;
-  }
-
-  return (
-    <div className="space-y-3">
-      {items.map((item) => (
-        <div key={`${item.title}-${item.extra}`} className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
-          <p className="text-sm font-black text-slate-100">{item.title}</p>
-          <p className="mt-1 text-xs font-medium text-slate-400">{item.meta}</p>
-          <p className="mt-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">{item.extra}</p>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function AuthorityCard({
+function QuickActionCard({
   icon: Icon,
   title,
   description,
@@ -369,6 +417,44 @@ function AuthorityCard({
       </div>
       <p className="mt-3 text-sm font-black text-slate-100">{title}</p>
       <p className="mt-1 text-xs leading-5 text-slate-400">{description}</p>
+      <span className="mt-4 inline-flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.18em] text-emerald-200">
+        Open
+        <ArrowRight size={14} />
+      </span>
     </Link>
   );
+}
+
+function StatCardSkeleton() {
+  return (
+    <div className="rounded-[24px] border border-slate-800/80 bg-slate-900/65 p-5 shadow-[0_24px_60px_-45px_rgba(15,23,42,0.85)]">
+      <div className="h-3 w-28 animate-pulse rounded bg-slate-800" />
+      <div className="mt-4 h-8 w-20 animate-pulse rounded bg-slate-800" />
+      <div className="mt-2 h-3 w-36 animate-pulse rounded bg-slate-800" />
+    </div>
+  );
+}
+
+function ListSkeleton() {
+  return (
+    <div className="space-y-3">
+      {Array.from({ length: 4 }).map((_, index) => (
+        <div key={index} className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+          <div className="h-4 w-40 animate-pulse rounded bg-slate-800" />
+          <div className="mt-3 h-3 w-32 animate-pulse rounded bg-slate-800" />
+          <div className="mt-4 h-3 w-24 animate-pulse rounded bg-slate-800" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function getUserName(user: UserRecord) {
+  return [user.firstName, user.lastName].filter(Boolean).join(" ").trim() || user.email || "Organization Admin";
+}
+
+function getOrganizationName(value?: UserRecord["organizationId"]) {
+  if (!value) return "Organization not available";
+  if (typeof value === "object") return value.name || "Organization";
+  return "Organization linked";
 }

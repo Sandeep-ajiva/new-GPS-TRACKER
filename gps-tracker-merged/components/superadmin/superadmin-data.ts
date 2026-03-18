@@ -55,3 +55,45 @@ export const formatDateTime = (value?: string | null) => {
     timeStyle: "short",
   }).format(date);
 };
+
+export const getTotalRecords = <T>(payload: unknown, keys: string[]) => {
+  if (payload && typeof payload === "object") {
+    const pagination = (payload as { pagination?: { totalrecords?: number } }).pagination;
+    if (typeof pagination?.totalrecords === "number") return pagination.totalrecords;
+
+    const total = (payload as { total?: number }).total;
+    if (typeof total === "number") return total;
+  }
+
+  return getCollection<T>(payload, keys).length;
+};
+
+export const normalizeSearchValue = (value?: string | null) => value?.trim().toLowerCase() || "";
+
+export const matchesSearch = (search: string, values: Array<string | null | undefined>) => {
+  const normalizedSearch = normalizeSearchValue(search);
+  if (!normalizedSearch) return true;
+
+  return values.some((value) => normalizeSearchValue(value).includes(normalizedSearch));
+};
+
+export const sortByCreatedAtDesc = <T extends { createdAt?: string | null }>(items: T[]) => {
+  return [...items].sort((left, right) => {
+    const leftTime = left.createdAt ? new Date(left.createdAt).getTime() : 0;
+    const rightTime = right.createdAt ? new Date(right.createdAt).getTime() : 0;
+    return rightTime - leftTime;
+  });
+};
+
+export const sortByName = <T>(
+  items: T[],
+  selector: (item: T) => string,
+  direction: "asc" | "desc" = "asc",
+) => {
+  return [...items].sort((left, right) => {
+    const leftValue = selector(left).toLowerCase();
+    const rightValue = selector(right).toLowerCase();
+    const comparison = leftValue.localeCompare(rightValue);
+    return direction === "asc" ? comparison : -comparison;
+  });
+};

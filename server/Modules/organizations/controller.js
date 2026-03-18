@@ -260,14 +260,19 @@ exports.createOrganizationWithAdmin = async (req, res) => {
 
     await session.commitTransaction();
 
-    await createOrganizationCreatedNotification(
-      {
-        organization,
-        createdWithAdmin: true,
-        isSubOrganization: false,
-      },
-      buildContextFromReq(req),
-    );
+    // 🌊 Post-commit logic (isolated)
+    try {
+      createOrganizationCreatedNotification(
+        {
+          organization,
+          createdWithAdmin: true,
+          isSubOrganization: false,
+        },
+        buildContextFromReq(req),
+      );
+    } catch (notifErr) {
+      console.warn("Notification failed for organization creation:", notifErr.message);
+    }
 
     return res.status(201).json({
       status: true,
@@ -275,7 +280,9 @@ exports.createOrganizationWithAdmin = async (req, res) => {
       data: { organization, admin: adminUser },
     });
   } catch (error) {
-    await session.abortTransaction();
+    if (session.inTransaction()) {
+      await session.abortTransaction();
+    }
 
     console.error("Create Organization With Admin Error:", error);
 
@@ -304,7 +311,7 @@ exports.createOrganization = async (req, res) => {
       req.body;
 
     const exists = await Organization.findOne({
-      $or: [{ email }, { phone }],
+      $or: [{ email: email.toLowerCase() }, { phone: phone.trim() }],
     });
     if (exists) {
       return res.status(409).json({
@@ -320,9 +327,9 @@ exports.createOrganization = async (req, res) => {
     const path = `/${name.toLowerCase().replace(/\s+/g, "-")}`;
 
     const organization = await Organization.create({
-      name,
+      name: name.trim(),
       organizationType,
-      email: email.toLowerCase(),
+      email: email.toLowerCase().trim(),
       phone: phone.trim(),
       logo,
       address: address || {},
@@ -335,14 +342,19 @@ exports.createOrganization = async (req, res) => {
       status: "active",
     });
 
-    await createOrganizationCreatedNotification(
-      {
-        organization,
-        createdWithAdmin: false,
-        isSubOrganization: false,
-      },
-      buildContextFromReq(req),
-    );
+    // 🌊 Post-create logic (isolated)
+    try {
+      createOrganizationCreatedNotification(
+        {
+          organization,
+          createdWithAdmin: false,
+          isSubOrganization: false,
+        },
+        buildContextFromReq(req),
+      );
+    } catch (notifErr) {
+      console.warn("Notification failed for organization creation:", notifErr.message);
+    }
 
     return res.status(201).json({
       status: true,
@@ -449,7 +461,7 @@ exports.update = async (req, res) => {
     if (req.body.logo !== undefined) {
       if (!isSuperAdmin && !isRootAdmin) {
         // Non-main admins cannot update logo
-      delete req.body.logo;
+        delete req.body.logo;
         if (req.file) {
           // If they uploaded a file, it's already on disk, but we won't use it.
           // Ideally delete it, but for now we just won't update the DB.
@@ -598,27 +610,18 @@ exports.createSubOrganizationWithManager = async (req, res) => {
     validateSettingsData(organizationData.settings);
 
     if (!parentOrganizationId) {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(400).json({
-        status: false,
-        message: "parentOrganizationId is required",
-      });
+      throw { status: 400, message: "parentOrganizationId is required" };
     }
 
     // 🔐 ensure admin has access to parent org
     if (
       req.orgScope !== "ALL" &&
+      Array.isArray(req.orgScope) &&
       !req.orgScope.some(
         (id) => id.toString() === parentOrganizationId.toString()
       )
     ) {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(403).json({
-        status: false,
-        message: "You are not allowed to create sub-organization under this organization",
-      });
+      throw { status: 403, message: "You are not allowed to create sub-organization under this organization" };
     }
 
     // 🔐 ORG SCOPE FIX
@@ -627,13 +630,9 @@ exports.createSubOrganizationWithManager = async (req, res) => {
       _id: parentOrganizationId,
       ...orgFilter
     }).session(session);
+
     if (!parentOrg) {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(404).json({
-        status: false,
-        message: "Parent organization not found",
-      });
+      throw { status: 404, message: "Parent organization not found" };
     }
 
     // 🔒 duplicate organization check (SAME as root org)
@@ -645,12 +644,7 @@ exports.createSubOrganizationWithManager = async (req, res) => {
     }).session(session);
 
     if (orgExists) {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(409).json({
-        status: false,
-        message: "Organization with this email or phone already exists",
-      });
+      throw { status: 409, message: "Organization with this email or phone already exists" };
     }
 
     const adminEmail = (managerData.email || organizationData.email || "")
@@ -664,12 +658,7 @@ exports.createSubOrganizationWithManager = async (req, res) => {
     }).session(session);
 
     if (userExists) {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(409).json({
-        status: false,
-        message: "User with this email or mobile already exists",
-      });
+      throw { status: 409, message: "User with this email or mobile already exists" };
     }
 
     // 🧠 slug + path (same logic everywhere)
@@ -730,16 +719,20 @@ exports.createSubOrganizationWithManager = async (req, res) => {
     await subOrganization.save({ session });
 
     await session.commitTransaction();
-    session.endSession();
 
-    await createOrganizationCreatedNotification(
-      {
-        organization: subOrganization,
-        createdWithAdmin: true,
-        isSubOrganization: true,
-      },
-      buildContextFromReq(req),
-    );
+    // 🌊 Post-commit logic (isolated)
+    try {
+      createOrganizationCreatedNotification(
+        {
+          organization: subOrganization,
+          createdWithAdmin: true,
+          isSubOrganization: true,
+        },
+        buildContextFromReq(req),
+      );
+    } catch (notifErr) {
+      console.warn("Notification failed for sub-organization creation:", notifErr.message);
+    }
 
     return res.status(201).json({
       status: true,
@@ -750,13 +743,16 @@ exports.createSubOrganizationWithManager = async (req, res) => {
       },
     });
   } catch (error) {
-    await session.abortTransaction();
-    session.endSession();
+    if (session.inTransaction()) {
+      await session.abortTransaction();
+    }
     console.error("Create Sub Organization With Manager Error:", error);
     return res.status(error.status || 500).json({
       status: false,
       message: error.message || "Internal server error",
     });
+  } finally {
+    session.endSession();
   }
 };
 
@@ -796,6 +792,7 @@ exports.createSubOrganization = async (req, res) => {
 
     if (
       req.orgScope !== "ALL" &&
+      Array.isArray(req.orgScope) &&
       !req.orgScope.some((id) => id.toString() === parentOrganizationId.toString())
     ) {
       return res.status(403).json({
@@ -837,14 +834,19 @@ exports.createSubOrganization = async (req, res) => {
       adminUser: null,
     });
 
-    await createOrganizationCreatedNotification(
-      {
-        organization,
-        createdWithAdmin: false,
-        isSubOrganization: true,
-      },
-      buildContextFromReq(req),
-    );
+    // 🌊 Post-create logic (isolated)
+    try {
+      createOrganizationCreatedNotification(
+        {
+          organization,
+          createdWithAdmin: false,
+          isSubOrganization: true,
+        },
+        buildContextFromReq(req),
+      );
+    } catch (notifErr) {
+      console.warn("Notification failed for sub-organization creation:", notifErr.message);
+    }
 
     return res.status(201).json({
       status: true,
@@ -880,33 +882,18 @@ exports.createSubAdmin = async (req, res) => {
       ...orgFilter
     }).session(session);
     if (!organization) {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(404).json({
-        status: false,
-        message: "Organization not found",
-      });
+      throw { status: 404, message: "Organization not found" };
     }
 
     if (
       req.orgScope !== "ALL" &&
       !req.orgScope.some((id) => id.toString() === organizationId.toString())
     ) {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(403).json({
-        status: false,
-        message: "You are not allowed to add sub-admin for this organization",
-      });
+      throw { status: 403, message: "You are not allowed to add sub-admin for this organization" };
     }
 
     if (organization.adminUser) {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(409).json({
-        status: false,
-        message: "Sub-admin already exists for this organization",
-      });
+      throw { status: 409, message: "Sub-admin already exists for this organization" };
     }
 
     const existingUser = await User.findOne({
@@ -914,12 +901,7 @@ exports.createSubAdmin = async (req, res) => {
     }).session(session);
 
     if (existingUser) {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(409).json({
-        status: false,
-        message: "User with this email or mobile already exists",
-      });
+      throw { status: 409, message: "User with this email or mobile already exists" };
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
@@ -946,7 +928,6 @@ exports.createSubAdmin = async (req, res) => {
     await organization.save({ session });
 
     await session.commitTransaction();
-    session.endSession();
 
     return res.status(201).json({
       status: true,
@@ -954,13 +935,16 @@ exports.createSubAdmin = async (req, res) => {
       data: subAdmin,
     });
   } catch (error) {
-    await session.abortTransaction();
-    session.endSession();
+    if (session.inTransaction()) {
+      await session.abortTransaction();
+    }
     console.error("Create Sub Admin Error:", error);
     return res.status(error.status || 500).json({
       status: false,
       message: error.message || "Internal server error",
     });
+  } finally {
+    session.endSession();
   }
 };
 

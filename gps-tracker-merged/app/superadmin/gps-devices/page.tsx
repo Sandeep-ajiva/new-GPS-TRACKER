@@ -150,7 +150,7 @@ export default function GpsDevicesPage() {
 
     const openEditModal = (device: GpsDeviceRecord) => {
         setEditingDevice(device);
-        const orgId = typeof device.organizationId === 'object' ? device.organizationId._id : device.organizationId;
+        const orgId = device.organizationId && typeof device.organizationId === 'object' ? device.organizationId._id : device.organizationId;
         setFormData({
             imei: device.imei,
             simNumber: device.simNumber || "",
@@ -241,7 +241,7 @@ export default function GpsDevicesPage() {
           cellClassName: "min-w-[160px]",
           accessor: (row: GpsDeviceRecord) => (
             <span className="block max-w-[160px] break-words leading-5 text-slate-200">
-                {typeof row.organizationId === 'object' ? row.organizationId.name : "N/A"}
+                {row.organizationId && typeof row.organizationId === 'object' ? row.organizationId.name : "N/A"}
             </span>
           )
         },
@@ -261,18 +261,23 @@ export default function GpsDevicesPage() {
 
     return (
         <ApiErrorBoundary hasError={false}>
-            <div className="space-y-6">
-                <div className="flex flex-wrap items-center justify-between gap-4">
-                    <div>
-                        <p className="text-[11px] font-black uppercase tracking-[0.3em] text-emerald-400/70">Hardware</p>
-                        <h1 className="text-2xl font-black text-slate-100">GPS Devices</h1>
-                        <p className="text-sm text-slate-400">Manage your GPS hardware inventory.</p>
+            <div className="space-y-6 pb-8 sm:space-y-8">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="space-y-1">
+                        <p className="text-[11px] font-black uppercase tracking-[0.3em] text-emerald-400/70">
+                            Hardware Oversight
+                        </p>
+                        <h1 className="text-3xl font-black tracking-tight text-slate-100">GPS Devices</h1>
+                        <p className="text-sm font-medium text-slate-400">
+                            Manage global GPS hardware inventory and organization allocation.
+                        </p>
                     </div>
                     <button
                         onClick={openCreateModal}
-                        className="rounded-xl border border-emerald-500/30 bg-emerald-500/20 px-4 py-2 text-xs font-black uppercase tracking-widest text-emerald-200 transition hover:bg-emerald-500/30"
+                        className="inline-flex items-center gap-2 rounded-xl bg-emerald-500/20 px-5 py-2.5 text-[11px] font-black uppercase tracking-widest text-emerald-100 transition hover:bg-emerald-500/30"
                     >
-                        <span className="inline-flex items-center gap-2"><Plus size={16} /> Add Device</span>
+                        <Plus size={16} />
+                        Add New Device
                     </button>
                 </div>
 

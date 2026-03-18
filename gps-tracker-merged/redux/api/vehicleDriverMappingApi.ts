@@ -4,7 +4,7 @@ export const vehicleDriverMappingApi = baseApi.injectEndpoints({
     endpoints: (builder) => ({
         getVehicleDriverMappings: builder.query({
             query: () => "/vehicledrivermapping",
-            providesTags: ["Driver"], // We can add more generic tags if needed
+            providesTags: ["Vehicle", "Driver"],
         }),
         assignDriver: builder.mutation({
             query: (body) => ({
