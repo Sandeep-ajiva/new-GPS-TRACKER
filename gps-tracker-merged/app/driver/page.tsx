@@ -50,8 +50,8 @@ export default function DriverPage() {
     { skip: !assignedVehicleId },
   );
   const historyData = (historyRes?.data || []).map((point: any) => ({
-    latitude: point.latitude ?? point.lat,
-    longitude: point.longitude ?? point.lng,
+    lat: point.latitude ?? point.lat,
+    lng: point.longitude ?? point.lng,
     timestamp: point.timestamp || point.createdAt,
     speed: point.speed || 0,
     location: point.location || "",
@@ -59,8 +59,9 @@ export default function DriverPage() {
 
   const livePosition = useMemo(() => {
     if (!liveMatch) return null;
-    const lat = liveMatch.latitude ?? liveMatch.lat;
-    const lng = liveMatch.longitude ?? liveMatch.lng;
+    const lMatch = liveMatch as any;
+    const lat = lMatch.latitude ?? lMatch.lat;
+    const lng = lMatch.longitude ?? lMatch.lng;
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
     return { lat, lng };
   }, [liveMatch]);
@@ -262,7 +263,7 @@ export default function DriverPage() {
                       </div>
                       <div className="mt-4 h-56 overflow-hidden rounded-2xl border border-white/10">
                         {historyData.length > 0 ? (
-                          <HistoryMap pathData={historyData} />
+                          <HistoryMap routes={[historyData]} selectedRouteIndex={0} />
                         ) : (
                           <div className="flex h-full w-full items-center justify-center text-sm text-slate-400">
                             No journey history available yet.

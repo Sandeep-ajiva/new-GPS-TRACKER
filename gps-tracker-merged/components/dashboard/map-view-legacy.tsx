@@ -1,8 +1,10 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useEffect } from "react";
+
 import { DivIcon, latLngBounds } from "leaflet";
-import { MapContainer, Marker, TileLayer, useMap, Popup } from "react-leaflet";
+import { MapContainer, Marker, useMap, Popup } from "react-leaflet";
+import { MapTileLayer } from "../admin/Map/MapTileLayer";
 import { TelemetryGrid } from "./telemetry-grid";
 import { useDashboardContext } from "./DashboardContext";
 import { useGetLiveVehicleByDeviceIdQuery } from "@/redux/api/gpsLiveApi";
@@ -10,17 +12,20 @@ import "leaflet/dist/leaflet.css";
 import "leaflet-defaulticon-compatibility/dist/leaflet-defaulticon-compatibility.css";
 import "leaflet-defaulticon-compatibility";
 
+
 function FitBounds({
   points,
 }: {
   points: Array<{ lat: number; lng: number }>;
 }) {
   const map = useMap();
-  if (points.length) {
-    map.fitBounds(latLngBounds(points.map((p) => [p.lat, p.lng])), {
-      padding: [60, 60],
-    });
-  }
+  useEffect(() => {
+    if (points.length) {
+      map.fitBounds(latLngBounds(points.map((p) => [p.lat, p.lng])), {
+        padding: [60, 60],
+      });
+    }
+  }, [map, points]);
   return null;
 }
 
@@ -41,12 +46,23 @@ export function MapView() {
     pollingInterval: 5000,
   });
 
-  const liveNode = liveDataRes?.data;
+  const liveNode = liveDataRes?.data as {
+    latitude?: number
+    longitude?: number
+    status?: string
+    poi?: string
+    poiId?: string | null
+  } | undefined;
 
   const currentPos = useMemo(() => {
     if (!liveNode || !Number.isFinite(liveNode.latitude) || !Number.isFinite(liveNode.longitude)) return null;
-    return { lat: liveNode.latitude, lng: liveNode.longitude, status: liveNode.status || selectedVehicle?.status || "running" };
+    return { lat: liveNode.latitude as number, lng: liveNode.longitude as number, status: liveNode.status || selectedVehicle?.status || "running" };
   }, [liveNode, selectedVehicle]);
+
+  // Use freshest poi from 5s poll, fall back to context vehicle poi
+  const livePoi = liveNode?.poi !== undefined
+    ? (liveNode.poi || "-")
+    : (selectedVehicle?.poi || "-");
 
   const pointsForBounds = useMemo(() => {
     const points: Array<{ lat: number; lng: number }> = [];
@@ -77,10 +93,7 @@ export function MapView() {
   return (
     <div className="relative h-full w-full bg-slate-950">
       <MapContainer center={center} zoom={12} className="h-full w-full">
-        <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        />
+        <MapTileLayer />
         <FitBounds points={pointsForBounds} />
 
         {currentPos && (
@@ -91,8 +104,14 @@ export function MapView() {
             <Popup className="dark-leaflet-popup">
               <div className="min-w-[300px] bg-slate-900 p-2">
                 <TelemetryGrid vehicle={selectedVehicle} compact />
-                <div className="mt-2 border-t border-white/5 pt-2 text-[8px] text-slate-500 italic">
-                  Last update: {new Date().toLocaleTimeString()}
+                <div className="mt-2 border-t border-white/5 pt-2 space-y-1">
+                  <div className="flex justify-between text-[9px]">
+                    <span className="text-slate-400 font-bold uppercase tracking-wider">POI</span>
+                    <span className="text-slate-200 font-semibold">{livePoi}</span>
+                  </div>
+                  <div className="text-[8px] text-slate-500 italic">
+                    Last update: {new Date().toLocaleTimeString()}
+                  </div>
                 </div>
               </div>
             </Popup>

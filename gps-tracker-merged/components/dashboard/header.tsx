@@ -147,6 +147,7 @@ export function Header({
             items: [
                 { label: "Travel Summary", tabName: "Travel Summary", icon: LayoutDashboard },
                 { label: "Trip Summary", tabName: "Trip Summary", icon: LayoutDashboard },
+                { label: "AC Summary", tabName: "AC Summary", icon: LayoutDashboard },
                 { label: "Vehicle Status", tabName: "Vehicle Status", icon: LayoutDashboard },
                 { label: "Alert Summary", tabName: "Alert Summary", icon: LayoutDashboard },
                 { label: "Daywise Distance", tabName: "Daywise Distance", icon: LayoutDashboard },

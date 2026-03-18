@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import {
     Pencil,
     Trash2,
@@ -13,6 +13,7 @@ import {
     AlertCircle,
 } from "lucide-react"
 import { useGetVehiclesQuery } from "@/redux/api/vehicleApi"
+import { useGetLiveVehiclesQuery } from "@/redux/api/gpsLiveApi"
 import { toast } from "sonner"
 import VehicleEditModal from "./vehicle-edit-modal"
 import VehicleDeleteDialog from "./vehicle-delete-dialog"
@@ -20,6 +21,24 @@ import type { VehicleRecord } from "@/lib/api"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type StatusFilter = "all" | "active" | "inactive" | "moving" | "stopped"
+
+type LiveGpsItem = {
+    vehicleId?: string | { _id?: string }
+    gpsDeviceId?: string | { _id?: string }
+    imei?: string
+    latitude?: number
+    longitude?: number
+    currentLocation?:
+    | string
+    | {
+        address?: string
+        addressLine?: string
+        city?: string
+        state?: string
+        country?: string
+        pincode?: string | number
+    }
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function getStatusColor(status?: string): string {
@@ -58,6 +77,40 @@ function getStatusDot(status?: string): string {
     }
 }
 
+function toLocationText(value: unknown): string {
+    if (!value) return ""
+    if (typeof value === "string") return value.trim()
+    if (typeof value === "object") {
+        const loc = value as {
+            address?: string
+            addressLine?: string
+            city?: string
+            state?: string
+            country?: string
+            pincode?: string | number
+        }
+        const direct = [loc.address, loc.addressLine].find(
+            (entry) => typeof entry === "string" && entry.trim().length > 0
+        )
+        if (direct) return String(direct).trim()
+        const parts = [loc.city, loc.state, loc.country, loc.pincode ? String(loc.pincode) : ""].filter(Boolean)
+        return parts.join(", ")
+    }
+    return ""
+}
+
+function formatCoordinateText(latitude?: number | null, longitude?: number | null): string {
+    if (typeof latitude !== "number" || typeof longitude !== "number") return ""
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return ""
+    return `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`
+}
+
+function getLiveKey(value: unknown): string {
+    if (!value) return ""
+    if (typeof value === "string") return value
+    return (value as { _id?: string })._id || ""
+}
+
 function normalizeRecord(raw: Record<string, unknown>): VehicleRecord {
     return {
         _id: (raw._id as string) || "",
@@ -68,6 +121,7 @@ function normalizeRecord(raw: Record<string, unknown>): VehicleRecord {
         currentLocation: raw.currentLocation as VehicleRecord["currentLocation"],
         organizationId: raw.organizationId as VehicleRecord["organizationId"],
         driverName: raw.driverName as string | undefined,
+        make: raw.make as string | undefined,
         model: raw.model as string | undefined,
         vehicleType: raw.vehicleType as string | undefined,
         color: raw.color as string | undefined,
@@ -140,6 +194,12 @@ export function VehicleTable() {
         refetchOnMountOrArgChange: true,
     })
 
+    const { data: liveData } = useGetLiveVehiclesQuery(undefined, {
+        pollingInterval: 10000,
+        refetchOnMountOrArgChange: true,
+        refetchOnReconnect: true,
+    })
+
     // Extract vehicles + pagination
     const vehicles: VehicleRecord[] = (
         (rawData as { vehicles?: unknown[]; data?: unknown[] } | null)?.vehicles ??
@@ -149,6 +209,28 @@ export function VehicleTable() {
 
     const total: number = (rawData as { total?: number } | null)?.total ?? vehicles.length
     const totalPages: number = (rawData as { totalPages?: number } | null)?.totalPages ?? (Math.ceil(total / LIMIT) || 1)
+
+    const liveVehicles = useMemo(
+        () =>
+            (
+                (liveData as { vehicles?: unknown[]; data?: unknown[] } | null)?.vehicles ??
+                (liveData as { vehicles?: unknown[]; data?: unknown[] } | null)?.data ??
+                []
+            ) as LiveGpsItem[],
+        [liveData]
+    )
+
+    const liveByKey = useMemo(() => {
+        const map = new Map<string, LiveGpsItem>()
+        liveVehicles.forEach((item) => {
+            const vehicleId = getLiveKey(item.vehicleId)
+            const gpsDeviceId = getLiveKey(item.gpsDeviceId)
+            if (vehicleId) map.set(vehicleId, item)
+            if (item.imei) map.set(item.imei, item)
+            if (gpsDeviceId) map.set(gpsDeviceId, item)
+        })
+        return map
+    }, [liveVehicles])
 
     const handleFilterChange = (f: StatusFilter) => {
         setStatusFilter(f)
@@ -232,7 +314,7 @@ export function VehicleTable() {
                                 <th
                                     key={col}
                                     className={`px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-400 ${col === "IMEI" || col === "Plate Number" ? "hidden sm:table-cell" :
-                                            col === "Driver" ? "hidden md:table-cell" : ""
+                                        col === "Driver" ? "hidden md:table-cell" : ""
                                         }`}
                                 >
                                     {col}
@@ -295,10 +377,17 @@ export function VehicleTable() {
                                         : plateNumber
                                 const imei = v.imei || v.deviceImei || "—"
                                 const status = v.status || "unknown"
-                                const location =
-                                    typeof v.currentLocation === "object"
-                                        ? v.currentLocation?.address || "—"
-                                        : "—"
+                                const liveItem =
+                                    liveByKey.get(v._id) ||
+                                    (v.imei ? liveByKey.get(v.imei) : undefined) ||
+                                    (v.deviceImei ? liveByKey.get(v.deviceImei) : undefined)
+                                const liveLocation = toLocationText(liveItem?.currentLocation)
+                                const storedLocation =
+                                    typeof v.currentLocation === "object" ? v.currentLocation?.address || "" : ""
+                                const coordinateLocation =
+                                    formatCoordinateText(liveItem?.latitude, liveItem?.longitude) ||
+                                    formatCoordinateText(v.currentLocation?.latitude, v.currentLocation?.longitude)
+                                const location = liveLocation || storedLocation || coordinateLocation || "—"
                                 const driver = v.driverName || "Unassigned"
 
                                 return (

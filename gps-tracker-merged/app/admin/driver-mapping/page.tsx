@@ -87,7 +87,7 @@ export default function DriverMappingPage() {
     // 🔐 ORG CONTEXT UPDATE
   const { role, isSuperAdmin, isRootOrgAdmin } = useOrgContext();
 
-  const canFilterOrg = isSuperAdmin || isRootOrgAdmin;
+    const canFilterOrg = isSuperAdmin || isRootOrgAdmin;
 
     // API Hooks
     const { data: mappingData, isLoading: isMappingLoading, refetch: refetchMappings } = useGetVehicleDriverMappingsQuery(undefined, { refetchOnMountOrArgChange: true });
@@ -95,9 +95,9 @@ export default function DriverMappingPage() {
     const { data: driverData, isLoading: isDriverLoading, refetch: refetchDrivers } = useGetDriversQuery({ page: 0, limit: 1000 }, { refetchOnMountOrArgChange: true });
     const { data: gpsData, isLoading: isGpsLoading } = useGetGpsDevicesQuery({ page: 0, limit: 1000 }, { refetchOnMountOrArgChange: true });
 
-  // 🔐 Superadmin + root admin can see scoped org list
+    // 🔐 Superadmin + root admin can see scoped org list
     const { data: orgData, isLoading: isOrgLoading } = useGetOrganizationsQuery(undefined, {
-    skip: !canFilterOrg,
+        skip: !canFilterOrg,
         refetchOnMountOrArgChange: true
     });
 
@@ -180,13 +180,13 @@ export default function DriverMappingPage() {
     [vehiclesByModalOrg, formData.vehicleId],
   );
 
-  // 🔐 Filter drivers to only show those in the SAME organization as selected vehicle
-  const driversBySelectedVehicleOrg = useMemo(() => {
-    if (!selectedVehicle) return availableDrivers;
+    // 🔐 Filter drivers to only show those in the SAME organization as selected vehicle
+    const driversBySelectedVehicleOrg = useMemo(() => {
+        if (!selectedVehicle) return availableDrivers;
 
-    const vehicleOrgId = typeof selectedVehicle.organizationId === "object"
-      ? selectedVehicle.organizationId._id
-      : selectedVehicle.organizationId;
+        const vehicleOrgId = typeof selectedVehicle.organizationId === "object"
+            ? selectedVehicle.organizationId._id
+            : selectedVehicle.organizationId;
 
     return availableDrivers.filter((d) => {
       const driverOrgId = typeof d.organizationId === "object"

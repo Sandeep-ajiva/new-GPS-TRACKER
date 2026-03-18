@@ -82,6 +82,12 @@ const vehicleSchema = {
       index: "2dsphere",
     },
   },
+  poi: String,
+  poiId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "POI",
+    default: null,
+  },
 
   lastUpdated: Date,
 

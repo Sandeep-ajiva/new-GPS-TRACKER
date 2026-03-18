@@ -9,6 +9,7 @@ const Alert = require("../alerts/model");
 const Organization = require("../organizations/model");
 const EmergencyEvent = require("../emergencyEvents/model");
 const { calculateDistance, mapAlertType } = require("../../common/utils");
+const { scheduleLocationEnrichment } = require("../../common/locationEnrichment");
 const { createNotificationFromAlert } = require("../notifications/producers");
 
 const Service = {
@@ -284,9 +285,11 @@ const Service = {
         // timeDelta <= 0 means duplicate or out-of-order — skip
       }
 
+      let historyDoc = null;
+
       if (shouldSave) {
         try {
-          await GpsHistory.create({
+          historyDoc = await GpsHistory.create({
             organizationId,
             vehicleId,
             gpsDeviceId,
@@ -302,6 +305,7 @@ const Service = {
             numberOfSatellites: data.numberOfSatellites ?? null,
             packetType: data.packetType ?? null,
             ignitionStatus: ignition,
+            acStatus: !!data.acStatus,
             emergencyStatus: data.emergencyStatus ?? false,
             tamperAlert: data.tamperAlert ?? null,
             mainPowerStatus: data.mainPowerStatus ?? null,
@@ -311,6 +315,7 @@ const Service = {
             gsmSignalStrength: data.gsmSignalStrength ?? null,
             operatorName: data.operatorName ?? null,
             frameNumber: data.frameNumber ?? null,
+            digitalInputStatus: data.digitalInputStatus ?? null,
           });
 
           // Store last-saved packet metadata in Redis for override comparisons
@@ -355,14 +360,18 @@ const Service = {
         }
       }
 
-      // 7c — Elapsed seconds since last update (capped at 5 min to avoid stale gaps)
+      // 7c — Elapsed seconds between GPS timestamps (NOT wall clock time).
+      // WHY: Simulator sends packets 200ms apart in real time but GPS timestamps
+      // are 5–30s apart. Using wall clock = 0.2s elapsed = wrong times.
+      // Using GPS timestamp delta = correct simulated elapsed time.
       let elapsedSeconds = 0;
-      if (prev && prev.updatedAt) {
-        elapsedSeconds = Math.max(
-          0,
-          Math.round((timestamp - new Date(prev.updatedAt)) / 1000),
-        );
-        if (elapsedSeconds > 300) elapsedSeconds = 0;
+      if (prev && prev.gpsTimestamp) {
+        const prevGpsMs = new Date(prev.gpsTimestamp).getTime();
+        const thisGpsMs = packetTimestamp.getTime();
+        const deltaMs   = thisGpsMs - prevGpsMs;
+        if (deltaMs > 0) {
+          elapsedSeconds = Math.min(300, Math.round(deltaMs / 1000));
+        }
       }
 
       // 7d — Build atomic update operators
@@ -422,13 +431,16 @@ const Service = {
       }
 
       // 7g — Compute avgSpeed from accumulated totals (distance-based, km/h)
-      if (updatedStats.runningTime > 0 && updatedStats.totalDistance > 0) {
-        const avgSpeed = Number(
+      if (updatedStats.runningTime > 60 && updatedStats.totalDistance > 0) {
+        // runningTime must be > 60 seconds to avoid division artifacts
+        const calculatedAvg = Number(
           (
             updatedStats.totalDistance /
             (updatedStats.runningTime / 3600)
           ).toFixed(2),
         );
+        // Hard cap at 250 km/h — any value above is a calculation artifact
+        const avgSpeed = calculatedAvg > 250 ? 0 : calculatedAvg;
         await VehicleDailyStats.updateOne(
           { _id: updatedStats._id },
           { $set: { avgSpeed } },
@@ -585,6 +597,18 @@ const Service = {
       } catch (e) {
         console.error("Emergency event error:", e);
       }
+      console.log(`[ENRICH] Scheduling enrichment for vehicle=${vehicleId} lat=${latitude} lng=${longitude}`);
+      scheduleLocationEnrichment({
+        organizationId,
+        vehicleId,
+        gpsDeviceId,
+        imei,
+        latitude,
+        longitude,
+        packetTimestamp,
+        historyId: historyDoc?._id || null,
+        syncVehicleLocation: Boolean(historyDoc?._id),
+      });
 
       return { success: true, message: "GPS data processed", status: 200 };
     } catch (error) {

@@ -80,6 +80,7 @@ export interface VehicleRecord {
     }
     organizationId?: string | { _id: string; name?: string }
     driverName?: string
+    make?: string
     model?: string
     vehicleType?: string
     color?: string

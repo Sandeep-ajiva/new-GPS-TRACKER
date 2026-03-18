@@ -1,36 +1,35 @@
 const net = require("net");
 
-/**
- * COMPREHENSIVE SIMULATION SCRIPT
- * Tests Travel Summary & Trip Summary with:
- * - Specific start/end points
- * - Ignition / AC status transitions
- * - High speed alerts (> 80 km/h)
- * - Mid-trip stoppage to split trips
- */
+// ==========================================
+// DEVICE CONFIG
+// ==========================================
+const IMEI = "123456789099111";
+const VEHICLE_NO = "PB-07-5587";
 
-// ==========================================
-// 🔴 DEVICE CONFIGURATION
-// ==========================================
-const IMEI = "123456789029700";
-const VEHICLE_NO = "DL20E4444";
-const START_LAT = 30.71146231529745;
-const START_LNG = 76.78528127857643;
-const END_LAT = 31.038894173966625;
-const END_LNG = 76.38056523603541;
+const START_LAT = 30.72772286091969;
+const START_LNG = 76.76703872448844;
+
+const END_LAT = 30.908469605619075;
+const END_LNG = 77.09933396927974;
 
 const HOST = "127.0.0.1";
 const PORT = 6000;
 
 const ORS_KEY = "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImNiYWM1NmMxNGY2NDQ2ZTFhYzc5YWQ2NjU1ZGM5NjU3IiwiaCI6Im11cm11cjY0In0=";
-const SAMPLE_EVERY_M = 150; // Increased to keep packet count manageable but realistic
 
+// ==========================================
+// HELPERS
+// ==========================================
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+
 const pad2 = (v) => String(v).padStart(2, "0");
+
 const checksum = (body) => {
-    let x = 0; for (let i = 0; i < body.length; i++) x ^= body.charCodeAt(i);
+    let x = 0;
+    for (let i = 0; i < body.length; i++) x ^= body.charCodeAt(i);
     return x.toString(16).toUpperCase().padStart(2, "0");
 };
+
 const withCS = (b) => `$${b}*${checksum(b)}\n`;
 
 const toNmea = (dec, isLat) => {
@@ -38,7 +37,10 @@ const toNmea = (dec, isLat) => {
     const deg = Math.floor(abs);
     const min = (abs - deg) * 60;
     const ddmm = deg * 100 + min;
-    return { v: ddmm.toFixed(4), d: isLat ? (dec >= 0 ? "N" : "S") : dec >= 0 ? "E" : "W" };
+    return {
+        v: ddmm.toFixed(4),
+        d: isLat ? (dec >= 0 ? "N" : "S") : dec >= 0 ? "E" : "W",
+    };
 };
 
 const dtParts = (offsetSec = 0) => {
@@ -52,148 +54,203 @@ const dtParts = (offsetSec = 0) => {
 
 const loginPacket = () => `$LGN,${VEHICLE_NO},${IMEI},2.5AIS\n`;
 
-const nrmPacket = ({ lat, lng, speed, heading, ignition, ac, odometer, offset }) => {
+function packet({ lat, lng, speed, heading, ignition, ac, odo, offset }) {
     const { date, time } = dtParts(offset);
     const latN = toNmea(lat, true);
     const lngN = toNmea(lng, false);
 
-    // Status string: [Reserved(3 chars)][Ignition(1)][AC(1)][MainPower(1)]
-    // Example: Ignition ON (1), AC ON (1), Main Power ON (1) -> 000111
-    const igBit = ignition ? "1" : "0";
-    const acBit = ac ? "1" : "0";
-    const status = `000${igBit}${acBit}1`; // 000111 = everything on
+    const status = `000${ignition}${ac}1`;
 
     const body = [
-        "NRM", IMEI, date, time, latN.v, latN.d, lngN.v, lngN.d,
-        speed.toFixed(1), heading.toFixed(1), "12", "250", "1.1", "0.8",
-        "Simulator-Pro", "404", status, Math.floor(odometer || 0).toString(), "12.8",
+        "NRM",
+        IMEI,
+        date,
+        time,
+        latN.v,
+        latN.d,
+        lngN.v,
+        lngN.d,
+        speed.toFixed(1),
+        heading.toFixed(1),
+        "12",
+        "250",
+        "1.1",
+        "0.8",
+        "Simulator-Pro",
+        "404",
+        status,
+        Math.floor(odo).toString(),
+        "12.8",
     ].join(",");
+
     return withCS(body);
-};
-
-const haversine = (a, b) => {
-    const R = 6371000;
-    const toRad = (x) => (x * Math.PI) / 180;
-    const dLat = toRad(b.lat - a.lat);
-    const dLng = toRad(b.lng - a.lng);
-    const la1 = toRad(a.lat);
-    const la2 = toRad(b.lat);
-    const h = Math.sin(dLat / 2) ** 2 + Math.cos(la1) * Math.cos(la2) * Math.sin(dLng / 2) ** 2;
-    return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
-};
-
-const resample = (coords) => {
-    if (coords.length <= 2) return coords;
-    const pts = coords.map(([lng, lat]) => ({ lat, lng }));
-    const out = [pts[0]];
-    let acc = 0;
-    for (let i = 1; i < pts.length; i++) {
-        const d = haversine(pts[i - 1], pts[i]);
-        acc += d;
-        if (acc >= SAMPLE_EVERY_M || i === pts.length - 1) {
-            out.push(pts[i]);
-            acc = 0;
-        }
-    }
-    return out;
-};
-
-async function fetchRoute() {
-    const url = "https://api.openrouteservice.org/v2/directions/driving-car/geojson";
-    const body = {
-        coordinates: [
-            [START_LNG, START_LAT],
-            [END_LNG, END_LAT],
-        ],
-    };
-    const res = await fetch(url, {
-        method: "POST",
-        headers: {
-            Authorization: ORS_KEY,
-            "Content-Type": "application/json",
-        },
-        body: JSON.stringify(body),
-    });
-    if (!res.ok) {
-        throw new Error(`ORS error: ${res.status}`);
-    }
-    const data = await res.json();
-    const coords = data.features?.[0]?.geometry?.coordinates;
-    return resample(coords);
 }
 
-async function run() {
-    console.log("🚀 Starting Comprehensive Simulation...");
-    console.log(`📍 Vehicle: ${VEHICLE_NO} | IMEI: ${IMEI}`);
+// ==========================================
+// ROUTE FETCH
+// ==========================================
+async function fetchRoute() {
+    const res = await fetch(
+        "https://api.openrouteservice.org/v2/directions/driving-car/geojson",
+        {
+            method: "POST",
+            headers: {
+                Authorization: ORS_KEY,
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+                coordinates: [
+                    [START_LNG, START_LAT],
+                    [END_LNG, END_LAT],
+                ],
+            }),
+        }
+    );
 
-    let coords;
-    try {
-        coords = await fetchRoute();
-        console.log(`✅ Route fetched: ${coords.length} points.`);
-    } catch (err) {
-        console.warn("⚠️ ORS failed, using fallback points.");
-        coords = resample([[START_LNG, START_LAT], [END_LNG, END_LAT]]);
+    const data = await res.json();
+    return data.features[0].geometry.coordinates.map(([lng, lat]) => ({
+        lat,
+        lng,
+    }));
+}
+
+// ==========================================
+// SEND HELPER
+// ==========================================
+async function sendRepeated(socket, point, count, config, offsetRef) {
+    for (let i = 0; i < count; i++) {
+        socket.write(packet({
+            ...point,
+            ...config,
+            offset: offsetRef.value,
+        }));
+        offsetRef.value += 60;
+        await delay(120);
     }
+}
+
+// ==========================================
+// MAIN
+// ==========================================
+async function run() {
+    const coords = await fetchRoute();
 
     const socket = net.createConnection({ host: HOST, port: PORT }, async () => {
-        console.log(`📡 Connected to TCP Server at ${HOST}:${PORT}`);
+        console.log("Connected");
+
         socket.write(loginPacket());
-        await delay(500);
 
-        let totalOdometer = 23000.50; // Starting odometer
-        let currentOffset = 0;
+        let odo = 23000;
+        let offset = { value: 0 };
 
-        for (let i = 0; i < coords.length; i++) {
-            const pt = coords[i];
-            const prev = i > 0 ? coords[i - 1] : pt;
-            const dist = haversine(prev, pt);
-            totalOdometer += (dist / 1000); // km
+        // ==========================================
+        // TRIP START IDLE (Ignition ON, speed 0)
+        // ==========================================
+        console.log("Trip start idle");
 
-            // HEADING
-            const deltaY = pt.lng - prev.lng;
-            const deltaX = pt.lat - prev.lat;
-            let heading = Math.atan2(deltaY, deltaX) * (180 / Math.PI);
-            if (heading < 0) heading += 360;
+        await sendRepeated(
+            socket,
+            coords[0],
+            4,
+            {
+                speed: 0,
+                heading: 0,
+                ignition: 1,
+                ac: 1,
+                odo,
+            },
+            offset
+        );
 
-            // DYNAMIC SPEED & STATUS LOGIC
-            let speed = 45; // Default cruise
-            let ignition = 1;
+        // ==========================================
+        // MOVEMENT PHASE
+        // ==========================================
+        for (let i = 1; i < coords.length; i++) {
+            let speed = 45;
             let ac = 1;
 
-            if (i === 0) {
-                speed = 0; // Start stationary
-            } else if (i === Math.floor(coords.length / 2)) {
-                // MID TRIP STOP (Ignition OFF to test travel summary split)
-                console.log("⏸️ Simulating mid-trip stoppage (Ignition OFF)...");
-                for (let s = 0; s < 3; s++) {
-                    socket.write(nrmPacket({ ...pt, speed: 0, heading, ignition: 0, ac: 0, odometer: totalOdometer, offset: currentOffset }));
-                    currentOffset += 60; // Simulate 1 minute wait
-                    await delay(100);
-                }
-                ignition = 1; // Restart after
-                speed = 30;
-            } else if (i > 5 && i < 10) {
-                speed = 85; // OVERSPEED ALERT BURST
-                console.log("⚠️ Overspeed phase...");
-            } else if (i > 15 && i < 20) {
-                ac = 0; // Test AC OFF phase
-                speed = 55;
+            if (i > 5 && i < 10) speed = 88; // overspeed
+            if (i > 12 && i < 18) ac = 0;    // AC off zone
+
+            odo += 0.4;
+
+            socket.write(packet({
+                ...coords[i],
+                speed,
+                heading: 90,
+                ignition: 1,
+                ac,
+                odo,
+                offset: offset.value,
+            }));
+
+            offset.value += 30;
+            await delay(150);
+
+            // ==========================================
+            // MID IDLE STOP
+            // ==========================================
+            if (i === Math.floor(coords.length / 2)) {
+                console.log("Mid idle stop");
+
+                await sendRepeated(
+                    socket,
+                    coords[i],
+                    5,
+                    {
+                        speed: 0,
+                        heading: 0,
+                        ignition: 1,
+                        ac: 0,
+                        odo,
+                    },
+                    offset
+                );
             }
-
-            socket.write(nrmPacket({ ...pt, speed, heading, ignition, ac, odometer: totalOdometer, offset: currentOffset }));
-            console.log(`📍 [${i}/${coords.length}] Lat: ${pt.lat.toFixed(5)} Lng: ${pt.lng.toFixed(5)} Speed: ${speed}km/h Odo: ${totalOdometer.toFixed(2)}`);
-
-            currentOffset += 30; // 30 seconds between packets
-            await delay(150); // Fast simulation
         }
 
-        // END TRIP
-        console.log("🏁 Destination reached. Closing session.");
-        socket.write(nrmPacket({ ...coords[coords.length - 1], speed: 0, heading: 0, ignition: 0, ac: 0, odometer: totalOdometer, offset: currentOffset }));
+        // ==========================================
+        // TRIP END IDLE
+        // ==========================================
+        console.log("Trip ending idle");
+
+        await sendRepeated(
+            socket,
+            coords[coords.length - 1],
+            5,
+            {
+                speed: 0,
+                heading: 0,
+                ignition: 1,
+                ac: 0,
+                odo,
+            },
+            offset
+        );
+
+        // ==========================================
+        // IGNITION OFF = CLOSE TRIP
+        // ==========================================
+        console.log("Ignition OFF");
+
+        await sendRepeated(
+            socket,
+            coords[coords.length - 1],
+            3,
+            {
+                speed: 0,
+                heading: 0,
+                ignition: 0,
+                ac: 0,
+                odo,
+            },
+            offset
+        );
+
         socket.end();
     });
 
-    socket.on("error", (e) => console.error("❌ Socket Error:", e.message));
+    socket.on("error", console.error);
 }
 
-run().catch(console.error);
+run();

@@ -15,12 +15,26 @@ router.post(
   Controller.create
 );
 
+router.post(
+  "/bulk",
+  requireAuth,
+  checkAuthorization(["admin"], "poi", "create"),
+  checkOrganization,
+  Controller.bulkCreate
+);
 router.get(
   "/",
   requireAuth,
   checkAuthorization(["admin"], "poi", "read"),
   checkOrganization,
   Controller.getAll
+);
+router.get(
+  "/nearby",
+  requireAuth,
+  checkAuthorization(["admin"], "poi", "read"),
+  checkOrganization,
+  Controller.nearby
 );
 
 router.get(
@@ -46,5 +60,13 @@ router.delete(
   checkOrganization,
   Controller.delete
 );
+router.delete(
+  "/index-status",
+  requireAuth,
+  checkAuthorization(["admin"], "poi", "read"),
+  checkOrganization,
+  Controller.indexStatus
+);
+
 
 module.exports = router;

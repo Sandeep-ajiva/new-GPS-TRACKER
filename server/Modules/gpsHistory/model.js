@@ -99,6 +99,12 @@ const gpsHistorySchema = {
   },
 
   address: String,
+  poi: String,
+  poiId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "POI",
+    default: null,
+  },
 
   // GPS Quality
   gpsFixed: Boolean,
@@ -117,6 +123,7 @@ const gpsHistorySchema = {
 
   // Status
   ignitionStatus: Boolean,
+  acStatus: Boolean,
   mainPowerStatus: Boolean,
   emergencyStatus: Boolean,
   tamperAlert: String,
@@ -168,8 +175,7 @@ instance.index({ vehicleId: 1, gpsTimestamp: -1 });
 instance.index({ imei: 1, gpsTimestamp: -1 });
 instance.index({ tripId: 1, gpsTimestamp: 1 });
 instance.index({ organizationId: 1, vehicleId: 1, gpsTimestamp: -1 });
-
-// Unique compound index — DB-level duplicate protection
 instance.index({ vehicleId: 1, gpsTimestamp: 1 }, { unique: true });
+
 
 module.exports = instance.getModel();

@@ -154,7 +154,7 @@ export default function LiveTrackingPage() {
       // If sub-org admin/manager, join only their org room
       const orgIds = new Set<string>();
       if (isSuperAdmin && liveDataRes?.data) {
-        liveDataRes.data.forEach((item: ApiGpsItem) => {
+        liveDataRes.data.forEach((item: any) => {
           const orgId =
             typeof item.organizationId === "string"
               ? item.organizationId
@@ -183,7 +183,7 @@ export default function LiveTrackingPage() {
     if (liveDataRes?.data) {
       setVehiclesMap((prev) => {
         const nextMap = { ...prev };
-        liveDataRes.data.forEach((item: ApiGpsItem) => {
+        liveDataRes.data?.forEach((item: any) => {
           const id =
             item.vehicleId?._id ||
             (typeof item.gpsDeviceId === "string"

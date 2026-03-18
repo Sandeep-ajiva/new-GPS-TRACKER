@@ -6,7 +6,7 @@ type TableRow = object;
 
 interface TableColumn<T extends TableRow> {
   header: string;
-  accessor: keyof T | ((row: T) => ReactNode);
+  accessor: string | ((row: T) => ReactNode);
   headerClassName?: string;
   cellClassName?: string;
 }

@@ -73,6 +73,14 @@ router.get(
   Controller.getAlertSummary,
 );
 
+router.get(
+  "/ac-summary/:vehicleId",
+  verifyToken,
+  checkAuthorization(readRoles, "gpsHistory", "read"),
+  checkOrganization,
+  Controller.getACSummary,
+);
+
 // GET BY VEHICLE
 router.get(
   "/vehicle/:vehicleId",

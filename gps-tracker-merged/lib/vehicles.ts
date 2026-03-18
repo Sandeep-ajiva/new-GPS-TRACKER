@@ -27,7 +27,13 @@ export type Vehicle = {
   pw: boolean
   gps: boolean
   location: string
+
+  // poi: the nearest POI name string (e.g. "Main Depot", "-", "Resolving POI...")
+  // poiId: the MongoDB _id of the matched POI document — null when no POI found
+  // Both come from backend enrichment via socket gps_update and REST polling.
   poi: string
+  poiId?: string | null   // ← ADDED: lets components link to POI record if needed
+
   route: VehicleRoutePoint[]
   batteryVoltage?: number | null
   batteryPercent?: number | null

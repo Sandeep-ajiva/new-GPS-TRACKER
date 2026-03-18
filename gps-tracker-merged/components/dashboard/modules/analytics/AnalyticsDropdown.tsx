@@ -9,6 +9,7 @@ const analyticsItems = [
     "Statistics",
     "Travel Summary",
     "Trip Summary",
+    "AC Summary",
     "Vehicle Status",
     "Alert Summary",
     "Daywise Distance",

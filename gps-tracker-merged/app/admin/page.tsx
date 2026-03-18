@@ -168,14 +168,14 @@ export default function DashboardPage() {
   ========================= */
   const uiVehicles: DashboardVehicle[] = useMemo(() => {
     return displayVehicles.map((vehicle: any) => {
-      const live = displayLiveData.find(
+      const live: any = displayLiveData.find(
         (l: any) =>
           String(l.vehicleId?._id || l.vehicleId) === String(vehicle._id)
       );
 
       let status: DashboardVehicle["status"] = "stopped";
       if (live) {
-        if (live.speed >= RUNNING_SPEED_THRESHOLD) status = "running";
+        if ((live.speed ?? 0) >= RUNNING_SPEED_THRESHOLD) status = "running";
         else if (live.ignition) status = "idle";
       }
 

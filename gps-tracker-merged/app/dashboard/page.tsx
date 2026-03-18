@@ -37,12 +37,14 @@ import { TripSummaryPage } from "@/components/dashboard/modules/analytics/TripSu
 import { VehicleStatusPage } from "@/components/dashboard/modules/analytics/VehicleStatusPage"
 import { AlertSummaryPage } from "@/components/dashboard/modules/analytics/AlertSummaryPage"
 import { DaywiseDistancePage } from "@/components/dashboard/modules/analytics/DaywiseDistancePage"
+import { ACSummaryPage } from "@/components/dashboard/modules/analytics/ACSummaryPage"
 import { X } from "lucide-react"
 
 type LiveGpsItem = {
   vehicleId?: string | { _id?: string }
   gpsDeviceId?: string | { _id?: string }
   imei?: string
+  _enrichmentOnly?: boolean   // ← ADD THIS
   latitude?: number
   longitude?: number
   currentSpeed?: number
@@ -72,6 +74,7 @@ type LiveGpsItem = {
   fuelPercentage?: number
   temperature?: string
   poi?: string
+  poiId?: string | null
 }
 
 const LIVE_STALE_TIMEOUT_MS = 60 * 1000
@@ -86,9 +89,17 @@ const pickFirstString = (...values: unknown[]): string => {
   return ""
 }
 
+const isCoordinateText = (value?: string): boolean => {
+  if (!value) return false
+  return /^-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?$/.test(value.trim())
+}
+
 const toLocationText = (value: unknown): string => {
   if (!value) return ""
-  if (typeof value === "string") return value.trim()
+  if (typeof value === "string") {
+    const text = value.trim()
+    return isCoordinateText(text) ? "" : text
+  }
   if (typeof value === "object") {
     const loc = value as {
       address?: string
@@ -99,11 +110,27 @@ const toLocationText = (value: unknown): string => {
       pincode?: string | number
     }
     const direct = pickFirstString(loc.address, loc.addressLine)
-    if (direct) return direct
+    if (direct) return isCoordinateText(direct) ? "" : direct
     const parts = [loc.city, loc.state, loc.country, loc.pincode ? String(loc.pincode) : ""].filter(Boolean)
     return parts.join(", ")
   }
   return ""
+}
+
+const serializeLocationValue = (value: unknown): string => {
+  if (!value) return ""
+  if (typeof value === "string") return value.trim()
+  try {
+    return JSON.stringify(value)
+  } catch {
+    return ""
+  }
+}
+
+const formatCoordinateText = (latitude?: number | null, longitude?: number | null): string => {
+  if (typeof latitude !== "number" || typeof longitude !== "number") return ""
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return ""
+  return `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`
 }
 
 export default function DashboardPage() {
@@ -191,15 +218,45 @@ export default function DashboardPage() {
     return toVehicleId(liveItem) || liveItem.imei || toGpsDeviceId(liveItem) || null
   }
 
-  const handleGpsUpdate = useCallback((update: LiveGpsItem) => {
-    const key = toLiveKey(update)
-    if (!key) return
+const handleGpsUpdate = useCallback((update: LiveGpsItem) => {
+  const key = toLiveKey(update)
+  if (!key) return
 
+  // CRITICAL: Enrichment-only packets must NEVER overwrite position data.
+  // They carry stale coordinates (up to 30s old) which cause backward snapping.
+  // Only merge address/poi fields and leave lat/lng/speed/status untouched.
+  if (update._enrichmentOnly) {
     setLiveByVehicleId((prev) => {
-      const nextValue = {
-        ...(prev[key] || {}),
-        ...update,
+      const existing = prev[key]
+      if (!existing) return prev
+      const prevPoi   = existing.poi   || ""
+      const prevPoiId = existing.poiId || null
+      const prevLoc   = serializeLocationValue(existing.currentLocation)
+      const nextPoi   = update.poi   ?? prevPoi
+      const nextPoiId = update.poiId ?? prevPoiId
+      const nextLoc   = serializeLocationValue(update.currentLocation || existing.currentLocation)
+      // Skip re-render if nothing changed
+      if (prevPoi === nextPoi && prevPoiId === nextPoiId && prevLoc === nextLoc) {
+        return prev
       }
+      return {
+        ...prev,
+        [key]: {
+          ...existing,
+          currentLocation: update.currentLocation || existing.currentLocation,
+          poi:   nextPoi,
+          poiId: nextPoiId,
+        },
+      }
+    })
+    return
+  }
+
+  setLiveByVehicleId((prev) => {
+    const nextValue = {
+      ...(prev[key] || {}),
+      ...update,
+    }
       const prevValue = prev[key]
       if (
         prevValue &&
@@ -211,7 +268,10 @@ export default function DashboardPage() {
         prevValue.speed === nextValue.speed &&
         prevValue.movementStatus === nextValue.movementStatus &&
         prevValue.ignitionStatus === nextValue.ignitionStatus &&
-        prevValue.ignition === nextValue.ignition
+        prevValue.ignition === nextValue.ignition &&
+        serializeLocationValue(prevValue.currentLocation) === serializeLocationValue(nextValue.currentLocation) &&
+        (prevValue.poi || "") === (nextValue.poi || "") &&
+        (prevValue.poiId || null) === (nextValue.poiId || null)
       ) {
         return prev
       }
@@ -261,7 +321,10 @@ export default function DashboardPage() {
           prevValue.speed === item.speed &&
           prevValue.movementStatus === item.movementStatus &&
           prevValue.ignitionStatus === item.ignitionStatus &&
-          prevValue.ignition === item.ignition
+          prevValue.ignition === item.ignition &&
+          serializeLocationValue(prevValue.currentLocation) === serializeLocationValue(item.currentLocation) &&
+          (prevValue.poi || "") === (item.poi || "") &&
+          (prevValue.poiId || null) === (item.poiId || null)
         ) {
           return
         }
@@ -382,11 +445,26 @@ export default function DashboardPage() {
 
         const power = Boolean(live?.mainPowerStatus ?? ignition)
         const ac = Boolean(live?.acStatus && ignition) // AC can only be ON when ignition is ON
+        const coordinateLocation = hasLivePosition
+          ? formatCoordinateText(lat as number, lng as number)
+          : hasVehiclePosition
+            ? formatCoordinateText(
+              vehicle.currentLocation.latitude,
+              vehicle.currentLocation.longitude,
+            )
+            : ""
+        const hasResolvedPoi =
+          (live ? Object.prototype.hasOwnProperty.call(live, "poi") : false) ||
+          Object.prototype.hasOwnProperty.call(vehicle || {}, "poi")
+        const resolvedPoi =
+          pickFirstString(live?.poi, vehicle.poi) ||
+          ((hasLivePosition || hasVehiclePosition) ? (hasResolvedPoi ? "-" : "Resolving POI...") : "-")
+        const previousResolvedLocation = toLocationText(prevLocationMap.get(vehicle._id))
         const location =
           toLocationText(live?.currentLocation) ||
-          toLocationText(vehicle?.currentLocation?.address) ||
-          prevLocationMap.get(vehicle._id) ||
-          "Unknown"
+          toLocationText(vehicle?.currentLocation) ||
+          previousResolvedLocation ||
+          (hasLivePosition || hasVehiclePosition ? "Resolving address..." : "Unknown")
         const dateSource = live?.updatedAt || live?.gpsTimestamp || vehicle.updatedAt
         const date = dateSource
           ? new Date(dateSource).toLocaleString("en-GB").replace(",", "")
@@ -481,7 +559,8 @@ export default function DashboardPage() {
           pw: power,
           gps: hasLivePosition || hasVehiclePosition,
           location,
-          poi: live?.poi || vehicle.poi || "-",
+          poi: resolvedPoi,
+          poiId: live?.poiId ?? (vehicle.poiId as string | null | undefined) ?? null,
           route,
           batteryVoltage: live?.internalBatteryVoltage ?? null,
           batteryPercent: live?.batteryLevel ?? null,
@@ -580,10 +659,17 @@ export default function DashboardPage() {
           ac: Boolean(live.acStatus && ignition), // AC can only be ON when ignition is ON
           pw: Boolean(live.mainPowerStatus ?? ignition),
           gps: true,
-          location: toLocationText(live.currentLocation) || prevLocationMap.get(rowId) || "Unknown",
-          poi: "-",
+          location:
+            toLocationText(live.currentLocation) ||
+            toLocationText(prevLocationMap.get(rowId)) ||
+            "Resolving address...",
+          poi:
+            pickFirstString(live.poi) ||
+            (Object.prototype.hasOwnProperty.call(live, "poi") ? "-" : "Resolving POI..."),
+          poiId: live?.poiId ?? null,
           route,
           batteryVoltage: live?.internalBatteryVoltage ?? null,
+
           batteryPercent: live?.batteryLevel ?? null,
           satelliteCount: live?.numberOfSatellites ?? null,
           gsmSignal: live?.gsmSignalStrength ?? null,
@@ -612,6 +698,7 @@ export default function DashboardPage() {
             prevVehicle.date === nextVehicle.date &&
             prevVehicle.gps === nextVehicle.gps &&
             prevVehicle.location === nextVehicle.location &&
+            prevVehicle.poi === nextVehicle.poi &&
             prevLast?.lat === nextLast?.lat &&
             prevLast?.lng === nextLast?.lng &&
             prevVehicle.route.length === nextVehicle.route.length
@@ -883,6 +970,7 @@ export default function DashboardPage() {
                 {activeTab === "Trip Summary" && <TripSummaryPage organizations={organizations} vehicles={allVehicles} userRole={userRole} userOrgId={userOrgId} />}
                 {activeTab === "Vehicle Status" && <VehicleStatusPage organizations={organizations} vehicles={uiVehicles} userRole={userRole} userOrgId={userOrgId} />}
                 {activeTab === "Alert Summary" && <AlertSummaryPage organizations={organizations} vehicles={allVehicles} userRole={userRole} userOrgId={userOrgId} />}
+                {activeTab === "AC Summary" && <ACSummaryPage organizations={organizations} vehicles={allVehicles} userRole={userRole} userOrgId={userOrgId} />}
                 {["Tour", "App Config", "Sys Config", "User Rights"].includes(activeTab) && (
                   <div className="flex h-64 flex-col items-center justify-center italic text-slate-500">
                     <LayoutDashboard className="mb-4 h-12 w-12 opacity-20" />

@@ -713,6 +713,7 @@ export default function VehiclesPage() {
       organizationId: z.string().optional(),
       vehicleType: z.enum(["car", "truck", "bus", "bike", "other"]),
       vehicleNumber: z.string().min(1, "Vehicle number is required"),
+      make: z.string().optional(),
       model: z.string().optional(),
       year: z.string().optional(),
       color: z.string().optional(),
