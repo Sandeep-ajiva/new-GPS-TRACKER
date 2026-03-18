@@ -40,13 +40,12 @@ export default function BillingPage() {
     {
       header: "Status",
       accessor: (row: any) => (
-        <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-widest ${
-          row.status === "paid"
+        <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-widest ${row.status === "paid"
             ? "border-emerald-500/30 bg-emerald-500/20 text-emerald-200"
             : row.status === "pending"
-            ? "border-amber-500/30 bg-amber-500/20 text-amber-200"
-            : "border-rose-500/30 bg-rose-500/20 text-rose-200"
-        }`}>
+              ? "border-amber-500/30 bg-amber-500/20 text-amber-200"
+              : "border-rose-500/30 bg-rose-500/20 text-rose-200"
+          }`}>
           {row.status}
         </span>
       ),
@@ -63,13 +62,12 @@ export default function BillingPage() {
     {
       header: "Status",
       accessor: (row: any) => (
-        <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-widest ${
-          row.status === "received"
+        <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-widest ${row.status === "received"
             ? "border-emerald-500/30 bg-emerald-500/20 text-emerald-200"
             : row.status === "processing"
-            ? "border-amber-500/30 bg-amber-500/20 text-amber-200"
-            : "border-rose-500/30 bg-rose-500/20 text-rose-200"
-        }`}>
+              ? "border-amber-500/30 bg-amber-500/20 text-amber-200"
+              : "border-rose-500/30 bg-rose-500/20 text-rose-200"
+          }`}>
           {row.status}
         </span>
       ),
@@ -113,11 +111,10 @@ export default function BillingPage() {
             <button
               key={view}
               onClick={() => setActiveView(view)}
-              className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-widest transition ${
-                activeView === view
+              className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-widest transition ${activeView === view
                   ? "border-emerald-500/40 bg-emerald-500/20 text-emerald-200"
                   : "border-slate-800/80 bg-slate-950/60 text-slate-400 hover:text-slate-200"
-              }`}
+                }`}
             >
               {view}
             </button>
@@ -136,9 +133,9 @@ export default function BillingPage() {
         </select>
       </div>
       {activeView === "invoices" ? (
-        <Table columns={columns} data={filteredInvoices} loading={false} variant="dark" />
+        <Table columns={columns as any} data={filteredInvoices as any[]} loading={false} variant="dark" />
       ) : (
-        <Table columns={paymentColumns} data={filteredPayments} loading={false} variant="dark" />
+        <Table columns={paymentColumns as any} data={filteredPayments as any[]} loading={false} variant="dark" />
       )}
     </div>
   );

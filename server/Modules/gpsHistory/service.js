@@ -7,11 +7,13 @@ const Alert = require("../alerts/model");
 const EmergencyEvent = require("../emergencyEvents/model");
 const Vehicle = require("../vehicle/model");
 const Driver = require("../drivers/model");
+const { resolveAddressWithCache } = require("../../common/locationEnrichment");
 const {
   calculateStatistics,
   buildTrips,
   buildDaywiseDistance,
   summarizeAlerts,
+  buildACSummary,
 } = require("./analytics");
 
 function buildOrgScopeFilter(orgScope) {
@@ -73,6 +75,112 @@ function buildScopedVehicleFilter(vehicleId, orgScope) {
     filter.vehicleId = new mongoose.Types.ObjectId(vehicleId);
   }
   return filter;
+}
+
+function isCoordinateLikeAddress(value) {
+  if (!value || typeof value !== "string") return false;
+  return /^-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?$/.test(value.trim());
+}
+
+async function hydrateLocation(location) {
+  if (!location) return location;
+
+  const latitude = Number(location.latitude);
+  const longitude = Number(location.longitude);
+  const currentAddress =
+    typeof location.address === "string" ? location.address.trim() : "";
+
+  if (
+    currentAddress &&
+    !isCoordinateLikeAddress(currentAddress)
+  ) {
+    return {
+      ...location,
+      address: currentAddress,
+    };
+  }
+
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+    return {
+      ...location,
+      address: "",
+    };
+  }
+
+  const resolvedAddress = await resolveAddressWithCache(latitude, longitude);
+
+  return {
+    ...location,
+    latitude,
+    longitude,
+    address:
+      typeof resolvedAddress === "string" && resolvedAddress.trim()
+        ? resolvedAddress.trim()
+        : "",
+  };
+}
+
+async function hydrateTripLocations(trips = []) {
+  return Promise.all(
+    trips.map(async (trip) => ({
+      ...trip,
+      startLocation: await hydrateLocation(trip.startLocation),
+      endLocation: await hydrateLocation(trip.endLocation),
+    })),
+  );
+}
+
+async function hydrateACEvents(events = []) {
+  return Promise.all(
+    events.map(async (event) => ({
+      ...event,
+      startLocation: await hydrateLocation(event.startLocation),
+      endLocation: await hydrateLocation(event.endLocation),
+    })),
+  );
+}
+
+async function hydratePlaybackPoints(points = []) {
+  const pendingAddressByCell = new Map();
+
+  return Promise.all(
+    points.map(async (point) => {
+      const currentAddress =
+        typeof point.address === "string" ? point.address.trim() : "";
+
+      if (currentAddress && !isCoordinateLikeAddress(currentAddress)) {
+        return point;
+      }
+
+      const latitude = Number(point.latitude);
+      const longitude = Number(point.longitude);
+
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+        return {
+          ...point,
+          address: "",
+        };
+      }
+
+      const cellKey = `${latitude.toFixed(4)},${longitude.toFixed(4)}`;
+      if (!pendingAddressByCell.has(cellKey)) {
+        pendingAddressByCell.set(
+          cellKey,
+          resolveAddressWithCache(latitude, longitude),
+        );
+      }
+
+      const resolvedAddress = await pendingAddressByCell.get(cellKey);
+
+      return {
+        ...point,
+        address:
+          typeof resolvedAddress === "string" && resolvedAddress.trim()
+            ? resolvedAddress.trim()
+            : "",
+      };
+    }),
+  );
 }
 
 async function fetchHistoryPoints(vehicleId, orgScope, query = {}) {
@@ -147,12 +255,13 @@ async function getVehicleStatus(vehicleId, orgScope) {
 
 async function getPlayback(vehicleId, orgScope, query = {}) {
   const { points, dateRange } = await fetchHistoryPoints(vehicleId, orgScope, query);
+  const hydratedPoints = await hydratePlaybackPoints(points);
 
   return {
     vehicleId,
     from: dateRange.from,
     to: dateRange.to,
-    points: points.map((point) => ({
+    points: hydratedPoints.map((point) => ({
       latitude: point.latitude,
       longitude: point.longitude,
       speed: Number(point.speed || 0),
@@ -160,7 +269,7 @@ async function getPlayback(vehicleId, orgScope, query = {}) {
       gpsTimestamp: point.gpsTimestamp,
       ignitionStatus: Boolean(point.ignitionStatus),
       odometer: point.odometer ?? null,
-      address: point.address || `${point.latitude}, ${point.longitude}`,
+      address: point.address || "",
       poi: point.poi || "",
     })),
   };
@@ -208,16 +317,21 @@ async function getTravelSummary(vehicleId, orgScope, query = {}) {
 
     const dailySummaries = [];
     Object.keys(pointsByDay).sort().forEach(date => {
-      const dayPoints = pointsByDay[date];
-      const { trips, tripSummary } = buildTrips(dayPoints);
+      dailySummaries.push({ date, points: pointsByDay[date] });
+    });
 
-      const maxStop = Math.max(0, ...trips.map(t => t.stopTime || 0), ...trips.map(t => t.inactiveTime || 0));
-      const idleCount = trips.reduce((acc, t) => acc + (t.idleTime > 0 ? 1 : 0), 0);
-      const overSpeedCountDaily = trips.filter(t => t.maxSpeed > 60).length;
+    const resolvedDailySummaries = [];
+    for (const dayEntry of dailySummaries) {
+      const { trips, tripSummary } = buildTrips(dayEntry.points);
+      const resolvedTrips = await hydrateTripLocations(trips);
 
-      dailySummaries.push({
-        date: date.split("-").reverse().join("-"),
-        day: new Intl.DateTimeFormat("en-US", { weekday: "long" }).format(new Date(date)),
+      const maxStop = Math.max(0, ...resolvedTrips.map(t => t.stopTime || 0), ...resolvedTrips.map(t => t.inactiveTime || 0));
+      const idleCount = resolvedTrips.reduce((acc, t) => acc + (t.idleTime > 0 ? 1 : 0), 0);
+      const overSpeedCountDaily = resolvedTrips.filter(t => t.maxSpeed > 60).length;
+
+      resolvedDailySummaries.push({
+        date: dayEntry.date.split("-").reverse().join("-"),
+        day: new Intl.DateTimeFormat("en-US", { weekday: "long" }).format(new Date(dayEntry.date)),
         distance: tripSummary.totalTripDistance,
         runningTime: tripSummary.totalRunning,
         idleTime: tripSummary.totalIdle,
@@ -231,16 +345,16 @@ async function getTravelSummary(vehicleId, orgScope, query = {}) {
         maxSpeed: tripSummary.maxSpeed,
         firstIgnitionOn: tripSummary.firstIgnitionOn,
         lastIgnitionOff: tripSummary.lastIgnitionOff,
-        startLocation: trips[0]?.startLocation,
-        endLocation: trips[trips.length - 1]?.endLocation,
-        startOdometer: trips[0]?.startOdometer,
-        endOdometer: trips[trips.length - 1]?.endOdometer,
-        alerts: trips.reduce((sum, t) => sum + (t.alerts || 0), 0),
+        startLocation: resolvedTrips[0]?.startLocation,
+        endLocation: resolvedTrips[resolvedTrips.length - 1]?.endLocation,
+        startOdometer: resolvedTrips[0]?.startOdometer,
+        endOdometer: resolvedTrips[resolvedTrips.length - 1]?.endOdometer,
+        alerts: resolvedTrips.reduce((sum, t) => sum + (t.alerts || 0), 0),
       });
-    });
+    }
 
     // Aggregate from already-computed dailySummaries — no second buildTrips pass needed
-    const allTripsFlat = dailySummaries;
+    const allTripsFlat = resolvedDailySummaries;
     const totalSummary = {
       totalTripDistance: Number(allTripsFlat.reduce((s, d) => s + Number(d.distance || 0), 0).toFixed(2)),
       totalRunning: allTripsFlat.reduce((s, d) => s + Number(d.runningTime || 0), 0),
@@ -284,12 +398,12 @@ async function getTravelSummary(vehicleId, orgScope, query = {}) {
       overSpeedCount: overSpeedCountGlobal,
       avgSpeed: totalSummary.avgSpeed,
       maxSpeed: totalSummary.maxSpeed,
-      startLocation: dailySummaries[0]?.startLocation,
-      endLocation: dailySummaries[dailySummaries.length - 1]?.endLocation,
-      startOdometer: dailySummaries[0]?.startOdometer || 0,
-      endOdometer: dailySummaries[dailySummaries.length - 1]?.endOdometer || 0,
+      startLocation: resolvedDailySummaries[0]?.startLocation,
+      endLocation: resolvedDailySummaries[resolvedDailySummaries.length - 1]?.endLocation,
+      startOdometer: resolvedDailySummaries[0]?.startOdometer || 0,
+      endOdometer: resolvedDailySummaries[resolvedDailySummaries.length - 1]?.endOdometer || 0,
       alerts: allTripsFlat.reduce((sum, d) => sum + Number(d.alerts || 0), 0),
-      dailyBreakdown: dailySummaries
+      dailyBreakdown: resolvedDailySummaries
     });
   }
 
@@ -329,13 +443,14 @@ async function getTripSummary(vehicleId, orgScope, query = {}) {
     if (!vPoints || vPoints.length === 0) continue;
 
     const { trips, tripSummary } = buildTrips(vPoints);
+    const resolvedTrips = await hydrateTripLocations(trips);
     const vehicle = vehiclesList.find(v => v._id.toString() === vId);
     const branchName = vehicle?.organizationId?.name || "Unknown Branch";
     const driver = driversList.find(d => d._id?.toString() === vehicle?.driverId?.toString());
     const driverName = driver ? `${driver.firstName || ""} ${driver.lastName || ""}`.trim() || "Unnamed" : "No Driver Found";
 
     const overSpeedThreshold = 60; // Default or from vehicle
-    const overSpeedCount = trips.filter(t => t.maxSpeed > overSpeedThreshold).length;
+    const overSpeedCount = resolvedTrips.filter(t => t.maxSpeed > overSpeedThreshold).length;
 
     results.push({
       vehicleId: vId,
@@ -358,9 +473,9 @@ async function getTripSummary(vehicleId, orgScope, query = {}) {
       maxSpeed: tripSummary.maxSpeed,
       immobilize: vehicle?.isImmobilized ? "Y" : "N",
       overSpeedCount: overSpeedCount,
-      alerts: trips.reduce((sum, t) => sum + (t.alerts || 0), 0),
-      tripCount: trips.length,
-      individualTrips: trips.map(t => ({
+      alerts: resolvedTrips.reduce((sum, t) => sum + (t.alerts || 0), 0),
+      tripCount: resolvedTrips.length,
+      individualTrips: resolvedTrips.map(t => ({
         ...t,
         startCoordinate: t.startLocation ? `(${t.startLocation.latitude?.toFixed(6)}, ${t.startLocation.longitude?.toFixed(6)})` : "-",
         endCoordinate: t.endLocation ? `(${t.endLocation.latitude?.toFixed(6)}, ${t.endLocation.longitude?.toFixed(6)})` : "-",
@@ -466,9 +581,14 @@ async function getAlertSummary(vehicleId, orgScope, query = {}) {
     let type = alert.alertName || "Alert";
     let info = alert.message || alert.alertName || "-";
 
+    if (type.includes("Overspeed")) {
+      type = "OVERSPEED";
+      info = `Speed: ${alert.speed || 0} km/h (Limit: 60)`;
+    }
+
     if (type.includes("Ignition")) {
       type = "Ignition/ACC";
-      info = alert.alertName; // e.g. "Ignition On" or "Ignition Off"
+      info = alert.alertName;
     }
 
     return {
@@ -481,6 +601,8 @@ async function getAlertSummary(vehicleId, orgScope, query = {}) {
       information: info,
       location: alert.address || (alert.latitude && alert.longitude ? `${alert.latitude}, ${alert.longitude}` : "-"),
       duration: "00:00:00",
+      speed: alert.speed || 0,
+      limit: 60,
     };
   });
 
@@ -494,6 +616,105 @@ async function getAlertSummary(vehicleId, orgScope, query = {}) {
   };
 }
 
+async function getACSummary(vehicleId, orgScope, query = {}) {
+  const dateRange = buildDateRange(query);
+  const page = Math.max(0, parseInt(query.page, 10) || 0);
+  const limit = Math.max(1, parseInt(query.limit, 10) || 50);
+  const filter = applyTimestampFilter(
+    buildScopedVehicleFilter(vehicleId, orgScope),
+    "gpsTimestamp",
+    dateRange,
+  );
+
+  const points = await GpsHistory.find(filter)
+    .sort({ gpsTimestamp: 1 })
+    .select(
+      "vehicleId imei latitude longitude speed heading gpsTimestamp ignitionStatus acStatus odometer address poi",
+    )
+    .lean();
+
+  const pointsByVehicle = {};
+  if (vehicleId === "all") {
+    points.forEach((p) => {
+      const vId = p.vehicleId?.toString();
+      if (vId) {
+        if (!pointsByVehicle[vId]) pointsByVehicle[vId] = [];
+        pointsByVehicle[vId].push(p);
+      }
+    });
+  } else if (vehicleId && vehicleId !== "undefined") {
+    pointsByVehicle[vehicleId] = points;
+  }
+
+  const vehicleIds = Object.keys(pointsByVehicle).filter(
+    (id) => id && id !== "undefined" && mongoose.isValidObjectId(id),
+  );
+  const vehicles = await Vehicle.find({ _id: { $in: vehicleIds } })
+    .populate("organizationId")
+    .lean();
+  const drivers = await Driver.find({
+    _id: { $in: vehicles.map((v) => v.driverId).filter((id) => id) },
+  }).lean();
+  const liveDataList = await GpsLiveData.find({
+    vehicleId: { $in: vehicleIds },
+  }).lean();
+
+  const results = [];
+
+  for (const vId of vehicleIds) {
+    const vPoints = pointsByVehicle[vId];
+    if (!vPoints || vPoints.length === 0) continue;
+
+    const vehicle = vehicles.find((v) => v._id.toString() === vId);
+    const branchName = vehicle?.organizationId?.name || "Unknown Branch";
+    const driver = drivers.find(
+      (d) => d._id?.toString() === vehicle?.driverId?.toString(),
+    );
+    const driverName = driver
+      ? `${driver.firstName || ""} ${driver.lastName || ""}`.trim() || "Unnamed"
+      : "No Driver Found";
+    const liveData = liveDataList.find((l) => l.vehicleId?.toString() === vId);
+
+    const { events, summary } = buildACSummary(vPoints);
+    const hydratedEvents = await hydrateACEvents(events);
+
+    results.push({
+      vehicleId: vId,
+      vehicleNumber: vehicle?.vehicleNumber || "N/A",
+      imei: vehicle?.deviceImei || vPoints[0]?.imei || "N/A",
+      brand: vehicle?.make || "-",
+      model: vehicle?.model || "-",
+      branchName,
+      driverName,
+      summary,
+      events: hydratedEvents,
+      nowStatus: liveData
+        ? liveData.ignitionStatus
+          ? liveData.currentSpeed > 5
+            ? "Running"
+            : "Idle"
+          : "Stopped"
+        : "N/A",
+    });
+  }
+
+  const totalrecords = results.length;
+  const paginatedResults = results.slice(page * limit, page * limit + limit);
+
+  return {
+    vehicleId,
+    from: dateRange.from,
+    to: dateRange.to,
+    data: paginatedResults,
+    pagination: {
+      totalrecords,
+      currentPage: page,
+      totalPages: Math.ceil(totalrecords / limit),
+      limit,
+    },
+  };
+}
+
 module.exports = {
   buildOrgScopeFilter,
   buildDateRange,
@@ -504,4 +725,5 @@ module.exports = {
   getTripSummary,
   getDaywiseDistance,
   getAlertSummary,
+  getACSummary,
 };

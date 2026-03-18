@@ -418,7 +418,7 @@ export default function OrganizationsPage() {
         </div>
       )}
 
-      <Table columns={columns} data={filteredOrganizations} />
+      <Table columns={columns as any} data={filteredOrganizations as any[]} />
       <Pagination
         page={page}
         totalPages={(subOrgResponse as any)?.pagination?.totalPages ?? Math.max(1, Math.ceil(((subOrgResponse as any)?.pagination?.totalrecords ?? organizations.length) / LIMIT))}

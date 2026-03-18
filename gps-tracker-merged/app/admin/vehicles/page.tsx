@@ -992,7 +992,7 @@ export default function VehiclesPage() {
           </div>
         )}
 
-        <Table columns={columns} data={filteredVehicles} loading={isLoading} />
+        <Table columns={columns as any} data={filteredVehicles as any[]} loading={isLoading} />
         <Pagination
           page={page}
           totalPages={totalPages}
@@ -1010,7 +1010,7 @@ export default function VehiclesPage() {
             fields={vehicleFormFields}
             schema={vehicleSchema}
             initialData={
-              editingVehicle
+              (editingVehicle
                 ? {
                   organizationId:
                     typeof editingVehicle.organizationId === "object"
@@ -1026,7 +1026,7 @@ export default function VehiclesPage() {
                   driverId: editingVehicle.driverId ? String(editingVehicle.driverId) : "",
                   deviceId: editingVehicle.deviceId ? String(editingVehicle.deviceId) : "",
                 }
-                : undefined
+                : undefined) as any
             }
             onSubmit={handleSubmit}
             submitLabel={editingVehicle ? "Update Vehicle" : "Create Vehicle"}

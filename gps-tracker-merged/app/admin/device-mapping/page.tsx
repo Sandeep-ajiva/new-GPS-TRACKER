@@ -20,18 +20,18 @@ import { isActiveStatus, filterExcludedIds } from "@/utils/mappingHelpers";
 
 export default function DeviceMappingPage() {
     // 🔐 ORG CONTEXT UPDATE
-  const { role, orgId, isSuperAdmin, isRootOrgAdmin } = useOrgContext();
+    const { role, orgId, isSuperAdmin, isRootOrgAdmin } = useOrgContext();
 
     // API Hooks
     const { data: mappingData, isLoading: isMappingLoading } = useGetDeviceMappingsQuery({ page: 0, limit: 1000 }, { refetchOnMountOrArgChange: true });
     const { data: vehData, isLoading: isVehLoading } = useGetVehiclesQuery({ page: 0, limit: 1000 }, { refetchOnMountOrArgChange: true });
     const { data: devData, isLoading: isDevLoading } = useGetGpsDevicesQuery({ page: 0, limit: 1000 }, { refetchOnMountOrArgChange: true });
 
-  const canFilterOrg = isSuperAdmin || isRootOrgAdmin;
+    const canFilterOrg = isSuperAdmin || isRootOrgAdmin;
 
-  // 🔐 Superadmin + root admin can see scoped org list
+    // 🔐 Superadmin + root admin can see scoped org list
     const { data: orgData, isLoading: isOrgLoading } = useGetOrganizationsQuery(undefined, {
-    skip: !canFilterOrg,
+        skip: !canFilterOrg,
         refetchOnMountOrArgChange: true
     });
 
@@ -67,10 +67,10 @@ export default function DeviceMappingPage() {
         return value.toString?.() || null;
     };
 
-    const assignedVehicleIds = new Set(
+    const assignedVehicleIds = new Set<string>(
         mappings.map((m: any) => getEntityId(m.vehicleId)).filter(Boolean),
     );
-    const assignedDeviceIds = new Set(
+    const assignedDeviceIds = new Set<string>(
         mappings.map((m: any) => getEntityId(m.gpsDeviceId)).filter(Boolean),
     );
 
@@ -93,7 +93,7 @@ export default function DeviceMappingPage() {
 
     // 🔐 Filter vehicles by selected organization in modal (for superadmin/rootOrgAdmin)
     const vehiclesByModalOrg = useMemo(() => {
-    if (!modalOrgFilter) return availableVehicles;
+        if (!modalOrgFilter) return availableVehicles;
         return availableVehicles.filter((v: any) => {
             const vehicleOrgId = typeof v.organizationId === 'object'
                 ? v.organizationId._id
@@ -103,18 +103,18 @@ export default function DeviceMappingPage() {
     }, [availableVehicles, modalOrgFilter]);
 
     const selectedVehicle = useMemo(
-        () => vehiclesByModalOrg.find((v: any) => v._id === formData.vehicleId) || null,
+        () => (vehiclesByModalOrg.find((v: any) => v._id === formData.vehicleId) as any) || null,
         [vehiclesByModalOrg, formData.vehicleId],
     );
 
     // 🔐 Filter devices to only show those in the SAME organization as selected vehicle
     const devicesBySelectedVehicleOrg = useMemo(() => {
         if (!selectedVehicle) return availableDevices;
-        
-        const vehicleOrgId = typeof selectedVehicle.organizationId === 'object' 
-            ? selectedVehicle.organizationId._id 
-            : selectedVehicle.organizationId;
-        
+        const vSelected = selectedVehicle as any;
+        const vehicleOrgId = typeof vSelected.organizationId === 'object'
+            ? vSelected.organizationId._id
+            : vSelected.organizationId;
+
         return availableDevices.filter((d: any) => {
             const deviceOrgId = typeof d.organizationId === 'object'
                 ? d.organizationId._id
@@ -124,7 +124,7 @@ export default function DeviceMappingPage() {
     }, [selectedVehicle, availableDevices]);
 
     const selectedDevice = useMemo(
-        () => devicesBySelectedVehicleOrg.find((d: any) => d._id === formData.deviceId) || null,
+        () => (devicesBySelectedVehicleOrg.find((d: any) => d._id === formData.deviceId) as any) || null,
         [devicesBySelectedVehicleOrg, formData.deviceId],
     );
 
@@ -470,7 +470,7 @@ export default function DeviceMappingPage() {
                                             onChange={(e) => setFormData({ vehicleId: e.target.value, deviceId: "" })}
                                         >
                                             <option value="">Search vehicle plate...</option>
-                                          {vehiclesByModalOrg.map((v: any) => (
+                                            {vehiclesByModalOrg.map((v: any) => (
                                                 <option key={v._id} value={v._id}>
                                                     {v.vehicleNumber} {v.model ? `(${v.model})` : ""}
                                                 </option>

@@ -31,14 +31,11 @@ const formatDuration = (seconds?: number) => {
 
 const formatLocation = (location?: { address?: string; latitude?: number; longitude?: number }) => {
     if (!location) return "-"
-    let text = "-"
-    if (location.address) {
-        text = location.address
-    } else if (typeof location.latitude === "number" && typeof location.longitude === "number") {
-        text = `${location.latitude}, ${location.longitude}`
+    const address = typeof location.address === "string" ? location.address.trim() : ""
+    if (!address || /^-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?$/.test(address)) {
+        return "Resolving address..."
     }
-    // Limit to 6 decimals
-    return text.replace(/(\.\d{6})\d+/g, '$1')
+    return address
 }
 
 const formatDateTime = (dateStr?: string) => {
@@ -366,7 +363,7 @@ export function TravelSummaryPage({
                                                                                 <td className="p-2 text-center text-white">{day.date}</td>
                                                                                 <td className="p-2 text-center">{day.day}</td>
                                                                                 <td className="p-2 text-center text-[#2f8d35]">{formatDateTime(day.firstIgnitionOn?.time)}</td>
-                                                                                <td className="p-2 text-center max-w-[100px] truncate break-words" title={formatLocation(day.startLocation)}>{formatLocation(day.startLocation)}</td>
+                                                                                <td className="p-2 text-center max-w-[100px] break-words" title={formatLocation(day.startLocation)}>{formatLocation(day.startLocation)}</td>
                                                                                 <td className="p-2 text-center font-bold text-white">{Number(day.distance || 0).toFixed(2)}</td>
                                                                                 <td className="p-2 text-center text-[#2f8d35] font-bold">{formatDuration(day.runningTime)}</td>
                                                                                 <td className="p-2 text-center text-[#f2a600] font-bold">{formatDuration(day.idleTime)}</td>

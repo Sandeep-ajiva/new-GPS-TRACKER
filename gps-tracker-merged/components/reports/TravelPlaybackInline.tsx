@@ -24,6 +24,7 @@ interface HistoryPoint {
     address: string;
     heading: number;
     odometer?: number;
+    geometryIndex?: number;
 }
 
 interface SnappedRouteData {
@@ -75,6 +76,17 @@ interface TravelPlaybackInlineProps {
     initialTripRange?: TripPlaybackRange | null;
 }
 
+const isCoordinateText = (value?: string) => {
+    if (!value) return false;
+    return /^-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?$/.test(value.trim());
+};
+
+const formatAddressText = (value?: string) => {
+    const address = typeof value === "string" ? value.trim() : "";
+    if (!address || isCoordinateText(address)) return "Resolving address...";
+    return address;
+};
+
 function MapInstanceAccessor({ onMap }: { onMap: (map: L.Map) => void }) {
     const map = useMap();
     useEffect(() => {
@@ -122,6 +134,7 @@ const snapHistoryPointsToRoads = async (rawPoints: HistoryPoint[]): Promise<Snap
                             ...point,
                             lat: tracePoint.location[1],
                             lng: tracePoint.location[0],
+                            geometryIndex: typeof tracePoint.waypoint_index === "number" ? tracePoint.waypoint_index : undefined,
                         });
                     } else {
                         allSnapped.push(point);
@@ -181,6 +194,8 @@ const TravelPlaybackInline: React.FC<TravelPlaybackInlineProps> = ({
     const leafletMapRef = useRef<L.Map | null>(null);
     const animationFrameRef = useRef<number | null>(null);
     const lastIndexRef = useRef(0);
+    const animatedPosRef = useRef<{ lat: number; lng: number; heading: number } | null>(null);
+    const lastFollowPanAtRef = useRef(0);
     const snapCacheRef = useRef<Map<string, SnappedRouteData>>(new Map());
     const switchRequestRef = useRef(0);
 
@@ -212,7 +227,9 @@ const TravelPlaybackInline: React.FC<TravelPlaybackInlineProps> = ({
         }
     }, [initialDay, initialTripRange, from, to, vehicleId]);
 
-    const [visibleStatuses, setVisibleStatuses] = useState<Set<string>>(new Set(['stopped', 'idle', 'arrows', 'turns']));
+    const [visibleStatuses, setVisibleStatuses] = useState<Set<string>>(
+        new Set(['start', 'stopped', 'idle', 'inactive', 'uturn', 'arrows', 'turns'])
+    );
 
     const toggleStatus = (status: string) => {
         const next = new Set(visibleStatuses);
@@ -220,6 +237,51 @@ const TravelPlaybackInline: React.FC<TravelPlaybackInlineProps> = ({
         else next.add(status);
         setVisibleStatuses(next);
     };
+
+    const mapFilterButtons = [
+        {
+            key: 'start',
+            label: 'Start',
+            icon: Play,
+            activeClass: 'bg-[#2f8d35]/90 border-[#2f8d35] text-white',
+        },
+        {
+            key: 'arrows',
+            label: 'Running',
+            icon: Zap,
+            activeClass: 'bg-green-600/90 border-green-500 text-white',
+        },
+        {
+            key: 'idle',
+            label: 'Idle',
+            icon: Clock,
+            activeClass: 'bg-orange-500/90 border-orange-400 text-white',
+        },
+        {
+            key: 'stopped',
+            label: 'Stop',
+            icon: Square,
+            activeClass: 'bg-red-600/90 border-red-500 text-white',
+        },
+        {
+            key: 'inactive',
+            label: 'Inactive',
+            icon: Moon,
+            activeClass: 'bg-slate-700/90 border-slate-600 text-white',
+        },
+        {
+            key: 'uturn',
+            label: 'U-Turn',
+            icon: RotateCcw,
+            activeClass: 'bg-orange-500/90 border-orange-400 text-white',
+        },
+        {
+            key: 'turns',
+            label: 'Turns',
+            icon: CornerUpRight,
+            activeClass: 'bg-blue-600/90 border-blue-500 text-white',
+        },
+    ] as const;
 
     const { data: historyResponse, isFetching, isLoading } = useGetGpsHistoryQuery(
         { vehicleId, from, to },
@@ -234,7 +296,8 @@ const TravelPlaybackInline: React.FC<TravelPlaybackInlineProps> = ({
             timestamp: p.gpsTimestamp || p.timestamp,
             speed: p.speed || 0,
             ignition: p.ignitionStatus ?? p.ignition,
-            address: p.address || `${p.latitude || p.lat}, ${p.longitude || p.lng}`,            heading: p.heading || 0,
+            address: typeof p.address === "string" ? p.address : "",
+            heading: p.heading || 0,
             odometer: p.odometer
         })).sort((a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
     }, [historyResponse]);
@@ -381,7 +444,76 @@ const TravelPlaybackInline: React.FC<TravelPlaybackInlineProps> = ({
         };
     }, [vehicleId, from, to, selectedDay, targetRawDayPoints, displayedDay]);
 
-    const basePlaybackPoints = snappedPoints.length > 0 ? snappedPoints : displayedRawDayPoints;
+
+     // Build a dense road-following path by walking roadGeometry and
+// interpolating timestamps/speed from snappedPoints.
+// This makes the vehicle follow the polyline exactly during playback.
+   const roadFollowingPath = useMemo<HistoryPoint[]>(() => {
+      if (roadGeometry.length < 2 || snappedPoints.length < 2) {
+        return snappedPoints.length > 0 ? snappedPoints : displayedRawDayPoints;
+      }
+
+      const findNearestGeoIdx = (lat: number, lng: number, startFrom: number): number => {
+        let best = startFrom;
+        let bestDist = Infinity;
+        const limit = Math.min(roadGeometry.length, startFrom + 300);
+        for (let i = startFrom; i < limit; i++) {
+          const dlat = roadGeometry[i][0] - lat;
+          const dlng = roadGeometry[i][1] - lng;
+          const dist = dlat * dlat + dlng * dlng;
+          if (dist < bestDist) { bestDist = dist; best = i; }
+        }
+        return best;
+      };
+
+      const result: HistoryPoint[] = [];
+      let geoSearchStart = 0;
+
+      for (let i = 0; i < snappedPoints.length - 1; i++) {
+        const fromPt = snappedPoints[i];
+        const toPt   = snappedPoints[i + 1];
+
+        const fromGeoIdx = typeof fromPt.geometryIndex === "number"
+          ? Math.max(geoSearchStart, fromPt.geometryIndex)
+          : findNearestGeoIdx(fromPt.lat, fromPt.lng, geoSearchStart);
+        const toGeoIdx   = typeof toPt.geometryIndex === "number"
+          ? Math.max(fromGeoIdx, toPt.geometryIndex)
+          : findNearestGeoIdx(toPt.lat, toPt.lng, fromGeoIdx);
+        geoSearchStart   = fromGeoIdx;
+
+        const segment = roadGeometry.slice(fromGeoIdx, toGeoIdx + 1);
+        if (segment.length === 0) { result.push(fromPt); continue; }
+
+        const fromMs = new Date(fromPt.timestamp).getTime();
+        const toMs   = new Date(toPt.timestamp).getTime();
+        const total  = segment.length;
+
+        segment.forEach((coord, idx) => {
+          const t = total <= 1 ? 0 : idx / (total - 1);
+          result.push({
+            lat:       coord[0],
+            lng:       coord[1],
+            timestamp: new Date(fromMs + (toMs - fromMs) * t).toISOString(),
+            speed:     fromPt.speed + (toPt.speed - fromPt.speed) * t,
+            ignition:  fromPt.ignition,
+            address:   fromPt.address,
+            heading:   fromPt.heading,
+            odometer:  fromPt.odometer,
+          });
+        });
+      }
+
+      const last = snappedPoints[snappedPoints.length - 1];
+      if (last) result.push(last);
+
+      return result.filter((p, i, arr) =>
+        i === 0 || p.lat !== arr[i - 1].lat || p.lng !== arr[i - 1].lng
+      );
+    }, [roadGeometry, snappedPoints, displayedRawDayPoints]);
+
+    const basePlaybackPoints = roadFollowingPath.length > 0
+      ? roadFollowingPath
+      : (snappedPoints.length > 0 ? snappedPoints : displayedRawDayPoints);
 
     const activeDayPoints = useMemo(() => {
         if (selectionMode !== "trip" || !selectedTripOption?.trip) {
@@ -403,11 +535,52 @@ const TravelPlaybackInline: React.FC<TravelPlaybackInlineProps> = ({
         () => activeDayPoints.map((p) => [p.lat, p.lng]),
         [activeDayPoints]
     );
+    const displayedRoutePositions = useMemo<[number, number][]>(
+        () => (routePositions.length > 0 ? routePositions : roadGeometry),
+        [routePositions, roadGeometry],
+    );
 
     const timelineValue = useMemo(() => {
         if (activeDayPoints.length <= 1) return 0;
         return (currentIndex / (activeDayPoints.length - 1)) * 100;
     }, [currentIndex, activeDayPoints.length]);
+
+    const followMapIfNeeded = (
+        lat: number,
+        lng: number,
+        options?: { force?: boolean; throttleMs?: number },
+    ) => {
+        if (!followVehicle || !leafletMapRef.current) return;
+
+        const map = leafletMapRef.current;
+        const force = options?.force ?? false;
+        const throttleMs = options?.throttleMs ?? 250;
+
+        if (force) {
+            lastFollowPanAtRef.current = performance.now();
+            map.panTo([lat, lng], {
+                animate: true,
+                duration: 0.35,
+                easeLinearity: 0.25,
+                noMoveStart: true,
+            });
+            return;
+        }
+
+        const point = L.latLng(lat, lng);
+        const isNearViewportEdge = !map.getBounds().pad(-0.35).contains(point);
+        const now = performance.now();
+
+        if (isNearViewportEdge && now - lastFollowPanAtRef.current >= throttleMs) {
+            lastFollowPanAtRef.current = now;
+            map.panTo([lat, lng], {
+                animate: true,
+                duration: 0.25,
+                easeLinearity: 0.2,
+                noMoveStart: true,
+            });
+        }
+    };
 
     // Handle Animation & Slider Smoothing
     useEffect(() => {
@@ -428,12 +601,11 @@ const TravelPlaybackInline: React.FC<TravelPlaybackInlineProps> = ({
                 ? (Math.atan2(toPoint.lng - fromPoint.lng, toPoint.lat - fromPoint.lat) * (180 / Math.PI) + 360) % 360
                 : (toPoint.heading || 0);
 
-            setAnimatedPos({ lat: toPoint.lat, lng: toPoint.lng, heading: snapHeading });
+            const snappedPosition = { lat: toPoint.lat, lng: toPoint.lng, heading: snapHeading };
+            animatedPosRef.current = snappedPosition;
+            setAnimatedPos(snappedPosition);
             lastIndexRef.current = currentIndex;
-
-            if (followVehicle && leafletMapRef.current) {
-                leafletMapRef.current.setView([toPoint.lat, toPoint.lng], leafletMapRef.current.getZoom(), { animate: false });
-            }
+            followMapIfNeeded(toPoint.lat, toPoint.lng);
             return;
         }
 
@@ -443,7 +615,9 @@ const TravelPlaybackInline: React.FC<TravelPlaybackInlineProps> = ({
             const initialHeading = activeDayPoints.length > 1
                 ? (Math.atan2(activeDayPoints[1].lng - startPoint.lng, activeDayPoints[1].lat - startPoint.lat) * (180 / Math.PI)) % 360
                 : (startPoint.heading || 0);
-            setAnimatedPos({ lat: startPoint.lat, lng: startPoint.lng, heading: initialHeading });
+            const initialPosition = { lat: startPoint.lat, lng: startPoint.lng, heading: initialHeading };
+            animatedPosRef.current = initialPosition;
+            setAnimatedPos(initialPosition);
             lastIndexRef.current = 0;
             return;
         }
@@ -453,7 +627,7 @@ const TravelPlaybackInline: React.FC<TravelPlaybackInlineProps> = ({
             animationFrameRef.current = null;
         }
 
-        const fromPoint = activeDayPoints[lastIndexRef.current];
+        const fromPoint = animatedPosRef.current || activeDayPoints[lastIndexRef.current];
 
         // Ensure constant physical speed on screen
         const dist = Math.sqrt(Math.pow(toPoint.lat - fromPoint.lat, 2) + Math.pow(toPoint.lng - fromPoint.lng, 2));
@@ -476,17 +650,16 @@ const TravelPlaybackInline: React.FC<TravelPlaybackInlineProps> = ({
             const lng = fromPoint.lng + (toPoint.lng - fromPoint.lng) * easedT;
 
             // Smoothly rotate the marker using shortest path
-            const startH = animatedPos?.heading ?? targetHeading;
+            const startH = animatedPosRef.current?.heading ?? targetHeading;
             let diff = targetHeading - startH;
             while (diff < -180) diff += 360;
             while (diff > 180) diff -= 360;
             const h = startH + diff * easedT;
 
-            setAnimatedPos({ lat, lng, heading: h });
-
-            if (followVehicle && leafletMapRef.current) {
-                leafletMapRef.current.setView([lat, lng], leafletMapRef.current.getZoom(), { animate: false });
-            }
+            const nextPosition = { lat, lng, heading: h };
+            animatedPosRef.current = nextPosition;
+            setAnimatedPos(nextPosition);
+            followMapIfNeeded(lat, lng);
 
             if (t < 1) {
                 animationFrameRef.current = requestAnimationFrame(animate);
@@ -526,7 +699,9 @@ const TravelPlaybackInline: React.FC<TravelPlaybackInlineProps> = ({
         setCurrentIndex(0);
         lastIndexRef.current = 0;
         if (activeDayPoints.length > 0) {
-            setAnimatedPos({ lat: activeDayPoints[0].lat, lng: activeDayPoints[0].lng, heading: activeDayPoints[0].heading || 0 });
+            const resetPosition = { lat: activeDayPoints[0].lat, lng: activeDayPoints[0].lng, heading: activeDayPoints[0].heading || 0 };
+            animatedPosRef.current = resetPosition;
+            setAnimatedPos(resetPosition);
             if (leafletMapRef.current) {
                 const bounds = activeDayPoints.map(p => [p.lat, p.lng] as [number, number]);
                 leafletMapRef.current.fitBounds(bounds, { padding: [20, 20] });
@@ -536,7 +711,7 @@ const TravelPlaybackInline: React.FC<TravelPlaybackInlineProps> = ({
 
     const zoomToRoute = () => {
         if (!leafletMapRef.current || activeDayPoints.length === 0) return;
-        leafletMapRef.current.fitBounds(routePositions, { padding: [30, 30] });
+        leafletMapRef.current.fitBounds(displayedRoutePositions, { padding: [30, 30] });
     };
 
     const handleTimelineChange = (val: number) => {
@@ -649,6 +824,105 @@ const TravelPlaybackInline: React.FC<TravelPlaybackInlineProps> = ({
 
         return markers;
     }, [activeDayPoints]);
+
+    const renderedArrowMarkers = useMemo(() => {
+        if (!visibleStatuses.has('arrows') || activeDayPoints.length <= 2) return null;
+
+        const step = Math.max(10, Math.floor(activeDayPoints.length / 15));
+        return activeDayPoints.map((p, i) => {
+            if (i % step !== 0 || i >= activeDayPoints.length - 1) return null;
+            const pNext = activeDayPoints[i + 1];
+            const bearing = Math.atan2(pNext.lng - p.lng, pNext.lat - p.lat) * 180 / Math.PI;
+
+            return (
+                <Marker
+                    key={`arrow-${i}`}
+                    position={[p.lat, p.lng]}
+                    interactive={false}
+                    icon={L.divIcon({
+                        className: "direction-arrow-marker",
+                        html: `<div style="transform: rotate(${bearing}deg); color: #22c55e; filter: drop-shadow(0 0 2px rgba(0,0,0,0.4));">
+                            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                                <path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/>
+                            </svg>
+                        </div>`,
+                        iconSize: [20, 20],
+                        iconAnchor: [10, 10]
+                    })}
+                />
+            );
+        });
+    }, [activeDayPoints, visibleStatuses]);
+
+    const renderedEventMarkers = useMemo(() => {
+        return eventMarkers.map((marker, idx) => {
+            if (marker.type === 'uturn' && !visibleStatuses.has('uturn')) return null;
+            if (['left', 'right'].includes(marker.type) && !visibleStatuses.has('turns')) return null;
+            if (['stopped', 'idle', 'inactive', 'start'].includes(marker.type) && !visibleStatuses.has(marker.type)) return null;
+
+            let html = "";
+            let size: [number, number] = [24, 24];
+
+            switch (marker.type) {
+                case 'stopped':
+                    html = `<div style="background: #ef4444; width: 24px; height: 24px; border: 2px solid white; border-radius: 4px; display: flex; align-items: center; justify-content: center; color: white; font-size: 8px; font-weight: 900; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);">STOP</div>`;
+                    break;
+                case 'idle':
+                    html = `<div style="background: #f97316; width: 22px; height: 22px; border: 2px solid white; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 10px; font-weight: 900;">I</div>`;
+                    break;
+                case 'uturn':
+                    html = `<div style="background: #f97316; width: 28px; height: 28px; border: 2px solid white; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);">
+                                 <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                             </div>`;
+                    size = [28, 28];
+                    break;
+                case 'left':
+                case 'right':
+                    const rot = marker.type === 'left' ? -90 : 90;
+                    html = `<div style="background: #2563eb; width: 24px; height: 24px; border: 2px solid white; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; transform: rotate(${rot}deg); box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);">
+                                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
+                             </div>`;
+                    break;
+                case 'start':
+                    html = `<div style="background: #2f8d35; width: 24px; height: 24px; border: 2px solid white; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12h14M12 5l7 7-7 7"/></svg></div>`;
+                    break;
+                case 'origin':
+                    html = `<div style="background: #22c55e; width: 12px; height: 12px; border: 2px solid white; border-radius: 50%;"></div>`;
+                    size = [12, 12];
+                    break;
+                case 'destination':
+                    html = `<div style="background: #ef4444; width: 12px; height: 12px; border: 2px solid white; border-radius: 50%;"></div>`;
+                    size = [12, 12];
+                    break;
+                default:
+                    return null;
+            }
+
+            return (
+                <Marker
+                    key={`event-${idx}`}
+                    position={[marker.lat, marker.lng]}
+                    icon={L.divIcon({
+                        className: `status-event-marker ${marker.type}`,
+                        html: html,
+                        iconSize: size,
+                        iconAnchor: [size[0] / 2, size[1] / 2]
+                    })}
+                >
+                    <Popup>
+                        <div className="p-1 min-w-[140px]">
+                            <h4 className="text-[10px] font-black uppercase tracking-[0.2em] mb-2 text-slate-800">
+                                {marker.type.replace('_', ' ')} Event
+                            </h4>
+                            <p className="text-[10px] font-bold text-slate-500">
+                                {new Date(marker.timestamp || marker.start).toLocaleTimeString()}
+                            </p>
+                        </div>
+                    </Popup>
+                </Marker>
+            );
+        });
+    }, [eventMarkers, visibleStatuses]);
 
     // Calculate Summary Stats from points
     const stats = useMemo(() => {
@@ -855,34 +1129,10 @@ const TravelPlaybackInline: React.FC<TravelPlaybackInlineProps> = ({
                             {routePositions.length > 1 && (
                                 <>
                                     <Polyline
-                                        positions={roadGeometry.length > 0 ? roadGeometry : routePositions}
+                                        positions={displayedRoutePositions}
                                         pathOptions={{ color: "#2563eb", weight: 5, opacity: 0.8 }}
                                     />
-                                    {/* Direction Arrows on the path */}
-                                    {visibleStatuses.has('arrows') && activeDayPoints.length > 2 && activeDayPoints.map((p, i) => {
-                                        const step = Math.max(10, Math.floor(activeDayPoints.length / 15));
-                                        if (i % step !== 0 || i >= activeDayPoints.length - 1) return null;
-                                        const pNext = activeDayPoints[i + 1];
-                                        const bearing = Math.atan2(pNext.lng - p.lng, pNext.lat - p.lat) * 180 / Math.PI;
-
-                                        return (
-                                            <Marker
-                                                key={`arrow-${i}`}
-                                                position={[p.lat, p.lng]}
-                                                interactive={false}
-                                                icon={L.divIcon({
-                                                    className: "direction-arrow-marker",
-                                                    html: `<div style="transform: rotate(${bearing}deg); color: #22c55e; filter: drop-shadow(0 0 2px rgba(0,0,0,0.4));">
-                                                        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
-                                                            <path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/>
-                                                        </svg>
-                                                    </div>`,
-                                                    iconSize: [20, 20],
-                                                    iconAnchor: [10, 10]
-                                                })}
-                                            />
-                                        )
-                                    })}
+                                    {renderedArrowMarkers}
                                 </>
                             )}
 
@@ -925,110 +1175,55 @@ const TravelPlaybackInline: React.FC<TravelPlaybackInlineProps> = ({
                                 </Marker>
                             )}
 
-                            {/* Event Markers (Stops, Idles, Inactive, Turns, Starts) */}
-                            {eventMarkers.map((marker, idx) => {
-                                // Filtering based on toggles
-                                if (['left', 'right', 'uturn'].includes(marker.type) && !visibleStatuses.has('turns')) return null;
-                                if (['stopped', 'idle', 'inactive', 'start'].includes(marker.type) && !visibleStatuses.has(marker.type)) return null;
-
-                                let html = "";
-                                let size: [number, number] = [24, 24];
-
-                                switch (marker.type) {
-                                    case 'stopped':
-                                        html = `<div style="background: #ef4444; width: 24px; height: 24px; border: 2px solid white; border-radius: 4px; display: flex; align-items: center; justify-content: center; color: white; font-size: 8px; font-weight: 900; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);">STOP</div>`;
-                                        break;
-                                    case 'idle':
-                                        html = `<div style="background: #f97316; width: 22px; height: 22px; border: 2px solid white; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 10px; font-weight: 900;">I</div>`;
-                                        break;
-                                    case 'uturn':
-                                        html = `<div style="background: #f97316; width: 28px; height: 28px; border: 2px solid white; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);">
-                                                     <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
-                                                 </div>`;
-                                        size = [28, 28];
-                                        break;
-                                    case 'left':
-                                    case 'right':
-                                        const rot = marker.type === 'left' ? -90 : 90;
-                                        html = `<div style="background: #2563eb; width: 24px; height: 24px; border: 2px solid white; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; transform: rotate(${rot}deg); box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);">
-                                                     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
-                                                 </div>`;
-                                        break;
-                                    case 'start':
-                                        html = `<div style="background: #2f8d35; width: 24px; height: 24px; border: 2px solid white; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12h14M12 5l7 7-7 7"/></svg></div>`;
-                                        break;
-                                    case 'origin':
-                                        html = `<div style="background: #22c55e; width: 12px; height: 12px; border: 2px solid white; border-radius: 50%;"></div>`;
-                                        size = [12, 12];
-                                        break;
-                                    case 'destination':
-                                        html = `<div style="background: #ef4444; width: 12px; height: 12px; border: 2px solid white; border-radius: 50%;"></div>`;
-                                        size = [12, 12];
-                                        break;
-                                    default: return null;
-                                }
-
-                                return (
-                                    <Marker
-                                        key={`event-${idx}`}
-                                        position={[marker.lat, marker.lng]}
-                                        icon={L.divIcon({
-                                            className: `status-event-marker ${marker.type}`,
-                                            html: html,
-                                            iconSize: size,
-                                            iconAnchor: [size[0] / 2, size[1] / 2]
-                                        })}
-                                    >
-                                        <Popup>
-                                            <div className="p-1 min-w-[140px]">
-                                                <h4 className="text-[10px] font-black uppercase tracking-[0.2em] mb-2 text-slate-800">
-                                                    {marker.type.replace('_', ' ')} Event
-                                                </h4>
-                                                <p className="text-[10px] font-bold text-slate-500">
-                                                    {new Date(marker.timestamp || marker.start).toLocaleTimeString()}
-                                                </p>
-                                            </div>
-                                        </Popup>
-                                    </Marker>
-                                );
-                            })}
+                            {renderedEventMarkers}
                         </MapContainer>
 
                         {/* Status Filter Buttons Overlay */}
-                        <div className="absolute top-20 left-3 z-[400] flex flex-col gap-2">
-                            <button
-                                onClick={() => toggleStatus('running')}
-                                className={`w-9 h-9 rounded-xl flex items-center justify-center shadow-lg border transition-all duration-300 backdrop-blur-md ${visibleStatuses.has('running') ? 'bg-green-600/90 border-green-500 text-white scale-110' : 'bg-white/80 border-gray-200 text-gray-400 hover:text-gray-600'
-                                    }`}
-                                title="Running"
-                            >
-                                <Zap size={16} className={visibleStatuses.has('running') ? 'animate-pulse' : ''} />
-                            </button>
-                            <button
-                                onClick={() => toggleStatus('idle')}
-                                className={`w-9 h-9 rounded-xl flex items-center justify-center shadow-lg border transition-all duration-300 backdrop-blur-md ${visibleStatuses.has('idle') ? 'bg-orange-500/90 border-orange-400 text-white scale-110' : 'bg-white/80 border-gray-200 text-gray-400 hover:text-gray-600'
-                                    }`}
-                                title="Idle"
-                            >
-                                <Clock size={16} />
-                            </button>
-                            <button
-                                onClick={() => toggleStatus('stopped')}
-                                className={`w-9 h-9 rounded-xl flex items-center justify-center shadow-lg border transition-all duration-300 backdrop-blur-md ${visibleStatuses.has('stopped') ? 'bg-red-600/90 border-red-500 text-white scale-110' : 'bg-white/80 border-gray-200 text-gray-400 hover:text-gray-600'
-                                    }`}
-                                title="Stopped"
-                            >
-                                <Square size={14} />
-                            </button>
-                            <button
-                                onClick={() => toggleStatus('inactive')}
-                                className={`w-9 h-9 rounded-xl flex items-center justify-center shadow-lg border transition-all duration-300 backdrop-blur-md ${visibleStatuses.has('inactive') ? 'bg-slate-700/90 border-slate-600 text-white scale-110' : 'bg-white/80 border-gray-200 text-gray-400 hover:text-gray-600'
-                                    }`}
-                                title="Inactive"
-                            >
-                                <Moon size={16} />
-                            </button>
-                        </div>
+<div className="absolute top-20 left-3 z-[400] rounded-2xl border border-gray-200 bg-white/90 p-3 shadow-lg backdrop-blur-md overflow-visible">
+    <div className="mb-2 px-1 text-[10px] font-bold uppercase tracking-[0.14em] text-gray-400">
+                                <p className="text-[9px] font-black uppercase tracking-[0.18em] text-gray-400">Map Filters</p>
+                            </div>
+                           <div className="flex flex-col gap-2 items-start">
+        {mapFilterButtons.map((button) => {
+            const Icon = button.icon;
+            const isActive = visibleStatuses.has(button.key);
+
+            return (
+                <button
+                    key={button.key}
+                    onClick={() => toggleStatus(button.key)}
+                    className={`group relative inline-flex h-10 w-10 items-center justify-center rounded-xl border shadow-sm transition-all duration-200 ${
+                        isActive
+                            ? `${button.activeClass} scale-[1.02]`
+                            : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300 hover:text-gray-700'
+                    }`}
+                    title={button.label}
+                    aria-label={button.label}
+                >
+                    <span
+                        className={`inline-flex h-6 w-6 items-center justify-center rounded-lg ${
+                            isActive ? 'bg-white/15' : 'bg-gray-50'
+                        }`}
+                    >
+                        <Icon
+                            size={13}
+                            className={
+                                button.key === 'arrows' && isActive
+                                    ? 'animate-pulse'
+                                    : ''
+                            }
+                        />
+                    </span>
+
+                    {/* Tooltip */}
+                    <span className="pointer-events-none absolute left-full top-1/2 ml-2 -translate-y-1/2 whitespace-nowrap rounded-md bg-[#0f172a] px-2 py-1 text-[9px] font-bold uppercase tracking-[0.12em] text-white opacity-0 shadow-md transition-opacity duration-150 group-hover:opacity-100 z-[999]">
+                        {button.label}
+                    </span>
+                </button>
+            );
+        })}
+    </div>
+</div>
                     </div>
 
                 </div>
@@ -1093,8 +1288,8 @@ const TravelPlaybackInline: React.FC<TravelPlaybackInlineProps> = ({
                                                     day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true
                                                 }) : "-"}
                                             </p>
-                                            <p className="text-[10px] text-white/50 leading-relaxed mt-1 line-clamp-2 italic font-medium" title={activeDayPoints[0]?.address}>
-                                                {activeDayPoints[0]?.address || "Origin point detected"}
+                                            <p className="text-[10px] text-white/50 leading-relaxed mt-1 line-clamp-2 italic font-medium" title={formatAddressText(activeDayPoints[0]?.address)}>
+                                                {formatAddressText(activeDayPoints[0]?.address)}
                                             </p>
                                         </div>
 
@@ -1110,8 +1305,8 @@ const TravelPlaybackInline: React.FC<TravelPlaybackInlineProps> = ({
                                                     day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true
                                                 }) : "-"}
                                             </p>
-                                            <p className="text-[10px] text-white/50 leading-relaxed mt-1 line-clamp-2 italic font-medium" title={activeDayPoints[activeDayPoints.length - 1]?.address}>
-                                                {activeDayPoints[activeDayPoints.length - 1]?.address || "Destination point detected"}
+                                            <p className="text-[10px] text-white/50 leading-relaxed mt-1 line-clamp-2 italic font-medium" title={formatAddressText(activeDayPoints[activeDayPoints.length - 1]?.address)}>
+                                                {formatAddressText(activeDayPoints[activeDayPoints.length - 1]?.address)}
                                             </p>
                                         </div>
                                     </div>
@@ -1166,7 +1361,7 @@ const TravelPlaybackInline: React.FC<TravelPlaybackInlineProps> = ({
                                 </div>
                                 <div>
                                     <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest leading-none">Location</p>
-                                    <p className="text-xs font-semibold text-gray-600 mt-1 line-clamp-2">{currentPoint?.address || "Unknown location"}</p>
+                                    <p className="text-xs font-semibold text-gray-600 mt-1 line-clamp-2">{formatAddressText(currentPoint?.address)}</p>
                                 </div>
                             </div>
                         </div>
@@ -1188,6 +1383,13 @@ const TravelPlaybackInline: React.FC<TravelPlaybackInlineProps> = ({
                                 >
                                     <CornerUpRight size={12} />
                                     Turns
+                                </button>
+                                <button
+                                    onClick={() => toggleStatus('uturn')}
+                                    className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase transition-all flex items-center gap-1.5 shadow-sm border ${visibleStatuses.has('uturn') ? 'bg-orange-500 text-white border-orange-400' : 'bg-white text-gray-400 border-gray-100'}`}
+                                >
+                                    <RotateCcw size={12} />
+                                    U-Turn
                                 </button>
                             </div>
                         </div>

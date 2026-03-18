@@ -9,10 +9,10 @@ import Link from "next/link";
 import { toast } from "sonner";
 
 import {
-  useGetGpsDevicesQuery,
-  useCreateGpsDeviceMutation,
-  useUpdateGpsDeviceMutation,
-  useDeleteGpsDeviceMutation,
+    useGetGpsDevicesQuery,
+    useCreateGpsDeviceMutation,
+    useUpdateGpsDeviceMutation,
+    useDeleteGpsDeviceMutation,
 } from "@/redux/api/gpsDeviceApi";
 import { useGetOrganizationsQuery } from "@/redux/api/organizationApi";
 import { InventoryLayer } from "@/components/gps-devices/InventoryLayer";
@@ -150,7 +150,7 @@ export default function GpsDevicesPage() {
 
     const openEditModal = (device: GpsDeviceRecord) => {
         setEditingDevice(device);
-        const orgId = typeof device.organizationId === 'object' ? device.organizationId._id : device.organizationId;
+        const orgId = (device.organizationId && typeof device.organizationId === 'object') ? (device.organizationId as any)._id : device.organizationId;
         setFormData({
             imei: device.imei,
             simNumber: device.simNumber || "",
@@ -236,14 +236,14 @@ export default function GpsDevicesPage() {
             )
         },
         {
-          header: "Organization",
-          headerClassName: "min-w-[160px]",
-          cellClassName: "min-w-[160px]",
-          accessor: (row: GpsDeviceRecord) => (
-            <span className="block max-w-[160px] break-words leading-5 text-slate-200">
-                {typeof row.organizationId === 'object' ? row.organizationId.name : "N/A"}
-            </span>
-          )
+            header: "Organization",
+            headerClassName: "min-w-[160px]",
+            cellClassName: "min-w-[160px]",
+            accessor: (row: GpsDeviceRecord) => (
+                <span className="block max-w-[160px] break-words leading-5 text-slate-200">
+                    {(row.organizationId && typeof row.organizationId === 'object') ? (row.organizationId as any).name : "N/A"}
+                </span>
+            )
         },
         {
             header: "Actions",
@@ -287,11 +287,10 @@ export default function GpsDevicesPage() {
                             key={tab.key}
                             type="button"
                             onClick={() => setActiveTab(tab.key)}
-                            className={`rounded-full px-4 py-2 text-[10px] font-black uppercase tracking-[0.22em] transition ${
-                                activeTab === tab.key
+                            className={`rounded-full px-4 py-2 text-[10px] font-black uppercase tracking-[0.22em] transition ${activeTab === tab.key
                                     ? "border border-emerald-500/30 bg-emerald-500/20 text-emerald-100"
                                     : "border border-slate-800/80 bg-slate-950/70 text-slate-400 hover:text-slate-200"
-                            }`}
+                                }`}
                         >
                             {tab.label}
                         </button>
@@ -368,11 +367,10 @@ export default function GpsDevicesPage() {
                                     <button
                                         key={status}
                                         onClick={() => setAssignmentFilter(status)}
-                                        className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-widest transition ${
-                                            assignmentFilter === status
+                                        className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-widest transition ${assignmentFilter === status
                                                 ? "border-emerald-500/40 bg-emerald-500/20 text-emerald-200"
                                                 : "border-slate-800/80 bg-slate-950/60 text-slate-400 hover:text-slate-200"
-                                        }`}
+                                            }`}
                                     >
                                         {status}
                                     </button>
@@ -391,95 +389,95 @@ export default function GpsDevicesPage() {
                     </>
                 )}
 
-            {isModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
-                    <div className="w-full max-w-md rounded-2xl border border-slate-800/80 bg-slate-900/90 p-6 shadow-[0_30px_80px_-40px_rgba(15,23,42,0.9)]">
-                        <h2 className="text-xl font-black text-slate-100">{editingDevice ? "Edit Device" : "New Device"}</h2>
-                        <p className="text-xs text-slate-400">Register IMEI and SIM details.</p>
-                        <form onSubmit={handleSubmit} className="space-y-4">
-                            <div>
-                                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">IMEI</label>
-                                <input type="text" required className="w-full rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
-                                    value={formData.imei} onChange={e => setFormData({ ...formData, imei: e.target.value })} />
-                            </div>
-                            <div>
-                                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Organization</label>
-                                <select required className="w-full rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
-                                    value={formData.organizationId} onChange={e => setFormData({ ...formData, organizationId: e.target.value })}>
-                                    <option value="">Select Organization</option>
-                                    {organizations.map((org) => (
-                                        <option key={org._id} value={org._id}>{org.name}</option>
-                                    ))}
-                                </select>
-                            </div>
-                            <div>
-                                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Device Model</label>
-                                <input type="text" required className="w-full rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
-                                    value={formData.deviceModel} onChange={e => setFormData({ ...formData, deviceModel: e.target.value })} />
-                            </div>
-                            <div>
-                                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">SIM Number</label>
-                                <input type="text" className="w-full rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
-                                    value={formData.simNumber} onChange={e => setFormData({ ...formData, simNumber: e.target.value })} />
-                            </div>
+                {isModalOpen && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
+                        <div className="w-full max-w-md rounded-2xl border border-slate-800/80 bg-slate-900/90 p-6 shadow-[0_30px_80px_-40px_rgba(15,23,42,0.9)]">
+                            <h2 className="text-xl font-black text-slate-100">{editingDevice ? "Edit Device" : "New Device"}</h2>
+                            <p className="text-xs text-slate-400">Register IMEI and SIM details.</p>
+                            <form onSubmit={handleSubmit} className="space-y-4">
+                                <div>
+                                    <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">IMEI</label>
+                                    <input type="text" required className="w-full rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
+                                        value={formData.imei} onChange={e => setFormData({ ...formData, imei: e.target.value })} />
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Organization</label>
+                                    <select required className="w-full rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
+                                        value={formData.organizationId} onChange={e => setFormData({ ...formData, organizationId: e.target.value })}>
+                                        <option value="">Select Organization</option>
+                                        {organizations.map((org) => (
+                                            <option key={org._id} value={org._id}>{org.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Device Model</label>
+                                    <input type="text" required className="w-full rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
+                                        value={formData.deviceModel} onChange={e => setFormData({ ...formData, deviceModel: e.target.value })} />
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">SIM Number</label>
+                                    <input type="text" className="w-full rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
+                                        value={formData.simNumber} onChange={e => setFormData({ ...formData, simNumber: e.target.value })} />
+                                </div>
 
-                            {!editingDevice && (
-                                <>
-                                    <div className="col-span-full border-t border-slate-800/80 pt-4">
-                                        <p className="text-[11px] font-black uppercase tracking-[0.28em] text-slate-300">Inventory Information</p>
-                                    </div>
-                                    <div>
-                                        <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Purchase Date</label>
-                                        <input type="date" className="w-full rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
-                                            value={formData.purchaseDate} onChange={e => setFormData({ ...formData, purchaseDate: e.target.value })} />
-                                    </div>
-                                    <div>
-                                        <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Purchase Price</label>
-                                        <input type="number" min="0" step="0.01" className="w-full rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
-                                            value={formData.purchasePrice} onChange={e => setFormData({ ...formData, purchasePrice: e.target.value })} />
-                                    </div>
-                                    <div>
-                                        <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Supplier Name</label>
-                                        <input type="text" className="w-full rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
-                                            value={formData.supplierName} onChange={e => setFormData({ ...formData, supplierName: e.target.value })} />
-                                    </div>
-                                    <div>
-                                        <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Invoice Number</label>
-                                        <input type="text" className="w-full rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
-                                            value={formData.invoiceNumber} onChange={e => setFormData({ ...formData, invoiceNumber: e.target.value })} />
-                                    </div>
-                                    <div>
-                                        <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Stock Location</label>
-                                        <input type="text" className="w-full rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
-                                            value={formData.stockLocation} onChange={e => setFormData({ ...formData, stockLocation: e.target.value })} />
-                                    </div>
-                                    <div>
-                                        <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Rack Number</label>
-                                        <input type="text" className="w-full rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
-                                            value={formData.rackNumber} onChange={e => setFormData({ ...formData, rackNumber: e.target.value })} />
-                                    </div>
-                                    <div>
-                                        <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Inventory Status</label>
-                                        <select className="w-full rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
-                                            value={formData.inventoryStatus} onChange={e => setFormData({ ...formData, inventoryStatus: e.target.value })}>
-                                            {INVENTORY_STATUS_OPTIONS.map((status) => (
-                                                <option key={status} value={status}>
-                                                    {status.replace("_", " ").replace(/\b\w/g, (char) => char.toUpperCase())}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                </>
-                            )}
+                                {!editingDevice && (
+                                    <>
+                                        <div className="col-span-full border-t border-slate-800/80 pt-4">
+                                            <p className="text-[11px] font-black uppercase tracking-[0.28em] text-slate-300">Inventory Information</p>
+                                        </div>
+                                        <div>
+                                            <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Purchase Date</label>
+                                            <input type="date" className="w-full rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
+                                                value={formData.purchaseDate} onChange={e => setFormData({ ...formData, purchaseDate: e.target.value })} />
+                                        </div>
+                                        <div>
+                                            <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Purchase Price</label>
+                                            <input type="number" min="0" step="0.01" className="w-full rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
+                                                value={formData.purchasePrice} onChange={e => setFormData({ ...formData, purchasePrice: e.target.value })} />
+                                        </div>
+                                        <div>
+                                            <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Supplier Name</label>
+                                            <input type="text" className="w-full rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
+                                                value={formData.supplierName} onChange={e => setFormData({ ...formData, supplierName: e.target.value })} />
+                                        </div>
+                                        <div>
+                                            <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Invoice Number</label>
+                                            <input type="text" className="w-full rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
+                                                value={formData.invoiceNumber} onChange={e => setFormData({ ...formData, invoiceNumber: e.target.value })} />
+                                        </div>
+                                        <div>
+                                            <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Stock Location</label>
+                                            <input type="text" className="w-full rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
+                                                value={formData.stockLocation} onChange={e => setFormData({ ...formData, stockLocation: e.target.value })} />
+                                        </div>
+                                        <div>
+                                            <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Rack Number</label>
+                                            <input type="text" className="w-full rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
+                                                value={formData.rackNumber} onChange={e => setFormData({ ...formData, rackNumber: e.target.value })} />
+                                        </div>
+                                        <div>
+                                            <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Inventory Status</label>
+                                            <select className="w-full rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
+                                                value={formData.inventoryStatus} onChange={e => setFormData({ ...formData, inventoryStatus: e.target.value })}>
+                                                {INVENTORY_STATUS_OPTIONS.map((status) => (
+                                                    <option key={status} value={status}>
+                                                        {status.replace("_", " ").replace(/\b\w/g, (char) => char.toUpperCase())}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    </>
+                                )}
 
-                            <div className="flex gap-3 mt-6">
-                                <button type="button" onClick={closeModal} className="flex-1 rounded-xl border border-slate-800 bg-slate-950/70 py-2.5 text-[11px] font-black uppercase tracking-widest text-slate-200 hover:bg-slate-900">Cancel</button>
-                                <button type="submit" className="flex-1 rounded-xl bg-emerald-500/30 py-2.5 text-[11px] font-black uppercase tracking-widest text-emerald-100 hover:bg-emerald-500/40">Save</button>
-                            </div>
-                        </form>
+                                <div className="flex gap-3 mt-6">
+                                    <button type="button" onClick={closeModal} className="flex-1 rounded-xl border border-slate-800 bg-slate-950/70 py-2.5 text-[11px] font-black uppercase tracking-widest text-slate-200 hover:bg-slate-900">Cancel</button>
+                                    <button type="submit" className="flex-1 rounded-xl bg-emerald-500/30 py-2.5 text-[11px] font-black uppercase tracking-widest text-emerald-100 hover:bg-emerald-500/40">Save</button>
+                                </div>
+                            </form>
+                        </div>
                     </div>
-                </div>
-            )}
+                )}
             </div>
         </ApiErrorBoundary>
     );

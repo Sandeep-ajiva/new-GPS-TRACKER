@@ -21,9 +21,9 @@ import { isActiveStatus, filterExcludedIds } from "@/utils/mappingHelpers";
 
 export default function DriverMappingPage() {
     // 🔐 ORG CONTEXT UPDATE
-  const { role ,orgId, isSuperAdmin, isRootOrgAdmin } = useOrgContext();
+    const { role, orgId, isSuperAdmin, isRootOrgAdmin } = useOrgContext();
 
-  const canFilterOrg = isSuperAdmin || isRootOrgAdmin;
+    const canFilterOrg = isSuperAdmin || isRootOrgAdmin;
 
     // API Hooks
     const { data: mappingData, isLoading: isMappingLoading } = useGetVehicleDriverMappingsQuery(undefined, { refetchOnMountOrArgChange: true });
@@ -31,9 +31,9 @@ export default function DriverMappingPage() {
     const { data: driverData, isLoading: isDriverLoading } = useGetDriversQuery({ page: 0, limit: 1000 }, { refetchOnMountOrArgChange: true });
     const { data: gpsData, isLoading: isGpsLoading } = useGetGpsDevicesQuery({ page: 0, limit: 1000 }, { refetchOnMountOrArgChange: true });
 
-  // 🔐 Superadmin + root admin can see scoped org list
+    // 🔐 Superadmin + root admin can see scoped org list
     const { data: orgData, isLoading: isOrgLoading } = useGetOrganizationsQuery(undefined, {
-    skip: !canFilterOrg,
+        skip: !canFilterOrg,
         refetchOnMountOrArgChange: true
     });
 
@@ -56,7 +56,7 @@ export default function DriverMappingPage() {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [showFilters, setShowFilters] = useState(false);
     const [formData, setFormData] = useState({ vehicleId: "", driverId: "" });
-  const [modalOrgFilter, setModalOrgFilter] = useState(""); // 🔐 Organization filter for modal
+    const [modalOrgFilter, setModalOrgFilter] = useState(""); // 🔐 Organization filter for modal
     const [filters, setFilters] = useState({
         vehicleNumber: "",
         driverName: "",
@@ -71,10 +71,10 @@ export default function DriverMappingPage() {
         return value.toString?.() || null;
     };
 
-    const assignedVehicleIds = new Set(
+    const assignedVehicleIds = new Set<string>(
         mappings.map((m: any) => getEntityId(m.vehicleId)).filter(Boolean),
     );
-    const assignedDriverIds = new Set(
+    const assignedDriverIds = new Set<string>(
         mappings.map((m: any) => getEntityId(m.driverId)).filter(Boolean),
     );
 
@@ -95,42 +95,42 @@ export default function DriverMappingPage() {
         [drivers, assignedDriverIds],
     );
 
-  // 🔐 Filter vehicles by selected organization in modal (for superadmin/rootOrgAdmin)
-  const vehiclesByModalOrg = useMemo(() => {
-    if (!modalOrgFilter) return availableVehicles;
-    return availableVehicles.filter((v: any) => {
-      const vehicleOrgId = typeof v.organizationId === "object"
-        ? v.organizationId._id
-        : v.organizationId;
-      return vehicleOrgId === modalOrgFilter;
-    });
-  }, [availableVehicles, modalOrgFilter]);
+    // 🔐 Filter vehicles by selected organization in modal (for superadmin/rootOrgAdmin)
+    const vehiclesByModalOrg = useMemo(() => {
+        if (!modalOrgFilter) return availableVehicles;
+        return availableVehicles.filter((v: any) => {
+            const vehicleOrgId = typeof v.organizationId === "object"
+                ? v.organizationId._id
+                : v.organizationId;
+            return vehicleOrgId === modalOrgFilter;
+        });
+    }, [availableVehicles, modalOrgFilter]);
 
-  const selectedVehicle = useMemo(
-    () => vehiclesByModalOrg.find((v: any) => v._id === formData.vehicleId) || null,
-    [vehiclesByModalOrg, formData.vehicleId],
-  );
+    const selectedVehicle = useMemo(
+        () => (vehiclesByModalOrg.find((v: any) => v._id === formData.vehicleId) as any) || null,
+        [vehiclesByModalOrg, formData.vehicleId],
+    );
 
-  // 🔐 Filter drivers to only show those in the SAME organization as selected vehicle
-  const driversBySelectedVehicleOrg = useMemo(() => {
-    if (!selectedVehicle) return availableDrivers;
+    // 🔐 Filter drivers to only show those in the SAME organization as selected vehicle
+    const driversBySelectedVehicleOrg = useMemo(() => {
+        if (!selectedVehicle) return availableDrivers;
 
-    const vehicleOrgId = typeof selectedVehicle.organizationId === "object"
-      ? selectedVehicle.organizationId._id
-      : selectedVehicle.organizationId;
+        const vehicleOrgId = typeof selectedVehicle.organizationId === "object"
+            ? selectedVehicle.organizationId._id
+            : selectedVehicle.organizationId;
 
-    return availableDrivers.filter((d: any) => {
-      const driverOrgId = typeof d.organizationId === "object"
-        ? d.organizationId._id
-        : d.organizationId;
-      return driverOrgId === vehicleOrgId;
-    });
-  }, [selectedVehicle, availableDrivers]);
+        return availableDrivers.filter((d: any) => {
+            const driverOrgId = typeof d.organizationId === "object"
+                ? d.organizationId._id
+                : d.organizationId;
+            return driverOrgId === vehicleOrgId;
+        });
+    }, [selectedVehicle, availableDrivers]);
 
-  const selectedDriver = useMemo(
-    () => driversBySelectedVehicleOrg.find((d: any) => d._id === formData.driverId) || null,
-    [driversBySelectedVehicleOrg, formData.driverId],
-  );
+    const selectedDriver = useMemo(
+        () => (driversBySelectedVehicleOrg.find((d: any) => d._id === formData.driverId) as any) || null,
+        [driversBySelectedVehicleOrg, formData.driverId],
+    );
 
     const getMappedVehicle = (row: any) => {
         const vehicle = row.vehicleId;
@@ -283,13 +283,13 @@ export default function DriverMappingPage() {
 
     const openCreateModal = () => {
         setFormData({ vehicleId: "", driverId: "" });
-    setModalOrgFilter(""); // 🔐 Reset org filter when opening modal
+        setModalOrgFilter(""); // 🔐 Reset org filter when opening modal
         setIsModalOpen(true);
     };
 
     const closeModal = () => {
         setIsModalOpen(false);
-    setModalOrgFilter(""); // 🔐 Reset org filter when closing modal
+        setModalOrgFilter(""); // 🔐 Reset org filter when closing modal
     };
 
     const clearFilters = () => {
@@ -472,33 +472,33 @@ export default function DriverMappingPage() {
                             </div>
 
                             <form onSubmit={handleSubmit} className="px-8 py-8">
-                {/* 🔐 Optional organization filter for superadmin/root admin */}
-                {canFilterOrg && organizations.length > 0 && (
-                  <div className="mb-6">
-                    <label className="mb-2 block text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">
-                      <span className="inline-flex items-center gap-2">
-                        <Briefcase size={12} className="text-indigo-500" /> Filter by Organization
-                      </span>
-                    </label>
-                    <select
-                      className="admin-select-readable w-full h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20"
-                      value={modalOrgFilter}
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        setModalOrgFilter(value);
-                        // Reset selections when organization filter changes
-                        setFormData({ vehicleId: "", driverId: "" });
-                      }}
-                    >
-                      <option value="">All organizations (scoped)</option>
-                      {organizations.map((org: any) => (
-                        <option key={org._id} value={org._id}>
-                          {org.orgPath ? `${org.orgPath} / ${org.name}` : org.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
+                                {/* 🔐 Optional organization filter for superadmin/root admin */}
+                                {canFilterOrg && organizations.length > 0 && (
+                                    <div className="mb-6">
+                                        <label className="mb-2 block text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">
+                                            <span className="inline-flex items-center gap-2">
+                                                <Briefcase size={12} className="text-indigo-500" /> Filter by Organization
+                                            </span>
+                                        </label>
+                                        <select
+                                            className="admin-select-readable w-full h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20"
+                                            value={modalOrgFilter}
+                                            onChange={(e) => {
+                                                const value = e.target.value;
+                                                setModalOrgFilter(value);
+                                                // Reset selections when organization filter changes
+                                                setFormData({ vehicleId: "", driverId: "" });
+                                            }}
+                                        >
+                                            <option value="">All organizations (scoped)</option>
+                                            {organizations.map((org: any) => (
+                                                <option key={org._id} value={org._id}>
+                                                    {org.orgPath ? `${org.orgPath} / ${org.name}` : org.name}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
                                 <div className="grid grid-cols-1 md:grid-cols-11 gap-5 items-end">
                                     <div className="md:col-span-5">
                                         <label className="mb-2 block text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">
@@ -511,7 +511,7 @@ export default function DriverMappingPage() {
                                             onChange={(e) => setFormData({ ...formData, vehicleId: e.target.value })}
                                         >
                                             <option value="">Search vehicle plate...</option>
-                      {vehiclesByModalOrg.map((v: any) => (
+                                            {vehiclesByModalOrg.map((v: any) => (
                                                 <option key={v._id} value={v._id}>
                                                     {v.vehicleNumber} {v.model ? `(${v.model})` : ""}
                                                 </option>
@@ -536,7 +536,7 @@ export default function DriverMappingPage() {
                                             onChange={(e) => setFormData({ ...formData, driverId: e.target.value })}
                                         >
                                             <option value="">Search driver name...</option>
-                      {driversBySelectedVehicleOrg.map((d: any) => (
+                                            {driversBySelectedVehicleOrg.map((d: any) => (
                                                 <option key={d._id} value={d._id}>
                                                     {d.firstName} {d.lastName}
                                                 </option>

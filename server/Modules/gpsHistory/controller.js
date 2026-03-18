@@ -241,3 +241,9 @@ exports.getAlertSummary = async (req, res) =>
     validateVehicleId(req.params.vehicleId);
     return Service.getAlertSummary(req.params.vehicleId, req.orgScope, req.query);
   });
+
+exports.getACSummary = async (req, res) =>
+  handleAnalyticsRequest(res, async () => {
+    validateVehicleId(req.params.vehicleId);
+    return Service.getACSummary(req.params.vehicleId, req.orgScope, req.query);
+  });

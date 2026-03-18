@@ -67,11 +67,10 @@ export default function DepotsPage() {
       header: "Status",
       accessor: (row: any) => (
         <span
-          className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-widest ${
-            row.status === "active"
+          className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-widest ${row.status === "active"
               ? "border-emerald-500/30 bg-emerald-500/20 text-emerald-200"
               : "border-amber-500/30 bg-amber-500/20 text-amber-200"
-          }`}
+            }`}
         >
           {row.status}
         </span>
@@ -101,11 +100,10 @@ export default function DepotsPage() {
             <button
               key={status}
               onClick={() => setStatusFilter(status)}
-              className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-widest transition ${
-                statusFilter === status
+              className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-widest transition ${statusFilter === status
                   ? "border-emerald-500/40 bg-emerald-500/20 text-emerald-200"
                   : "border-slate-800/80 bg-slate-950/60 text-slate-400 hover:text-slate-200"
-              }`}
+                }`}
             >
               {status}
             </button>
@@ -119,7 +117,7 @@ export default function DepotsPage() {
           className="w-full max-w-xs rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2 text-xs font-semibold text-slate-200 outline-none focus:ring-2 focus:ring-emerald-500/30"
         />
       </div>
-      <Table columns={columns} data={filteredDepots} loading={false} variant="dark" />
+      <Table columns={columns as any} data={filteredDepots as any[]} loading={false} variant="dark" />
       <div className="grid gap-4 md:grid-cols-3">
         {filteredDepots.map((depot) => (
           <div key={depot.id} className="rounded-2xl border border-slate-800/80 bg-slate-900/60 p-5 shadow-[0_20px_60px_-40px_rgba(15,23,42,0.8)]">

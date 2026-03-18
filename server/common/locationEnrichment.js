@@ -187,6 +187,99 @@ function normalizeAddress(rawAddress) {
     .join(", ");
 }
 
+function isCoordinateLikeAddress(value) {
+  if (!value || typeof value !== "string") return false;
+  return /^-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?$/.test(value.trim());
+}
+
+function normalizePoiText(value) {
+  if (!value || typeof value !== "string") return "";
+  const normalized = value.trim();
+  return normalized && !isCoordinateLikeAddress(normalized) ? normalized : "";
+}
+
+function findFirstPoiText(values = []) {
+  for (const value of values) {
+    const normalized = normalizePoiText(value);
+    if (normalized) return normalized;
+  }
+  return "";
+}
+
+function deriveFallbackPoi(addressParts, formattedAddress) {
+  const poiName = findFirstPoiText([
+    addressParts?.road,
+    addressParts?.suburb,
+    addressParts?.neighbourhood,
+    addressParts?.neighborhood,
+    addressParts?.village,
+    addressParts?.locality,
+    addressParts?.city,
+    addressParts?.town,
+  ]);
+
+  const fallbackName =
+    poiName || findFirstPoiText([normalizeAddress(formattedAddress).split(",")[0]]);
+
+  if (!fallbackName) return null;
+
+  return {
+    poiId: null,
+    poiName: fallbackName,
+    poiType: "fallback",
+  };
+}
+
+function buildGeocodePayload(address, addressParts = {}) {
+  const normalizedAddress = normalizeAddress(address);
+
+  return {
+    address:
+      normalizedAddress && !isCoordinateLikeAddress(normalizedAddress)
+        ? normalizedAddress
+        : null,
+    fallbackPoi: deriveFallbackPoi(addressParts, normalizedAddress),
+  };
+}
+
+function getGoogleAddressComponent(addressComponents, acceptedTypes = []) {
+  if (!Array.isArray(addressComponents) || acceptedTypes.length === 0) {
+    return "";
+  }
+
+  for (const type of acceptedTypes) {
+    const component = addressComponents.find((item) =>
+      Array.isArray(item?.types) ? item.types.includes(type) : false,
+    );
+    const value = normalizePoiText(component?.long_name || component?.short_name);
+    if (value) return value;
+  }
+
+  return "";
+}
+
+function normalizeCachedGeocodePayload(cached) {
+  if (cached === null || typeof cached !== "object") return null;
+
+  const address = normalizeAddress(cached.address || "");
+  const fallbackPoiName = findFirstPoiText([
+    cached?.fallbackPoi?.poiName,
+    cached?.fallbackPoiName,
+    address.split(",")[0],
+  ]);
+
+  return {
+    address: address && !isCoordinateLikeAddress(address) ? address : null,
+    fallbackPoi: fallbackPoiName
+      ? {
+          poiId: null,
+          poiName: fallbackPoiName,
+          poiType: "fallback",
+        }
+      : null,
+  };
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // REDIS HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
@@ -248,7 +341,77 @@ async function reverseGeocodeWithGoogle(latitude, longitude) {
   }
 
   const data = await response.json();
-  return normalizeAddress(data?.results?.[0]?.formatted_address) || null;
+  const result = data?.results?.[0];
+
+  return buildGeocodePayload(result?.formatted_address, {
+    road: getGoogleAddressComponent(result?.address_components, ["route"]),
+    suburb: getGoogleAddressComponent(result?.address_components, [
+      "sublocality_level_1",
+      "sublocality",
+      "sublocality_level_2",
+    ]),
+    neighbourhood: getGoogleAddressComponent(result?.address_components, [
+      "neighborhood",
+    ]),
+    village: getGoogleAddressComponent(result?.address_components, [
+      "administrative_area_level_4",
+    ]),
+    locality: getGoogleAddressComponent(result?.address_components, [
+      "locality",
+    ]),
+    city: getGoogleAddressComponent(result?.address_components, [
+      "postal_town",
+      "administrative_area_level_2",
+    ]),
+    town: getGoogleAddressComponent(result?.address_components, [
+      "administrative_area_level_3",
+    ]),
+  });
+}
+
+
+async function reverseGeocodeWithLocationIQ(latitude, longitude) {
+  const key = process.env.LOCATIONIQ_API_KEY;
+  console.log(`[LOCATIONIQ] key=${!!key} keyLen=${key?.trim().length} lat=${latitude} lng=${longitude}`);
+  if (!key) return null;
+
+  const params = new URLSearchParams({
+    key,
+    lat: String(latitude),
+    lon: String(longitude),
+    format: "json",
+    zoom: "16",
+    addressdetails: "1",
+    normalizeaddress: "1",
+  });
+
+  const response = await fetchWithTimeout(
+    `https://us1.locationiq.com/v1/reverse?${params.toString()}`,
+    {
+      headers: {
+        "Accept-Language": "en",
+      },
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(`LocationIQ failed with HTTP ${response.status}`);
+  }
+
+  const data = await response.json();
+  const payload = buildGeocodePayload(data?.display_name, {
+    road: data?.address?.road,
+    suburb: data?.address?.suburb,
+    neighbourhood: data?.address?.neighbourhood || data?.address?.neighborhood,
+    village: data?.address?.village || data?.address?.hamlet,
+    locality: data?.address?.locality,
+    city: data?.address?.city,
+    town: data?.address?.town,
+  });
+  console.log(
+    `[LOCATIONIQ_RESULT] status=${response.status} display_name="${data?.display_name}" result="${payload?.address || ""}" error="${data?.error || "none"}"`,
+  );
+  return payload;
 }
 
 async function reverseGeocodeWithNominatim(latitude, longitude) {
@@ -276,49 +439,70 @@ async function reverseGeocodeWithNominatim(latitude, longitude) {
   }
 
   const data = await response.json();
-  return normalizeAddress(data?.display_name) || null;
+  return buildGeocodePayload(data?.display_name, {
+    road: data?.address?.road,
+    suburb: data?.address?.suburb,
+    neighbourhood: data?.address?.neighbourhood || data?.address?.neighborhood,
+    village: data?.address?.village || data?.address?.hamlet,
+    locality: data?.address?.locality,
+    city: data?.address?.city,
+    town: data?.address?.town,
+  });
 }
 
 async function reverseGeocode(latitude, longitude) {
   if (!isFiniteNumber(latitude) || !isFiniteNumber(longitude)) return null;
 
-  try {
-    let address = null;
+  const providers = [];
 
-    if (REVERSE_GEOCODE_PROVIDER === "google" && GOOGLE_GEOCODING_API_KEY) {
-      address = await reverseGeocodeWithGoogle(latitude, longitude);
-    } else {
-      address = await reverseGeocodeWithNominatim(latitude, longitude);
-    }
-
-    return address || `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
-  } catch (error) {
-    console.error("Reverse geocoding error:", error?.message || error);
-    return `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
+  if (REVERSE_GEOCODE_PROVIDER === "google" && GOOGLE_GEOCODING_API_KEY) {
+    providers.push(() => reverseGeocodeWithGoogle(latitude, longitude));
   }
+  if (process.env.LOCATIONIQ_API_KEY) {
+    providers.push(() => reverseGeocodeWithLocationIQ(latitude, longitude));
+  }
+  providers.push(() => reverseGeocodeWithNominatim(latitude, longitude));
+
+  for (const resolveAddress of providers) {
+    try {
+      const payload = await resolveAddress();
+      if (payload?.address && !isCoordinateLikeAddress(payload.address)) {
+        return payload;
+      }
+    } catch (error) {
+      console.error("Reverse geocoding error:", error?.message || error);
+    }
+  }
+
+  return null;
 }
 
-async function resolveAddressWithCache(latitude, longitude) {
+async function resolveReverseGeocodeWithCache(latitude, longitude) {
   if (!isFiniteNumber(latitude) || !isFiniteNumber(longitude)) return null;
 
   const cacheKey = buildAddressCacheKey(latitude, longitude);
   const cached = await readJsonCache(cacheKey);
 
-  // FIX #5: Use `!== null` not just truthy check
-  // WHY: An empty object {} or { address: "" } is truthy — we should still return it
-  //      to avoid re-fetching. null means cache miss.
-  if (cached !== null) return cached.address || null;
+  if (cached !== null) {
+    const normalizedCached = normalizeCachedGeocodePayload(cached);
+    if (normalizedCached?.address) {
+      return normalizedCached;
+    }
+  }
 
   if (pendingAddressResolutions.has(cacheKey)) {
     return pendingAddressResolutions.get(cacheKey);
   }
 
   const pendingPromise = (async () => {
-    const address = await reverseGeocode(latitude, longitude);
-    await writeJsonCache(cacheKey, ADDRESS_CACHE_TTL_SECONDS, {
-      address: address || "",
+    const geocodePayload = await reverseGeocode(latitude, longitude);
+    const ttl = geocodePayload?.address ? ADDRESS_CACHE_TTL_SECONDS : 30;
+
+    await writeJsonCache(cacheKey, ttl, {
+      address: geocodePayload?.address || "",
+      fallbackPoiName: geocodePayload?.fallbackPoi?.poiName || "",
     });
-    return address;
+    return geocodePayload;
   })()
     .catch((error) => {
       console.error("Address resolution error:", error?.message || error);
@@ -330,6 +514,14 @@ async function resolveAddressWithCache(latitude, longitude) {
 
   pendingAddressResolutions.set(cacheKey, pendingPromise);
   return pendingPromise;
+}
+
+async function resolveAddressWithCache(latitude, longitude) {
+  const geocodePayload = await resolveReverseGeocodeWithCache(
+    latitude,
+    longitude,
+  );
+  return geocodePayload?.address || null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -476,10 +668,15 @@ async function resolvePoiWithCache(organizationId, latitude, longitude) {
   const cached = await readJsonCache(cacheKey);
 
   if (cached !== null) {
-    // Return the cached result as-is.
-    // Blank cache ({ poiId: null, poiName: "" }) returns here too — that's correct.
-    // The caller (persistLocationEnrichment) handles blank via poi?.poiName || "".
-    return cached.poiId ? cached : null;
+    const cachedPoiName = normalizePoiText(cached.poiName);
+    if (cached.poiId || cachedPoiName) {
+      return {
+        ...cached,
+        poiId: cached.poiId || null,
+        poiName: cachedPoiName,
+      };
+    }
+    return null;
   }
 
   if (pendingPoiResolutions.has(cacheKey)) {
@@ -487,7 +684,12 @@ async function resolvePoiWithCache(organizationId, latitude, longitude) {
   }
 
   const pendingPromise = (async () => {
-    const poi = await queryNearestPoi(organizationId, latitude, longitude);
+    const dbPoi = await queryNearestPoi(organizationId, latitude, longitude);
+    const fallbackPoi = dbPoi
+      ? null
+      : (await resolveReverseGeocodeWithCache(latitude, longitude))
+          ?.fallbackPoi || null;
+    const poi = dbPoi || fallbackPoi;
 
     // FIX #1: Use different TTLs for found vs blank
     const ttl = poi ? POI_CACHE_TTL_SECONDS : POI_BLANK_CACHE_TTL_SECONDS;
@@ -590,31 +792,22 @@ async function persistLocationEnrichment({
 
   let liveUpdateIndex = -1;
   let liveUpdated = false;
+  const resolvedAddress =
+    address && !isCoordinateLikeAddress(address) ? address : null;
 
   // Build live data update
   const liveUpdate = {};
-  if (address) liveUpdate.currentLocation = address;
+  if (resolvedAddress) liveUpdate.currentLocation = resolvedAddress;
   if (poi !== undefined) {
     liveUpdate.poi = poi?.poiName || "";
     liveUpdate.poiId = poi?.poiId || null;
   }
 
-  if (
-    gpsDeviceId &&
-    Object.keys(liveUpdate).length > 0 &&
-    packetTimestampMs !== null
-  ) {
+    if (gpsDeviceId && Object.keys(liveUpdate).length > 0) {
     liveUpdateIndex = updates.length;
     updates.push(
       GpsLiveData.updateOne(
-        {
-          gpsDeviceId,
-          $or: [
-            { gpsTimestamp: { $lte: packetTimestampDate } },
-            { gpsTimestamp: { $exists: false } },
-            { gpsTimestamp: null },
-          ],
-        },
+        { gpsDeviceId },  // No timestamp gate for enrichment data
         { $set: liveUpdate },
       ),
     );
@@ -622,7 +815,7 @@ async function persistLocationEnrichment({
 
   // Build history update
   const historyUpdate = {};
-  if (address) historyUpdate.address = address;
+  if (resolvedAddress) historyUpdate.address = resolvedAddress;
   if (poi !== undefined) {
     historyUpdate.poi = poi?.poiName || "";
     historyUpdate.poiId = poi?.poiId || null;
@@ -634,7 +827,28 @@ async function persistLocationEnrichment({
     );
   }
 
-  // Vehicle update — gated by shouldUpdateVehicleLocation
+  // Always update address and poi on Vehicle — no distance gate needed
+  // Address/poi are enrichment data, not position data
+  if (vehicleId && (resolvedAddress || poi !== undefined)) {
+    const enrichmentOnlyUpdate = {};
+    if (resolvedAddress) {
+      enrichmentOnlyUpdate["currentLocation.address"] = resolvedAddress;
+    }
+    if (poi !== undefined) {
+      enrichmentOnlyUpdate.poi = poi?.poiName || "";
+      enrichmentOnlyUpdate.poiId = poi?.poiId || null;
+    }
+    if (Object.keys(enrichmentOnlyUpdate).length > 0) {
+      updates.push(
+        Vehicle.updateOne(
+          { _id: vehicleId },
+          { $set: enrichmentOnlyUpdate },
+        ),
+      );
+    }
+  }
+
+  // Position update — gated by shouldUpdateVehicleLocation
   if (
     vehicleId &&
     (await shouldUpdateVehicleLocation(
@@ -645,19 +859,6 @@ async function persistLocationEnrichment({
       syncVehicleLocation,
     ))
   ) {
-    const vehicleUpdate = {
-      "currentLocation.latitude": latitude,
-      "currentLocation.longitude": longitude,
-      "currentLocation.coordinates": [longitude, latitude],
-      lastUpdated: packetTimestamp,
-    };
-
-    if (address) vehicleUpdate["currentLocation.address"] = address;
-    if (poi !== undefined) {
-      vehicleUpdate.poi = poi?.poiName || "";
-      vehicleUpdate.poiId = poi?.poiId || null;
-    }
-
     updates.push(
       Vehicle.updateOne(
         {
@@ -668,7 +869,14 @@ async function persistLocationEnrichment({
             { lastUpdated: { $lte: packetTimestamp } },
           ],
         },
-        { $set: vehicleUpdate },
+        {
+          $set: {
+            "currentLocation.latitude": latitude,
+            "currentLocation.longitude": longitude,
+            "currentLocation.coordinates": [longitude, latitude],
+            lastUpdated: packetTimestamp,
+          },
+        },
       ),
     );
   }
@@ -685,19 +893,18 @@ async function persistLocationEnrichment({
   try {
     const io = getIo();
     if (io) {
-      const socketPayload = {
-        imei,
-        organizationId,
-        vehicleId,
-        gpsDeviceId,
-        latitude,
-        longitude,
-        gpsTimestamp: packetTimestamp,
-        currentLocation: address || undefined,
-        poi: poi?.poiName || "",
-        poiId: poi?.poiId || null,
-        updatedAt: new Date(),
-      };
+    const socketPayload = {
+  imei,
+  organizationId,
+  vehicleId,
+  gpsDeviceId,
+  gpsTimestamp: packetTimestamp,
+  currentLocation: resolvedAddress || undefined,
+  poi: poi?.poiName || "",
+  poiId: poi?.poiId || null,
+  updatedAt: new Date(),
+  _enrichmentOnly: true, // signals frontend: update address/poi only, not position
+};
 
       io.to(`device_${imei}`).emit("gps_update", socketPayload);
       io.to(`org_${organizationId}`).emit("gps_update", socketPayload);
@@ -714,6 +921,7 @@ async function persistLocationEnrichment({
 async function enrichLocationContext(context) {
   const latitude = Number(context.latitude);
   const longitude = Number(context.longitude);
+  console.log(`[ENRICHMENT] Running: lat=${latitude} lng=${longitude} org=${context.organizationId} vehicle=${context.vehicleId}`);
   if (!isFiniteNumber(latitude) || !isFiniteNumber(longitude)) return null;
 
   // Address and POI resolve in parallel — neither blocks the other
@@ -747,13 +955,28 @@ async function enrichLocationContext(context) {
 //   - This gives you geographic-cell-based deduplication, not time-based
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Minimum time between enrichments for same cell (prevents cache-hit spam)
+const ENRICHMENT_DEDUPE_MIN_MS = Number(
+  process.env.ENRICHMENT_DEDUPE_MIN_MS || 30000  // 30 seconds
+);
+
+// Track last enrichment time per dedupe key
+const lastEnrichmentTime = new Map();
+
 function scheduleLocationEnrichment(context) {
   if (!context) return;
 
   const dedupeKey = buildEnrichmentDedupeKey(context);
   if (dedupeKey) {
-    if (pendingEnrichmentKeys.has(dedupeKey)) return; // Already queued for this cell
+    // Block if already queued/running
+    if (pendingEnrichmentKeys.has(dedupeKey)) return;
+
+    // Block if enriched recently (prevents spam when vehicle is parked)
+    const lastTime = lastEnrichmentTime.get(dedupeKey);
+    if (lastTime && Date.now() - lastTime < ENRICHMENT_DEDUPE_MIN_MS) return;
+
     pendingEnrichmentKeys.add(dedupeKey);
+    lastEnrichmentTime.set(dedupeKey, Date.now());
     context._enrichmentKey = dedupeKey;
   }
 
@@ -779,7 +1002,14 @@ function drainEnrichmentQueue() {
           const key = context?._enrichmentKey || buildEnrichmentDedupeKey(context);
           if (key) pendingEnrichmentKeys.delete(key);
 
-          activeEnrichmentTasks = Math.max(0, activeEnrichmentTasks - 1);
+                    activeEnrichmentTasks = Math.max(0, activeEnrichmentTasks - 1);
+
+          // Clean up old dedupe time entries (older than 5 min)
+          const cutoff = Date.now() - 300000;
+          for (const [k, t] of lastEnrichmentTime.entries()) {
+            if (t < cutoff) lastEnrichmentTime.delete(k);
+          }
+
           drainEnrichmentQueue();
         });
     });
@@ -789,4 +1019,5 @@ function drainEnrichmentQueue() {
 module.exports = {
   scheduleLocationEnrichment,
   enrichLocationContext,
+  resolveAddressWithCache,
 };

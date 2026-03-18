@@ -16,6 +16,7 @@ type Point = {
   speed: number;
   ignition: boolean;
   alertType?: string;
+  heading?: number;
 };
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
@@ -232,97 +233,97 @@ export default function HistoryPlaybackMap({
         zoom={13}
         className="h-full w-full"
         attributionControl={false}
-        whenCreated={setMap}
+        ref={setMap}
       >
         <MapTileLayer satellite={mapTheme === "satellite"} />
-      <FitBounds pts={path} />
-      {/* Base route */}
-      <Polyline positions={path.map((p) => [p.lat, p.lng])} color="#94a3b8" weight={4} opacity={0.25} />
-      {/* Progressive route up to playhead */}
-      <Polyline positions={path.slice(0, playheadIndex + 1).map((p) => [p.lat, p.lng])} color="#0ea5e9" weight={5} opacity={0.9} />
-      <Marker position={[path[0].lat, path[0].lng]} icon={startIcon} />
-      <Marker position={[path[path.length - 1].lat, path[path.length - 1].lng]} icon={endIcon} />
-      {renderPoint && (
-        <Marker
-          position={[renderPoint.lat, renderPoint.lng]}
-          icon={carIcon(renderPoint.heading || 0)}
-        >
-          <Popup className="text-xs space-y-1">
-            <div>{new Date(renderPoint.timestamp).toLocaleString()}</div>
-            <div>Speed: {renderPoint.speed.toFixed(1)} km/h</div>
-            <div>Ignition: {renderPoint.ignition ? "ON" : "OFF"}</div>
-            <div>Heading: {renderPoint.heading?.toFixed?.(0) ?? "--"}°</div>
-          </Popup>
-        </Marker>
-      )}
+        <FitBounds pts={path} />
+        {/* Base route */}
+        <Polyline positions={path.map((p) => [p.lat, p.lng])} color="#94a3b8" weight={4} opacity={0.25} />
+        {/* Progressive route up to playhead */}
+        <Polyline positions={path.slice(0, playheadIndex + 1).map((p) => [p.lat, p.lng])} color="#0ea5e9" weight={5} opacity={0.9} />
+        <Marker position={[path[0].lat, path[0].lng]} icon={startIcon} />
+        <Marker position={[path[path.length - 1].lat, path[path.length - 1].lng]} icon={endIcon} />
+        {renderPoint && (
+          <Marker
+            position={[renderPoint.lat, renderPoint.lng]}
+            icon={carIcon(renderPoint.heading || 0)}
+          >
+            <Popup className="text-xs space-y-1">
+              <div>{new Date(renderPoint.timestamp).toLocaleString()}</div>
+              <div>Speed: {renderPoint.speed.toFixed(1)} km/h</div>
+              <div>Ignition: {renderPoint.ignition ? "ON" : "OFF"}</div>
+              <div>Heading: {renderPoint.heading?.toFixed?.(0) ?? "--"}°</div>
+            </Popup>
+          </Marker>
+        )}
 
-      {visibleStops.map((s, idx) => (
-        <Marker
-          key={`stop-${idx}`}
-          position={[s.lat, s.lng]}
-          icon={makeStopIcon(s.type === "idle" ? "#fbbf24" : "#ef4444")}
-          eventHandlers={{
-            click: (e) => {
-              map?.flyTo([s.lat, s.lng], Math.max(baseZoom, 16), { duration: 0.4 });
-              (e.target as any)?.openPopup?.();
-            },
-          }}
-        >
-          <Popup className="text-xs space-y-1">
-            <div className="font-semibold">{s.type === "idle" ? "Idle Stop" : "Stop"}</div>
-            <div>From: {new Date(s.start).toLocaleTimeString()}</div>
-            <div>To: {new Date(s.end).toLocaleTimeString()}</div>
-            <div>Duration: {Math.round((new Date(s.end).getTime() - new Date(s.start).getTime()) / 1000)}s</div>
-            <div>Ignition: {s.ignition ? "ON" : "OFF"}</div>
-          </Popup>
-        </Marker>
-      ))}
+        {visibleStops.map((s, idx) => (
+          <Marker
+            key={`stop-${idx}`}
+            position={[s.lat, s.lng]}
+            icon={makeStopIcon(s.type === "idle" ? "#fbbf24" : "#ef4444")}
+            eventHandlers={{
+              click: (e) => {
+                map?.flyTo([s.lat, s.lng], Math.max(baseZoom, 16), { duration: 0.4 });
+                (e.target as any)?.openPopup?.();
+              },
+            }}
+          >
+            <Popup className="text-xs space-y-1">
+              <div className="font-semibold">{s.type === "idle" ? "Idle Stop" : "Stop"}</div>
+              <div>From: {new Date(s.start).toLocaleTimeString()}</div>
+              <div>To: {new Date(s.end).toLocaleTimeString()}</div>
+              <div>Duration: {Math.round((new Date(s.end).getTime() - new Date(s.start).getTime()) / 1000)}s</div>
+              <div>Ignition: {s.ignition ? "ON" : "OFF"}</div>
+            </Popup>
+          </Marker>
+        ))}
 
-      {events.map((ev, idx) => {
-        if (ev.type === "turn") {
-          const side = ev.subtype || "";
-          const color = side.includes("left") ? "#f97316" : "#22c55e";
-          return (
-            <Marker key={`turn-${idx}`} position={[ev.lat, ev.lng]} icon={makeStopIcon(color)}>
-              <Popup className="text-xs space-y-1">
-                <div>{(ev.subtype || "turn").replace("-", " ")}</div>
-                <div>{new Date(ev.timestamp).toLocaleTimeString()}</div>
-                <div>Speed: {ev.speed.toFixed(1)} km/h</div>
-                <div>Ignition: {ev.ignition ? "ON" : "OFF"}</div>
-                <div>Heading: {ev.heading.toFixed(0)}°</div>
-              </Popup>
-            </Marker>
-          );
-        }
-        if (ev.type === "harsh-brake") {
-          return (
-            <Marker key={`hb-${idx}`} position={[ev.lat, ev.lng]} icon={makeStopIcon("#ef4444")}>
-              <Popup className="text-xs space-y-1">
-                <div>Harsh Brake</div>
-                <div>{ev.timestamp ? new Date(ev.timestamp).toLocaleTimeString() : ""}</div>
-                <div>Speed: {ev.speed.toFixed(1)} km/h</div>
-                <div>Heading: {ev.heading?.toFixed?.(0) ?? "--"}°</div>
-                <div>Ignition: {ev.ignition ? "ON" : "OFF"}</div>
-              </Popup>
-            </Marker>
-          );
-        }
-        if (ev.type === "stop" || ev.type === "idle") {
-          const color = ev.type === "idle" ? "#fbbf24" : "#ef4444";
-          return (
-            <Marker key={`stop-${idx}`} position={[ev.lat, ev.lng]} icon={makeStopIcon(color)}>
-              <Popup className="text-xs space-y-1">
-                <div>{ev.type === "idle" ? "Idle" : "Stop"}</div>
-                <div>Start: {new Date(ev.start).toLocaleTimeString()}</div>
-                <div>End: {new Date(ev.end).toLocaleTimeString()}</div>
-                <div>Duration: {Math.round(ev.durationSec)}s</div>
-              </Popup>
-            </Marker>
-          );
-        }
-        return null;
-      })}
-    </MapContainer>
+        {events.map((ev, idx) => {
+          if (ev.type === "turn") {
+            const side = ev.subtype || "";
+            const color = side.includes("left") ? "#f97316" : "#22c55e";
+            return (
+              <Marker key={`turn-${idx}`} position={[ev.lat, ev.lng]} icon={makeStopIcon(color)}>
+                <Popup className="text-xs space-y-1">
+                  <div>{(ev.subtype || "turn").replace("-", " ")}</div>
+                  <div>{new Date(ev.timestamp).toLocaleTimeString()}</div>
+                  <div>Speed: {ev.speed.toFixed(1)} km/h</div>
+                  <div>Ignition: {ev.ignition ? "ON" : "OFF"}</div>
+                  <div>Heading: {ev.heading.toFixed(0)}°</div>
+                </Popup>
+              </Marker>
+            );
+          }
+          if (ev.type === "harsh-brake") {
+            return (
+              <Marker key={`hb-${idx}`} position={[ev.lat, ev.lng]} icon={makeStopIcon("#ef4444")}>
+                <Popup className="text-xs space-y-1">
+                  <div>Harsh Brake</div>
+                  <div>{ev.timestamp ? new Date(ev.timestamp).toLocaleTimeString() : ""}</div>
+                  <div>Speed: {ev.speed.toFixed(1)} km/h</div>
+                  <div>Heading: {ev.heading?.toFixed?.(0) ?? "--"}°</div>
+                  <div>Ignition: {ev.ignition ? "ON" : "OFF"}</div>
+                </Popup>
+              </Marker>
+            );
+          }
+          if (ev.type === "stop" || ev.type === "idle") {
+            const color = ev.type === "idle" ? "#fbbf24" : "#ef4444";
+            return (
+              <Marker key={`stop-${idx}`} position={[ev.lat, ev.lng]} icon={makeStopIcon(color)}>
+                <Popup className="text-xs space-y-1">
+                  <div>{ev.type === "idle" ? "Idle" : "Stop"}</div>
+                  <div>Start: {new Date(ev.start).toLocaleTimeString()}</div>
+                  <div>End: {new Date(ev.end).toLocaleTimeString()}</div>
+                  <div>Duration: {Math.round(ev.durationSec)}s</div>
+                </Popup>
+              </Marker>
+            );
+          }
+          return null;
+        })}
+      </MapContainer>
 
       {showControls && (
         <>

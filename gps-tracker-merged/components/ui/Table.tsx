@@ -2,11 +2,11 @@
 
 import { ReactNode } from "react";
 
-type TableRow = Record<string, unknown>;
+type TableRow = Record<string, any>;
 
 interface TableColumn<T extends TableRow> {
   header: string;
-  accessor: keyof T | ((row: T) => ReactNode);
+  accessor: string | ((row: T) => ReactNode);
   headerClassName?: string;
   cellClassName?: string;
 }
@@ -60,37 +60,37 @@ export default function Table<T extends TableRow>({
     <div className={`${containerClass} overflow-hidden`}>
       <div className="overflow-x-auto">
         <table className="w-full min-w-max table-auto text-sm">
-        <thead>
-          <tr className={headerClass}>
-            {columns.map((col, idx) => (
-              <th
-                key={idx}
-                className={`whitespace-nowrap px-4 py-3 sm:px-6 sm:py-4 text-left text-[10px] font-black uppercase tracking-[0.32em] ${col.headerClassName || ""}`}
-              >
-                {col.header}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {data.map((row, rowIdx) => (
-            <tr
-              key={rowIdx}
-              className={`border-b ${isDark ? "border-[#1E293B]" : "border-slate-100"} ${hoverClass} transition-colors`}
-            >
-              {columns.map((col, colIdx) => (
-                <td
-                  key={colIdx}
-                  className={`px-4 py-3 align-top sm:px-6 sm:py-4 font-medium ${cellTextClass} ${col.cellClassName || ""}`}
+          <thead>
+            <tr className={headerClass}>
+              {columns.map((col, idx) => (
+                <th
+                  key={idx}
+                  className={`whitespace-nowrap px-4 py-3 sm:px-6 sm:py-4 text-left text-[10px] font-black uppercase tracking-[0.32em] ${col.headerClassName || ""}`}
                 >
-                  {typeof col.accessor === "function"
-                    ? col.accessor(row)
-                    : (row[col.accessor] ?? "-") as ReactNode}
-                </td>
+                  {col.header}
+                </th>
               ))}
             </tr>
-          ))}
-        </tbody>
+          </thead>
+          <tbody>
+            {data.map((row, rowIdx) => (
+              <tr
+                key={rowIdx}
+                className={`border-b ${isDark ? "border-[#1E293B]" : "border-slate-100"} ${hoverClass} transition-colors`}
+              >
+                {columns.map((col, colIdx) => (
+                  <td
+                    key={colIdx}
+                    className={`px-4 py-3 align-top sm:px-6 sm:py-4 font-medium ${cellTextClass} ${col.cellClassName || ""}`}
+                  >
+                    {typeof col.accessor === "function"
+                      ? col.accessor(row)
+                      : (row[col.accessor] ?? "-") as ReactNode}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
         </table>
       </div>
     </div>

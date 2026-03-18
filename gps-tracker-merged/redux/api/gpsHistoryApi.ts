@@ -79,6 +79,17 @@ export const gpsHistoryApi = baseApi.injectEndpoints({
             }),
             providesTags: ["History"],
         }),
+        getACSummary: builder.query({
+            query: ({ vehicleId, from, to, page, limit }: HistoryQueryParams) => ({
+                url: `/gps-history/ac-summary/${vehicleId}`,
+                params: {
+                    ...buildDateParams({ from, to }),
+                    ...(page !== undefined ? { page } : {}),
+                    ...(limit !== undefined ? { limit } : {}),
+                },
+            }),
+            providesTags: ["History"],
+        }),
     }),
 });
 
@@ -92,4 +103,5 @@ export const {
     useGetTripSummaryQuery,
     useGetDaywiseDistanceQuery,
     useGetAlertSummaryQuery,
+    useGetACSummaryQuery,
 } = gpsHistoryApi;

@@ -44,49 +44,49 @@ export default function HistoryPage() {
     return (
         <ApiErrorBoundary hasError={false}>
             <div className="flex h-[calc(100vh-100px)] flex-col space-y-4">
-            <div className="rounded-2xl border border-slate-800/80 bg-slate-900/60 p-4 shadow-[0_20px_60px_-40px_rgba(15,23,42,0.8)]">
-                <div className="mb-4">
-                    <p className="text-[11px] font-black uppercase tracking-[0.3em] text-emerald-400/70">History</p>
-                    <h1 className="text-2xl font-black text-slate-100">Playback</h1>
-                    <p className="text-sm text-slate-400">Review trips by vehicle and time range.</p>
+                <div className="rounded-2xl border border-slate-800/80 bg-slate-900/60 p-4 shadow-[0_20px_60px_-40px_rgba(15,23,42,0.8)]">
+                    <div className="mb-4">
+                        <p className="text-[11px] font-black uppercase tracking-[0.3em] text-emerald-400/70">History</p>
+                        <h1 className="text-2xl font-black text-slate-100">Playback</h1>
+                        <p className="text-sm text-slate-400">Review trips by vehicle and time range.</p>
+                    </div>
+                    <form onSubmit={handleSearch} className="flex flex-wrap gap-4 items-end w-full">
+                        <div className="flex-1 min-w-[220px]">
+                            <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Select Vehicle</label>
+                            <select required className="w-full rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
+                                value={vehicleId} onChange={e => { setVehicleId(e.target.value); setShouldFetch(false); }}>
+                                <option value="">Choose Vehicle...</option>
+                                {vehicles.map((v: any) => (
+                                    <option key={v._id} value={v._id}>{v.vehicleNumber} ({v.model})</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">From Date/Time</label>
+                            <input type="datetime-local" required className="rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
+                                value={dateFrom} onChange={e => { setDateFrom(e.target.value); setShouldFetch(false); }} />
+                        </div>
+                        <div>
+                            <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">To Date/Time</label>
+                            <input type="datetime-local" required className="rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
+                                value={dateTo} onChange={e => { setDateTo(e.target.value); setShouldFetch(false); }} />
+                        </div>
+                        <button type="submit" disabled={isLoading || isFetching} className="rounded-xl border border-emerald-500/30 bg-emerald-500/20 px-6 py-2.5 text-xs font-black uppercase tracking-widest text-emerald-200 transition hover:bg-emerald-500/30 disabled:opacity-50">
+                            <Search size={16} /> {isLoading || isFetching ? "Loading..." : "View History"}
+                        </button>
+                    </form>
                 </div>
-                <form onSubmit={handleSearch} className="flex flex-wrap gap-4 items-end w-full">
-                    <div className="flex-1 min-w-[220px]">
-                        <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Select Vehicle</label>
-                        <select required className="w-full rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
-                            value={vehicleId} onChange={e => { setVehicleId(e.target.value); setShouldFetch(false); }}>
-                            <option value="">Choose Vehicle...</option>
-                            {vehicles.map((v: any) => (
-                                <option key={v._id} value={v._id}>{v.vehicleNumber} ({v.model})</option>
-                            ))}
-                        </select>
-                    </div>
-                    <div>
-                        <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">From Date/Time</label>
-                        <input type="datetime-local" required className="rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
-                            value={dateFrom} onChange={e => { setDateFrom(e.target.value); setShouldFetch(false); }} />
-                    </div>
-                    <div>
-                        <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">To Date/Time</label>
-                        <input type="datetime-local" required className="rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
-                            value={dateTo} onChange={e => { setDateTo(e.target.value); setShouldFetch(false); }} />
-                    </div>
-                    <button type="submit" disabled={isLoading || isFetching} className="rounded-xl border border-emerald-500/30 bg-emerald-500/20 px-6 py-2.5 text-xs font-black uppercase tracking-widest text-emerald-200 transition hover:bg-emerald-500/30 disabled:opacity-50">
-                        <Search size={16} /> {isLoading || isFetching ? "Loading..." : "View History"}
-                    </button>
-                </form>
-            </div>
 
-            <div className="relative flex-1 rounded-2xl border border-slate-800/80 bg-slate-900/60 p-1 shadow-[0_20px_60px_-40px_rgba(15,23,42,0.8)]">
-                {historyData ? (
-                    <HistoryMap pathData={historyData} />
-                ) : (
-                    <div className="h-full w-full flex flex-col items-center justify-center text-slate-400">
-                        <Search size={48} className="mb-4 opacity-20" />
-                        <p className="font-semibold">Select vehicle and date range to view history</p>
-                    </div>
-                )}
-            </div>
+                <div className="relative flex-1 rounded-2xl border border-slate-800/80 bg-slate-900/60 p-1 shadow-[0_20px_60px_-40px_rgba(15,23,42,0.8)]">
+                    {historyData ? (
+                        <HistoryMap routes={[historyData.map(p => ({ lat: p.latitude, lng: p.longitude }))] as any} selectedRouteIndex={0} />
+                    ) : (
+                        <div className="h-full w-full flex flex-col items-center justify-center text-slate-400">
+                            <Search size={48} className="mb-4 opacity-20" />
+                            <p className="font-semibold">Select vehicle and date range to view history</p>
+                        </div>
+                    )}
+                </div>
             </div>
         </ApiErrorBoundary>
     );

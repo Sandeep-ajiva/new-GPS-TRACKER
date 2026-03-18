@@ -42,7 +42,7 @@ interface ApiLiveDataItem {
   vehicleId?: { _id: string } | string;
   currentSpeed?: number;
   updatedAt?: string;
-  currentLocation?: string;
+  currentLocation?: string | { address?: string; addressLine?: string; city?: string; state?: string; country?: string; pincode?: string | number; };
   movementStatus?: string;
   latitude?: number;
   longitude?: number;
@@ -93,7 +93,7 @@ export default function DashboardPage() {
   const { data: orgsData, isLoading: isOrgsLoading } = useGetOrganizationsQuery({});
   const { data: vehiclesData, isLoading: isVehiclesLoading } = useGetVehiclesQuery({});
   const { data: devicesData, isLoading: isDevicesLoading } = useGetGpsDevicesQuery({});
-  const { data: liveData, isLoading: isLiveLoading } = useGetLiveVehiclesQuery({});
+  const { data: liveData, isLoading: isLiveLoading } = useGetLiveVehiclesQuery(undefined);
 
   const orgs: OrgRecord[] = useMemo(() => {
     if (!orgsData?.docs) return [];
@@ -117,7 +117,7 @@ export default function DashboardPage() {
     // Create a map of live data by vehicleId for quick lookup
     const liveDataMap = new Map();
     if (liveData?.data) {
-      liveData.data.forEach((item: ApiLiveDataItem) => {
+      (liveData.data as any[]).forEach((item: ApiLiveDataItem) => {
         if (item.vehicleId) {
           const vId = typeof item.vehicleId === 'string' ? item.vehicleId : item.vehicleId._id;
           liveDataMap.set(vId, item);
@@ -258,8 +258,8 @@ export default function DashboardPage() {
                     }
                   }}
                   className={`w-full rounded-2xl border px-4 py-4 text-left transition ${isActive
-                      ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-100"
-                      : "border-slate-800/80 bg-slate-900/60 text-slate-200 hover:border-emerald-500/20"
+                    ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-100"
+                    : "border-slate-800/80 bg-slate-900/60 text-slate-200 hover:border-emerald-500/20"
                     }`}
                 >
                   <div className="flex items-center justify-between">
@@ -371,8 +371,8 @@ export default function DashboardPage() {
                           key={vehicle.id}
                           onClick={() => setSelectedVehicleId(vehicle.id)}
                           className={`rounded-xl border px-4 py-3 text-left transition ${active
-                              ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-100"
-                              : "border-slate-800/80 bg-slate-950/60 text-slate-200 hover:border-emerald-500/20"
+                            ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-100"
+                            : "border-slate-800/80 bg-slate-950/60 text-slate-200 hover:border-emerald-500/20"
                             }`}
                         >
                           <div className="flex items-center justify-between">

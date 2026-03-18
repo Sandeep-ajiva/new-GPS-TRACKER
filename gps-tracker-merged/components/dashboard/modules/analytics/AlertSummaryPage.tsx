@@ -127,20 +127,20 @@ export function AlertSummaryPage({
                         </div>
 
                         {/* Summary Header Row */}
-                        <div className="grid grid-cols-[140px_160px_120px_120px_100px_160px_100px_1fr_100px] border-b border-slate-200 bg-[#f8faf8] sticky top-0 z-20">
+                        <div className="grid grid-cols-[140px_160px_120px_120px_100px_160px_100px_1fr_100px] border-b border-slate-200 bg-slate-900 sticky top-0 z-20 shadow-sm">
                             {["Alert DateTime", "Branch", "Vehicle", "Driver", "Alert", "Alert Information", "Duration", "Location", "No of Alerts"].map((h) => (
-                                <div key={h} className="border-r border-slate-200 p-2 text-[10px] font-bold text-slate-500 text-center uppercase tracking-tight">
+                                <div key={h} className="border-r border-white/5 p-3 text-[10px] font-black text-slate-300 text-center uppercase tracking-[0.1em]">
                                     {h}
                                 </div>
                             ))}
                         </div>
 
                         {/* Totals Row */}
-                        <div className="grid grid-cols-[140px_160px_120px_120px_100px_160px_100px_1fr_100px] bg-slate-100/50 border-b border-slate-200">
-                            <div className="col-span-6"></div>
-                            <div className="p-2 text-[10px] font-black text-slate-600 text-center">00:00:00</div>
+                        <div className="grid grid-cols-[140px_160px_120px_120px_100px_160px_100px_1fr_100px] bg-slate-50 border-b-2 border-slate-200">
+                            <div className="col-span-6 p-2 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right pr-4">Total for Selection:</div>
+                            <div className="p-2 text-[10px] font-black text-slate-800 text-center flex items-center justify-center bg-slate-100/50 italic">00:00:00</div>
                             <div className="p-2"></div>
-                            <div className="p-2 text-[10px] font-black text-slate-600 text-center">{totalAlerts}</div>
+                            <div className="p-2 text-[11px] font-black text-[#2f8d35] text-center flex items-center justify-center bg-[#2f8d35]/5">{totalAlerts}</div>
                         </div>
 
                         {/* Grouped Content */}
@@ -151,44 +151,86 @@ export function AlertSummaryPage({
                                         {/* Vehicle Summary Row (The Dropdown Trigger) */}
                                         <div
                                             onClick={() => toggleVehicle(vehicleNum)}
-                                            className="grid grid-cols-[140px_160px_120px_120px_100px_160px_100px_1fr_100px] cursor-pointer bg-[#2f8d35]/5 hover:bg-[#2f8d35]/10 border-b border-[#2f8d35]/20 group transition-colors"
+                                            className="grid grid-cols-[140px_160px_120px_120px_100px_160px_100px_1fr_100px] cursor-pointer bg-white hover:bg-slate-50 border-b border-slate-200 group transition-all duration-300 relative"
                                         >
-                                            <div className="p-2.5 flex items-center justify-center gap-2 border-r border-[#2f8d35]/10">
-                                                <div className={`flex h-4 w-4 items-center justify-center rounded-sm text-white font-bold text-xs ${expandedVehicles[vehicleNum] ? 'bg-amber-500' : 'bg-[#2f8d35]'}`}>
-                                                    {expandedVehicles[vehicleNum] ? '-' : '+'}
+                                            {/* Selection indicator line */}
+                                            <div className={`absolute left-0 top-0 bottom-0 w-1 transition-all duration-300 ${expandedVehicles[vehicleNum] ? 'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]' : 'bg-[#2f8d35]'}`} />
+
+                                            <div className="p-3 flex items-center justify-center gap-2 border-r border-slate-100">
+                                                <div className={`flex h-5 w-5 items-center justify-center rounded-md shadow-sm transition-all duration-300 text-white font-bold text-xs ${expandedVehicles[vehicleNum] ? 'bg-amber-500 rotate-180' : 'bg-[#2f8d35]'}`}>
+                                                    {expandedVehicles[vehicleNum] ? '−' : '+'}
                                                 </div>
                                             </div>
-                                            <div className="p-2.5 text-[10px] text-slate-500 text-center border-r border-[#2f8d35]/10 truncate uppercase font-medium">{vehicleAlerts[0]?.branch}</div>
-                                            <div className="p-2.5 text-[11px] text-[#2f8d35] font-black text-center border-r border-[#2f8d35]/10 uppercase underline decoration-[#2f8d35]/20">{vehicleNum}</div>
-                                            <div className="p-2.5 text-[10px] text-slate-500 text-center border-r border-[#2f8d35]/10 truncate uppercase italic">{vehicleAlerts[0]?.driver}</div>
-                                            <div className="p-2.5 text-[10px] text-slate-400 text-center border-r border-[#2f8d35]/10">SUMMARY</div>
-                                            <div className="p-2.5 text-[10px] text-slate-400 text-center border-r border-[#2f8d35]/10 uppercase truncate px-4 font-black">FLEET DATA LOG</div>
-                                            <div className="p-2.5 text-[10px] text-slate-600 text-center border-r border-[#2f8d35]/10 font-mono italic">00:00:00</div>
-                                            <div className="p-2.5 text-[10px] text-slate-400 text-center border-r border-[#2f8d35]/10">VARIOUS LOCATIONS</div>
-                                            <div className="p-2.5 text-[11px] text-slate-900 font-bold text-center bg-white/50">{vehicleAlerts.length}</div>
+                                            <div className="p-3 text-[10px] text-slate-500 text-center border-r border-slate-100 truncate uppercase font-bold tracking-tight">{vehicleAlerts[0]?.branch}</div>
+                                            <div className="p-3 text-[11px] text-[#2f8d35] font-black text-center border-r border-slate-100 uppercase tracking-wider">{vehicleNum}</div>
+                                            <div className="p-3 text-[10px] text-slate-500 text-center border-r border-slate-100 truncate uppercase italic font-medium">{vehicleAlerts[0]?.driver}</div>
+                                            <div className="p-3 text-[10px] text-slate-400 font-black text-center border-r border-slate-100 tracking-widest opacity-80">SUMMARY</div>
+                                            <div className="p-3 text-[10px] text-orange-600 text-center border-r border-slate-100 uppercase truncate px-4 font-black tracking-tight flex items-center justify-center gap-1">
+                                                {Math.max(...vehicleAlerts.map((a: any) => a.speed || 0)) > 0 ? (
+                                                    <>
+                                                        <span className="text-[8px] text-slate-400">MAX</span>
+                                                        {Math.max(...vehicleAlerts.map((a: any) => a.speed || 0))} KM/H
+                                                    </>
+                                                ) : "FLEET DATA LOG"}
+                                            </div>
+                                            <div className="p-3 text-[10px] text-slate-600 text-center border-r border-slate-100 font-black italic opacity-70">00:00:00</div>
+                                            <div className="p-3 text-[10px] text-slate-400 text-center border-r border-slate-100 tracking-tight font-medium opacity-80">VARIOUS LOCATIONS</div>
+                                            <div className={`p-3 text-[11px] text-slate-900 font-black text-center transition-colors duration-300 ${expandedVehicles[vehicleNum] ? 'bg-amber-50' : 'bg-slate-50'}`}>{vehicleAlerts.length}</div>
                                         </div>
 
                                         {/* Individual Alert Rows (The Dropdown Content) */}
-                                        {expandedVehicles[vehicleNum] && vehicleAlerts.map((row: any, idx: number) => (
-                                            <div
-                                                key={row.id || idx}
-                                                className={`grid grid-cols-[140px_160px_120px_120px_100px_160px_100px_1fr_100px] border-b border-slate-100 hover:bg-slate-50 transition-colors ${idx % 2 === 0 ? 'bg-[#e1f5e2]/20' : 'bg-white'}`}
-                                            >
-                                                <div className="p-2.5 text-[10px] text-slate-600 text-center border-r border-slate-100/50">
-                                                    {row.gpsTimestamp ? new Date(row.gpsTimestamp).toLocaleString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }).replace(/\//g, '-') : "-"}
+                                        {expandedVehicles[vehicleNum] && vehicleAlerts.map((row: any, idx: number) => {
+                                            // Dynamic Styling based on alert type
+                                            const getAlertStyle = (type: string) => {
+                                                const normalized = type?.toUpperCase() || ''
+                                                if (normalized.includes('OVERSPEED')) return 'text-orange-600 bg-orange-50 border-orange-100'
+                                                if (normalized.includes('IGNITION ON')) return 'text-emerald-600 bg-emerald-50 border-emerald-100'
+                                                if (normalized.includes('IGNITION OFF')) return 'text-slate-600 bg-slate-50 border-slate-100'
+                                                if (normalized.includes('LOW BATTERY')) return 'text-red-600 bg-red-50 border-red-100'
+                                                return 'text-[#2f8d35] bg-[#e1f5e2]/20 border-slate-100'
+                                            }
+
+                                            const alertStyle = getAlertStyle(row.type)
+
+                                            // Detect if we have speed detail
+                                            const hasSpeedInfo = row.type?.toUpperCase().includes('OVERSPEED')
+                                            const speedLimit = row.limit !== undefined && row.limit !== null ? row.limit : '-'
+                                            const currentSpeed = row.speed !== undefined && row.speed !== null ? row.speed : '-'
+
+                                            return (
+                                                <div
+                                                    key={row.id || idx}
+                                                    className={`grid grid-cols-[140px_160px_120px_120px_100px_160px_100px_1fr_100px] border-b border-slate-100 items-center hover:bg-slate-50 transition-all duration-200`}
+                                                >
+                                                    <div className="p-2.5 text-[10px] text-slate-600 text-center border-r border-slate-100/50 font-medium">
+                                                        {row.gpsTimestamp ? new Date(row.gpsTimestamp).toLocaleString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }).replace(/\//g, '-') : "-"}
+                                                    </div>
+                                                    <div className="p-2.5 text-[10px] text-slate-900 text-center border-r border-slate-100/50 truncate uppercase font-medium">{row.branch}</div>
+                                                    <div className="p-2.5 text-[10px] text-slate-900 font-bold text-center border-r border-slate-100/50 uppercase italic">{row.vehicle}</div>
+                                                    <div className="p-2.5 text-[10px] text-slate-900 text-center border-r border-slate-100/50 truncate uppercase italic">{row.driver}</div>
+                                                    <div className={`p-2.5 text-[10px] font-black text-center border-r border-slate-100/50 uppercase flex items-center justify-center`}>
+                                                        <span className={`px-2 py-0.5 rounded-full border ${alertStyle}`}>
+                                                            {row.type}
+                                                        </span>
+                                                    </div>
+                                                    <div className="p-2.5 text-[10px] text-slate-700 text-center border-r border-slate-100/50 uppercase">
+                                                        {hasSpeedInfo ? (
+                                                            <div className="flex flex-col gap-0.5 leading-tight items-center">
+                                                                <span className="text-[8px] font-bold text-slate-400">LIMIT: {speedLimit} KM/H</span>
+                                                                <span className="text-[11px] font-black text-white bg-orange-600 rounded px-2 py-0.5 whitespace-nowrap shadow-sm">SPEED: {currentSpeed} KM/H</span>
+                                                            </div>
+                                                        ) : (
+                                                            <span className="font-bold">{row.information}</span>
+                                                        )}
+                                                    </div>
+                                                    <div className="p-2.5 text-[10px] text-slate-600 text-center border-r border-slate-100/50 font-black tracking-tight">{row.duration || "00:00:00"}</div>
+                                                    <div className="p-2.5 text-[9px] text-[#2f8d35] font-black text-left border-r border-slate-100/50 underline decoration-dotted truncate underline-offset-2 hover:text-[#276e2c] cursor-pointer">
+                                                        {row.location || "Various Locations"}
+                                                    </div>
+                                                    <div className="p-2.5 text-[10px] text-slate-800 font-black text-center">1</div>
                                                 </div>
-                                                <div className="p-2.5 text-[10px] text-slate-400 text-center border-r border-slate-100/50 truncate uppercase">{row.branch}</div>
-                                                <div className="p-2.5 text-[10px] text-[#2f8d35]/50 font-bold text-center border-r border-slate-100/50 uppercase italic">{row.vehicle}</div>
-                                                <div className="p-2.5 text-[10px] text-slate-400 text-center border-r border-slate-100/50 truncate uppercase italic">{row.driver}</div>
-                                                <div className="p-2.5 text-[10px] text-[#2f8d35] font-black text-center border-r border-slate-100/50 uppercase">{row.type}</div>
-                                                <div className="p-2.5 text-[10px] text-slate-600 text-center border-r border-slate-100/50 truncate uppercase">{row.information}</div>
-                                                <div className="p-2.5 text-[10px] text-slate-600 text-center border-r border-slate-100/50 font-mono tracking-tighter">{row.duration}</div>
-                                                <div className="p-2.5 text-[9px] text-[#2f8d35] font-medium text-left border-r border-slate-100/50 underline decoration-dotted truncate underline-offset-2">
-                                                    {row.location}
-                                                </div>
-                                                <div className="p-2.5 text-[10px] text-slate-800 font-bold text-center">1</div>
-                                            </div>
-                                        ))}
+                                            )
+                                        })}
                                     </div>
                                 ))
                             ) : (
@@ -207,11 +249,10 @@ export function AlertSummaryPage({
                                     <button
                                         onClick={() => setAlertPage((prev) => Math.max(0, prev - 1))}
                                         disabled={alertPage === 0}
-                                        className={`rounded-lg border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold transition ${
-                                            alertPage === 0
-                                                ? "cursor-not-allowed bg-slate-100 text-slate-400"
-                                                : "hover:bg-slate-50"
-                                        }`}
+                                        className={`rounded-lg border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold transition ${alertPage === 0
+                                            ? "cursor-not-allowed bg-slate-100 text-slate-400"
+                                            : "hover:bg-slate-50"
+                                            }`}
                                     >
                                         ← Prev
                                     </button>
@@ -221,11 +262,10 @@ export function AlertSummaryPage({
                                     <button
                                         onClick={() => setAlertPage((prev) => Math.min(totalPages - 1, prev + 1))}
                                         disabled={alertPage >= totalPages - 1}
-                                        className={`rounded-lg border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold transition ${
-                                            alertPage >= totalPages - 1
-                                                ? "cursor-not-allowed bg-slate-100 text-slate-400"
-                                                : "hover:bg-slate-50"
-                                        }`}
+                                        className={`rounded-lg border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold transition ${alertPage >= totalPages - 1
+                                            ? "cursor-not-allowed bg-slate-100 text-slate-400"
+                                            : "hover:bg-slate-50"
+                                            }`}
                                     >
                                         Next →
                                     </button>

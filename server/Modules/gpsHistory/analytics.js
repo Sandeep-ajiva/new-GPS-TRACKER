@@ -332,9 +332,130 @@ function summarizeAlerts(alerts = [], emergencyEvents = [], latestAlerts = []) {
   };
 }
 
+function buildACSummary(historyPoints = []) {
+  const orderedPoints = [...historyPoints].sort(
+    (a, b) => new Date(a.gpsTimestamp).getTime() - new Date(b.gpsTimestamp).getTime(),
+  );
+
+  const acEvents = [];
+  let currentEvent = null;
+
+  for (let i = 0; i < orderedPoints.length; i++) {
+    const point = orderedPoints[i];
+    const acOn = Boolean(point.acStatus);
+
+    if (currentEvent === null) {
+      currentEvent = {
+        status: acOn ? "ON" : "OFF",
+        startTime: point.gpsTimestamp,
+        startLocation: toLocation(point),
+        startOdometer: point.odometer || 0,
+        points: [point],
+      };
+    } else if (currentEvent.status !== (acOn ? "ON" : "OFF")) {
+      const lastPoint = currentEvent.points[currentEvent.points.length - 1];
+      currentEvent.endTime = lastPoint.gpsTimestamp;
+      currentEvent.endLocation = toLocation(lastPoint);
+      currentEvent.endOdometer = lastPoint.odometer || 0;
+      currentEvent.duration = getDurationSeconds(
+        currentEvent.startTime,
+        currentEvent.endTime,
+      );
+      currentEvent.distance = calculateTripDistance(currentEvent.points);
+
+      acEvents.push(currentEvent);
+
+      currentEvent = {
+        status: acOn ? "ON" : "OFF",
+        startTime: point.gpsTimestamp,
+        startLocation: toLocation(point),
+        startOdometer: point.odometer || 0,
+        points: [point],
+      };
+    } else {
+      currentEvent.points.push(point);
+    }
+  }
+
+  if (currentEvent) {
+    const lastPoint = currentEvent.points[currentEvent.points.length - 1];
+    currentEvent.endTime = lastPoint.gpsTimestamp;
+    currentEvent.endLocation = toLocation(lastPoint);
+    currentEvent.endOdometer = lastPoint.odometer || 0;
+    currentEvent.duration = getDurationSeconds(
+      currentEvent.startTime,
+      currentEvent.endTime,
+    );
+    currentEvent.distance = calculateTripDistance(currentEvent.points);
+    acEvents.push(currentEvent);
+  }
+
+  let acOnDistance = 0;
+  let acOnDuration = 0;
+  let acOnCount = 0;
+  let acOffDistance = 0;
+  let acOffDuration = 0;
+  let acOffCount = 0;
+  let runningTime = 0;
+  let idleTime = 0;
+
+  acEvents.forEach((event) => {
+    if (event.status === "ON") {
+      acOnDistance += event.distance;
+      acOnDuration += event.duration;
+      acOnCount++;
+    } else {
+      acOffDistance += event.distance;
+      acOffDuration += event.duration;
+      acOffCount++;
+    }
+  });
+
+  for (let i = 1; i < orderedPoints.length; i++) {
+    const prev = orderedPoints[i - 1];
+    const curr = orderedPoints[i];
+    const delta = getDurationSeconds(prev.gpsTimestamp, curr.gpsTimestamp);
+    if ((curr.speed || 0) > 5) runningTime += delta;
+    else if (curr.ignitionStatus) idleTime += delta;
+  }
+
+  const lastPoint = orderedPoints[orderedPoints.length - 1];
+  const nowStatus = lastPoint ? (
+    (lastPoint.speed || 0) > 5 ? "Running" :
+      lastPoint.ignitionStatus ? "Idle" : "Stop"
+  ) : "Unknown";
+
+  return {
+    events: acEvents.map((e) => {
+      const clean = { ...e };
+      const eventPoints = e.points || [];
+      clean.avgSpeed = eventPoints.length > 0
+        ? Number((eventPoints.reduce((s, p) => s + (p.speed || 0), 0) / eventPoints.length).toFixed(1))
+        : 0;
+      delete clean.points;
+      return clean;
+    }),
+    summary: {
+      acOnDistance: Number(acOnDistance.toFixed(2)),
+      acOnDuration,
+      acOnCount,
+      acOffDistance: Number(acOffDistance.toFixed(2)),
+      acOffDuration,
+      acOffCount,
+      runningTime,
+      idleTime,
+      avgSpeed: orderedPoints.length > 0
+        ? Number((orderedPoints.reduce((s, p) => s + (p.speed || 0), 0) / orderedPoints.length).toFixed(1))
+        : 0,
+    },
+    nowStatus,
+  };
+}
+
 module.exports = {
   calculateStatistics,
   buildTrips,
   buildDaywiseDistance,
   summarizeAlerts,
+  buildACSummary,
 };

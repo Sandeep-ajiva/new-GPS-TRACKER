@@ -22,6 +22,14 @@ type AlertItem = {
     gpsTimestamp?: string
 }
 
+const formatDuration = (seconds?: number): string => {
+    const total = Math.max(0, Math.floor(Number(seconds || 0)));
+    const h = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    const s = total % 60;
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+};
+
 const toRelativeTime = (value?: string) => {
     if (!value) return "just now";
     const ts = new Date(value).getTime();
@@ -113,7 +121,7 @@ export function VehicleDetails({
             <div className="grid gap-3 xl:grid-cols-4 md:grid-cols-2">
                 <div className="rounded-[22px] border border-[#dbe7d4] bg-white p-4 shadow-sm">
                     <div className="mb-4 flex items-start justify-between">
-                        <SectionPill color="#0b5c8e" title="Speed" />
+                        <SectionPill color="#3b82f6" title="Speed" />
                         <Gauge className="h-8 w-8 text-[#0b5c8e]" />
                     </div>
                     <div className="space-y-2.5">
@@ -122,40 +130,44 @@ export function VehicleDetails({
                             <span className="text-xl font-black text-[#0b5c8e]">{dailyStats?.avgSpeed ?? 0}<span className="ml-1 text-sm font-semibold">km/h</span></span>
                         </div>
                         <div className="flex items-center justify-between text-sm">
-                            <span className="font-medium text-red-500">Max Speed</span>
-                            <span className="text-xl font-black text-red-400">{dailyStats?.maxSpeed ?? 0}<span className="ml-1 text-sm font-semibold">km/h</span></span>
+                            <span className="font-medium text-slate-600">Max Speed</span>
+                            <span className="text-xl font-black text-red-500">{dailyStats?.maxSpeed ?? 0}<span className="ml-1 text-sm font-semibold">km/h</span></span>
+                        </div>
+                        <div className="flex items-center justify-between text-sm border-t border-slate-100 pt-1.5">
+                            <span className="font-medium text-amber-500 italic">Speed Limit</span>
+                            <span className="text-sm font-black text-slate-400 font-mono tracking-tighter">60 km/h</span>
                         </div>
                     </div>
                 </div>
 
                 <div className="rounded-[22px] border border-[#dbe7d4] bg-white p-4 shadow-sm">
                     <div className="mb-4 flex items-center justify-between">
-                        <SectionPill color="#3e8d11" title="Today Activity" />
+                        <SectionPill color="#22c55e" title="Today Activity" />
                         <span className="text-lg font-black text-[#3e8d11]">{(dailyStats?.totalDistance ?? 0).toFixed(2)} km</span>
                     </div>
                     <div className="space-y-1.5 text-sm">
                         <div className="flex items-center justify-between">
                             <span className="text-slate-700">Running</span>
-                            <span className="font-semibold text-[#3e8d11]">{dailyStats?.runningTime ?? "0"}</span>
+                            <span className="font-semibold text-[#3e8d11]">{formatDuration(dailyStats?.runningTime)}</span>
                         </div>
                         <div className="flex items-center justify-between">
                             <span className="text-slate-700">Idle</span>
-                            <span className="font-semibold text-[#ef8a22]">{dailyStats?.idleTime ?? "0"}</span>
+                            <span className="font-semibold text-[#ef8a22]">{formatDuration(dailyStats?.idleTime)}</span>
                         </div>
                         <div className="flex items-center justify-between">
                             <span className="text-slate-700">Stop</span>
-                            <span className="font-semibold text-[#ef5b4d]">{dailyStats?.stoppedTime ?? "0"}</span>
+                            <span className="font-semibold text-[#ef5b4d]">{formatDuration(dailyStats?.stoppedTime)}</span>
                         </div>
                         <div className="flex items-center justify-between">
                             <span className="text-slate-700">Inactive</span>
-                            <span className="font-semibold text-[#4da2e9]">{dailyStats?.inactiveTime ?? "0"}</span>
+                            <span className="font-semibold text-[#4da2e9]">{formatDuration(dailyStats?.inactiveTime)}</span>
                         </div>
                     </div>
                 </div>
 
                 <div className="rounded-[22px] border border-[#dbe7d4] bg-white p-4 shadow-sm">
                     <div className="mb-4 flex items-center justify-between">
-                        <SectionPill color="#ef5b4d" title="Alert" />
+                        <SectionPill color="#ef4444" title="Alert" />
                         <span className="text-xl font-black text-[#3e8d11]">{orderedAlerts.length}</span>
                     </div>
 

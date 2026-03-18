@@ -37,12 +37,14 @@ import { TripSummaryPage } from "@/components/dashboard/modules/analytics/TripSu
 import { VehicleStatusPage } from "@/components/dashboard/modules/analytics/VehicleStatusPage"
 import { AlertSummaryPage } from "@/components/dashboard/modules/analytics/AlertSummaryPage"
 import { DaywiseDistancePage } from "@/components/dashboard/modules/analytics/DaywiseDistancePage"
+import { ACSummaryPage } from "@/components/dashboard/modules/analytics/ACSummaryPage"
 import { X } from "lucide-react"
 
 type LiveGpsItem = {
   vehicleId?: string | { _id?: string }
   gpsDeviceId?: string | { _id?: string }
   imei?: string
+  _enrichmentOnly?: boolean   // ← ADD THIS
   latitude?: number
   longitude?: number
   currentSpeed?: number
@@ -87,9 +89,17 @@ const pickFirstString = (...values: unknown[]): string => {
   return ""
 }
 
+const isCoordinateText = (value?: string): boolean => {
+  if (!value) return false
+  return /^-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?$/.test(value.trim())
+}
+
 const toLocationText = (value: unknown): string => {
   if (!value) return ""
-  if (typeof value === "string") return value.trim()
+  if (typeof value === "string") {
+    const text = value.trim()
+    return isCoordinateText(text) ? "" : text
+  }
   if (typeof value === "object") {
     const loc = value as {
       address?: string
@@ -100,7 +110,7 @@ const toLocationText = (value: unknown): string => {
       pincode?: string | number
     }
     const direct = pickFirstString(loc.address, loc.addressLine)
-    if (direct) return direct
+    if (direct) return isCoordinateText(direct) ? "" : direct
     const parts = [loc.city, loc.state, loc.country, loc.pincode ? String(loc.pincode) : ""].filter(Boolean)
     return parts.join(", ")
   }
@@ -208,15 +218,45 @@ export default function DashboardPage() {
     return toVehicleId(liveItem) || liveItem.imei || toGpsDeviceId(liveItem) || null
   }
 
-  const handleGpsUpdate = useCallback((update: LiveGpsItem) => {
-    const key = toLiveKey(update)
-    if (!key) return
+const handleGpsUpdate = useCallback((update: LiveGpsItem) => {
+  const key = toLiveKey(update)
+  if (!key) return
 
+  // CRITICAL: Enrichment-only packets must NEVER overwrite position data.
+  // They carry stale coordinates (up to 30s old) which cause backward snapping.
+  // Only merge address/poi fields and leave lat/lng/speed/status untouched.
+  if (update._enrichmentOnly) {
     setLiveByVehicleId((prev) => {
-      const nextValue = {
-        ...(prev[key] || {}),
-        ...update,
+      const existing = prev[key]
+      if (!existing) return prev
+      const prevPoi   = existing.poi   || ""
+      const prevPoiId = existing.poiId || null
+      const prevLoc   = serializeLocationValue(existing.currentLocation)
+      const nextPoi   = update.poi   ?? prevPoi
+      const nextPoiId = update.poiId ?? prevPoiId
+      const nextLoc   = serializeLocationValue(update.currentLocation || existing.currentLocation)
+      // Skip re-render if nothing changed
+      if (prevPoi === nextPoi && prevPoiId === nextPoiId && prevLoc === nextLoc) {
+        return prev
       }
+      return {
+        ...prev,
+        [key]: {
+          ...existing,
+          currentLocation: update.currentLocation || existing.currentLocation,
+          poi:   nextPoi,
+          poiId: nextPoiId,
+        },
+      }
+    })
+    return
+  }
+
+  setLiveByVehicleId((prev) => {
+    const nextValue = {
+      ...(prev[key] || {}),
+      ...update,
+    }
       const prevValue = prev[key]
       if (
         prevValue &&
@@ -419,11 +459,11 @@ export default function DashboardPage() {
         const resolvedPoi =
           pickFirstString(live?.poi, vehicle.poi) ||
           ((hasLivePosition || hasVehiclePosition) ? (hasResolvedPoi ? "-" : "Resolving POI...") : "-")
+        const previousResolvedLocation = toLocationText(prevLocationMap.get(vehicle._id))
         const location =
           toLocationText(live?.currentLocation) ||
           toLocationText(vehicle?.currentLocation) ||
-          prevLocationMap.get(vehicle._id) ||
-          coordinateLocation ||
+          previousResolvedLocation ||
           (hasLivePosition || hasVehiclePosition ? "Resolving address..." : "Unknown")
         const dateSource = live?.updatedAt || live?.gpsTimestamp || vehicle.updatedAt
         const date = dateSource
@@ -621,16 +661,15 @@ export default function DashboardPage() {
           gps: true,
           location:
             toLocationText(live.currentLocation) ||
-            prevLocationMap.get(rowId) ||
-            formatCoordinateText(lat as number, lng as number) ||
+            toLocationText(prevLocationMap.get(rowId)) ||
             "Resolving address...",
-              poi:
+          poi:
             pickFirstString(live.poi) ||
             (Object.prototype.hasOwnProperty.call(live, "poi") ? "-" : "Resolving POI..."),
           poiId: live?.poiId ?? null,
           route,
           batteryVoltage: live?.internalBatteryVoltage ?? null,
-          
+
           batteryPercent: live?.batteryLevel ?? null,
           satelliteCount: live?.numberOfSatellites ?? null,
           gsmSignal: live?.gsmSignalStrength ?? null,
@@ -931,6 +970,7 @@ export default function DashboardPage() {
                 {activeTab === "Trip Summary" && <TripSummaryPage organizations={organizations} vehicles={allVehicles} userRole={userRole} userOrgId={userOrgId} />}
                 {activeTab === "Vehicle Status" && <VehicleStatusPage organizations={organizations} vehicles={uiVehicles} userRole={userRole} userOrgId={userOrgId} />}
                 {activeTab === "Alert Summary" && <AlertSummaryPage organizations={organizations} vehicles={allVehicles} userRole={userRole} userOrgId={userOrgId} />}
+                {activeTab === "AC Summary" && <ACSummaryPage organizations={organizations} vehicles={allVehicles} userRole={userRole} userOrgId={userOrgId} />}
                 {["Tour", "App Config", "Sys Config", "User Rights"].includes(activeTab) && (
                   <div className="flex h-64 flex-col items-center justify-center italic text-slate-500">
                     <LayoutDashboard className="mb-4 h-12 w-12 opacity-20" />

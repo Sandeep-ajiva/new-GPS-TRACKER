@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { DivIcon } from "leaflet";
+import { DivIcon, latLng } from "leaflet";
 import { MapContainer, Marker, Popup, useMap, useMapEvents } from "react-leaflet";
 import { Fuel, Gauge, Navigation, Thermometer } from "lucide-react";
 import { TelemetryGrid } from "./telemetry-grid";
@@ -12,6 +12,8 @@ import { animatePosition, calculateAnimationDuration } from "@/lib/positionInter
 import "leaflet/dist/leaflet.css";
 import "leaflet-defaulticon-compatibility/dist/leaflet-defaulticon-compatibility.css";
 import "leaflet-defaulticon-compatibility";
+import type { Vehicle } from "@/lib/vehicles";
+import type { VehiclePositions } from "@/lib/use-vehicle-positions";
 
 type LiveVehicleNode = {
   latitude?: number | string
@@ -20,6 +22,8 @@ type LiveVehicleNode = {
   currentLocation?: string | Record<string, unknown>
   poi?: string
   poiId?: string | null
+  gpsTimestamp?: string
+  updatedAt?: string
 }
 
 function SmoothFocus({
@@ -64,7 +68,18 @@ function SmoothFocus({
     const targetZoom = isNewSelection || isForced ? Math.max(zoom, 16) : zoom;
     if (!manualLockRef.current || isNewSelection || isForced || isFollowMode) {
       if (isFollowMode) {
-        map.setView(point, targetZoom);
+        const pointLatLng = latLng(point.lat, point.lng);
+        const isNearViewportEdge = !map.getBounds().pad(-0.35).contains(pointLatLng);
+        if (isNewSelection || isForced) {
+          map.setView(point, targetZoom);
+        } else if (isNearViewportEdge) {
+          map.panTo(point, {
+            animate: true,
+            duration: 0.35,
+            easeLinearity: 0.25,
+            noMoveStart: true,
+          });
+        }
       } else {
         map.flyTo(point, targetZoom, {
           duration: isNewSelection || isForced ? 0.6 : 0.35,
@@ -88,15 +103,58 @@ const markerIcon = (color: string, size = 15) =>
     iconAnchor: [size * 1.1, size * 1.1],
   });
 
-export function MapView() {
+const MIN_STABLE_MOVEMENT_METERS = 3;
+// Increased from 15 → 200 so backward jumps from stale enrichment
+// coords (which can be 30s×speed = 458m at 55km/h) are caught and rejected
+const REVERSE_JITTER_MAX_METERS = 200;
+const LARGE_JUMP_SNAP_METERS = 2000;
+
+
+function getDistanceMeters(
+  from: { lat: number; lng: number },
+  to: { lat: number; lng: number },
+) {
+  return latLng(from.lat, from.lng).distanceTo(latLng(to.lat, to.lng));
+}
+
+function getMovementVectorMeters(
+  from: { lat: number; lng: number },
+  to: { lat: number; lng: number },
+) {
+  const origin = latLng(from.lat, from.lng);
+  const eastWestPoint = latLng(from.lat, to.lng);
+  const northSouthPoint = latLng(to.lat, from.lng);
+
+  return {
+    x:
+      origin.distanceTo(eastWestPoint) * (to.lng >= from.lng ? 1 : -1),
+    y:
+      origin.distanceTo(northSouthPoint) * (to.lat >= from.lat ? 1 : -1),
+  };
+}
+
+
+
+interface MapViewProps {
+  selectedVehicleId?: string | null;
+  positions?: VehiclePositions;
+  vehicles?: Vehicle[];
+}
+
+export function MapView({ selectedVehicleId, positions, vehicles }: MapViewProps) {
   const { selectedVehicle, focusKey } = useDashboardContext();
   const [isFollowMode, setIsFollowMode] = useState(true);
-  
+
   // Smooth position animation state
   const [animatedPos, setAnimatedPos] = useState<{ lat: number; lng: number } | null>(null);
   const prevPosRef = useRef<{ lat: number; lng: number } | null>(null);
+  const animatedPosRef = useRef<{ lat: number; lng: number } | null>(null);
   const animationCleanupRef = useRef<(() => void) | null>(null);
-  
+  const lastTargetRef = useRef<{ lat: number; lng: number } | null>(null);
+  const lastTimestampRef = useRef<number>(0);
+  const lastMovementVectorRef = useRef<{ x: number; y: number } | null>(null);
+  const selectedVehicleRef = useRef<string | null>(null);
+
   const deviceId = selectedVehicle?.deviceId || selectedVehicle?.gpsDeviceId?._id || selectedVehicle?.gpsDeviceId;
 
   const { data: liveDataRes } = useGetLiveVehicleByDeviceIdQuery(deviceId, {
@@ -114,7 +172,14 @@ export function MapView() {
     const lat = typeof latRaw === "string" ? parseFloat(latRaw) : latRaw;
     const lng = typeof lngRaw === "string" ? parseFloat(lngRaw) : lngRaw;
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-    return { lat: lat as number, lng: lng as number, status: liveNode.status || selectedVehicle?.status || "running" };
+    const timestampRaw = liveNode.gpsTimestamp || liveNode.updatedAt || null;
+    const timestampMs = timestampRaw ? new Date(timestampRaw).getTime() : Date.now();
+    return {
+      lat: lat as number,
+      lng: lng as number,
+      status: liveNode.status || selectedVehicle?.status || "running",
+      timestampMs: Number.isFinite(timestampMs) ? timestampMs : Date.now(),
+    };
   }, [liveNode, selectedVehicle]);
 
   // WHY: liveNode is polled every 5s and contains the freshest poi from backend enrichment.
@@ -125,6 +190,35 @@ export function MapView() {
     ? (liveNode.poi || "-")
     : (selectedVehicle?.poi || "-")
 
+  useEffect(() => {
+    const selectedId = selectedVehicle?.id || null;
+    if (selectedVehicleRef.current === selectedId) return;
+
+    selectedVehicleRef.current = selectedId;
+    lastTimestampRef.current = 0;
+    lastTargetRef.current = null;
+    lastMovementVectorRef.current = null;
+
+    if (animationCleanupRef.current) {
+      animationCleanupRef.current();
+      animationCleanupRef.current = null;
+    }
+
+    if (currentPos) {
+      const resetPos = { lat: currentPos.lat, lng: currentPos.lng };
+      setAnimatedPos(resetPos);
+      animatedPosRef.current = resetPos;
+      prevPosRef.current = resetPos;
+      lastTargetRef.current = resetPos;
+      lastTimestampRef.current = currentPos.timestampMs;
+    } else {
+      setAnimatedPos(null);
+      animatedPosRef.current = null;
+      prevPosRef.current = null;
+      lastMovementVectorRef.current = null;
+    }
+  }, [selectedVehicle?.id, currentPos]);
+
   // Trigger smooth animation when position updates
   useEffect(() => {
     if (!currentPos) return;
@@ -132,41 +226,122 @@ export function MapView() {
     // Ensure lat and lng are valid numbers
     if (!Number.isFinite(currentPos.lat) || !Number.isFinite(currentPos.lng)) return;
 
-    // Initialize animated position on first load
-    if (animatedPos === null) {
-      setAnimatedPos({ lat: currentPos.lat, lng: currentPos.lng });
-      prevPosRef.current = { lat: currentPos.lat, lng: currentPos.lng };
+    if (
+      lastTimestampRef.current &&
+      currentPos.timestampMs <= lastTimestampRef.current
+    ) {
       return;
     }
 
-    // If position hasn't actually changed, don't animate
-    const hasMoved = Math.abs(animatedPos.lat - currentPos.lat) > 0.0001 ||
-                     Math.abs(animatedPos.lng - currentPos.lng) > 0.0001;
-    
-    if (!hasMoved) return;
+    // Guard: if position jumped backward AND timestamp didn't advance significantly
+    // (< 3s), this is a stale enrichment coordinate leaking through — reject it.
+    const timestampAdvanceMs = currentPos.timestampMs - lastTimestampRef.current;
+    if (
+      lastTargetRef.current &&
+      timestampAdvanceMs < 3000 &&
+      timestampAdvanceMs > 0
+    ) {
+      const backwardDist = getDistanceMeters(lastTargetRef.current, currentPos);
+      const backwardVector = getMovementVectorMeters(lastTargetRef.current, currentPos);
+      const dotProduct = lastMovementVectorRef.current
+        ? lastMovementVectorRef.current.x * backwardVector.x +
+          lastMovementVectorRef.current.y * backwardVector.y
+        : null;
+      // Reject if: moving in opposite direction AND timestamp barely advanced
+      if (dotProduct !== null && dotProduct < 0 && backwardDist > MIN_STABLE_MOVEMENT_METERS) {
+        return;
+      }
+    }
+
+    // Initialize animated position on first load
+    if (animatedPosRef.current === null) {
+      const initialPos = { lat: currentPos.lat, lng: currentPos.lng };
+      setAnimatedPos(initialPos);
+      animatedPosRef.current = initialPos;
+      prevPosRef.current = initialPos;
+      lastTargetRef.current = initialPos;
+      lastTimestampRef.current = currentPos.timestampMs;
+      return;
+    }
+
+    if (
+      lastTargetRef.current &&
+      getDistanceMeters(lastTargetRef.current, currentPos) < 1
+    ) {
+      lastTimestampRef.current = currentPos.timestampMs;
+      return;
+    }
+
+    const fromPos = prevPosRef.current || {
+      lat: currentPos.lat,
+      lng: currentPos.lng,
+    };
+    const targetPos = { lat: currentPos.lat, lng: currentPos.lng };
+    const distanceDeltaMeters = getDistanceMeters(fromPos, targetPos);
+
+    if (distanceDeltaMeters < MIN_STABLE_MOVEMENT_METERS) {
+      return;
+    }
+
+    const nextMovementVector = getMovementVectorMeters(fromPos, targetPos);
+    const previousMovementVector = lastMovementVectorRef.current;
+    const movementDotProduct = previousMovementVector
+      ? previousMovementVector.x * nextMovementVector.x +
+        previousMovementVector.y * nextMovementVector.y
+      : null;
+
+    if (
+      previousMovementVector &&
+      distanceDeltaMeters < REVERSE_JITTER_MAX_METERS &&
+      movementDotProduct !== null &&
+      movementDotProduct < 0
+    ) {
+      return;
+    }
 
     // Cancel any ongoing animation
     if (animationCleanupRef.current) {
+      if (animatedPosRef.current) {
+        prevPosRef.current = animatedPosRef.current;
+      }
       animationCleanupRef.current();
       animationCleanupRef.current = null;
     }
 
+    // Large jumps are usually stale/resync points; snap instead of animating a backward-looking leap.
+    if (distanceDeltaMeters > LARGE_JUMP_SNAP_METERS) {
+      setAnimatedPos(targetPos);
+      animatedPosRef.current = targetPos;
+      prevPosRef.current = targetPos;
+      lastMovementVectorRef.current = nextMovementVector;
+      lastTargetRef.current = targetPos;
+      lastTimestampRef.current = currentPos.timestampMs;
+      return;
+    }
+
     // Calculate smooth animation duration
-    const fromPos = prevPosRef.current || animatedPos;
-    const duration = calculateAnimationDuration(fromPos, { lat: currentPos.lat, lng: currentPos.lng }, 150);
+    const duration = calculateAnimationDuration(fromPos, targetPos, 250);
+    lastTargetRef.current = targetPos;
+    lastTimestampRef.current = currentPos.timestampMs;
 
     // Start smooth interpolation animation
     animationCleanupRef.current = animatePosition(
       fromPos,
-      { lat: currentPos.lat, lng: currentPos.lng },
+      targetPos,
       duration,
       undefined,
       undefined,
-      (animPos) => setAnimatedPos({ lat: animPos.lat, lng: animPos.lng }),
+      (animPos) => {
+        const nextPos = { lat: animPos.lat, lng: animPos.lng };
+        animatedPosRef.current = nextPos;
+        setAnimatedPos(nextPos);
+      },
       () => {
         // Animation complete, snap to final position
-        setAnimatedPos({ lat: currentPos.lat, lng: currentPos.lng });
-        prevPosRef.current = { lat: currentPos.lat, lng: currentPos.lng };
+        animatedPosRef.current = targetPos;
+        setAnimatedPos(targetPos);
+        prevPosRef.current = targetPos;
+        lastMovementVectorRef.current = nextMovementVector;
         animationCleanupRef.current = null;
       }
     );

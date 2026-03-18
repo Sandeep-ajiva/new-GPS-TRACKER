@@ -257,7 +257,7 @@ export default function GpsDevicesPage() {
 
   /* ================= SUBMIT ================= */
 
-  const handleSubmit = async (data: DeviceFormValues) => {
+  const handleSubmit = async (data: any) => {
     try {
       if (editingDevice) {
         const { organizationId: submittedOrgId, ...payloadData } = data;
@@ -1009,10 +1009,10 @@ export default function GpsDevicesPage() {
           fields={deviceFormFields}
           schema={deviceSchema}
           initialData={
-            editingDevice
+            (editingDevice
               ? {
                 organizationId: typeof editingDevice.organizationId === "object"
-                  ? editingDevice.organizationId._id
+                  ? (editingDevice.organizationId as any)._id
                   : editingDevice.organizationId,
                 imei: editingDevice.imei,
                 simNumber: editingDevice.simNumber || "",
@@ -1045,7 +1045,7 @@ export default function GpsDevicesPage() {
                 stockLocation: "",
                 rackNumber: "",
                 inventoryStatus: "in_stock",
-              }
+              }) as any
           }
           onSubmit={handleSubmit}
         />
