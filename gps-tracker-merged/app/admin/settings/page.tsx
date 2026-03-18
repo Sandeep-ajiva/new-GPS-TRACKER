@@ -82,9 +82,9 @@ export default function SettingsPage() {
                 description="Global platform configuration and administrative controls."
             />
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                <div className="lg:col-span-2 space-y-8">
-                    <AdminSectionCard className="bg-white" bodyClassName="p-8">
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-3 lg:gap-8">
+                <div className="space-y-6 lg:col-span-2 lg:space-y-8">
+                    <AdminSectionCard className="bg-white" bodyClassName="p-5 sm:p-6 lg:p-8">
                         <div className="flex items-center gap-3 mb-8">
                             <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl">
                                 <Globe size={20} />
@@ -112,7 +112,7 @@ export default function SettingsPage() {
                         </div>
                     </AdminSectionCard>
 
-                    <AdminSectionCard className="bg-white" bodyClassName="p-8">
+                    <AdminSectionCard className="bg-white" bodyClassName="p-5 sm:p-6 lg:p-8">
                         <div className="flex items-center gap-3 mb-8">
                             <div className="p-2.5 bg-orange-50 text-orange-600 rounded-xl">
                                 <Bell size={20} />
@@ -127,8 +127,8 @@ export default function SettingsPage() {
                     </AdminSectionCard>
                 </div>
 
-                <div className="space-y-8">
-                    <div className="bg-red-50 p-8 rounded-2xl border border-red-100">
+                <div className="space-y-6 lg:space-y-8">
+                    <div className="rounded-2xl border border-red-100 bg-red-50 p-5 sm:p-6 lg:p-8">
                         <div className="flex items-center gap-3 mb-6">
                             <AlertCircle className="text-red-600" size={24} />
                             <h3 className="text-lg font-black text-red-900 leading-none">Critical Actions</h3>
@@ -147,7 +147,7 @@ export default function SettingsPage() {
                         </button>
                     </div>
 
-                    <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
+                    <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm sm:p-6 lg:p-8">
                         <div className="flex items-center gap-3 mb-6">
                             <Shield className="text-green-600" size={20} />
                             <h3 className="text-lg font-black text-gray-900 uppercase tracking-widest leading-none">System Info</h3>
@@ -180,7 +180,7 @@ export default function SettingsPage() {
                 </div>
             </div>
 
-            <div className="flex justify-end gap-4">
+            <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
                 <button
                     onClick={() => {
                         setAppName("GPS Tracker");
@@ -192,13 +192,13 @@ export default function SettingsPage() {
                         setErrors({});
                         toast.message("Changes discarded");
                     }}
-                    className="px-8 py-4 bg-white border border-gray-100 text-gray-400 rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-gray-50 transition-all"
+                    className="w-full rounded-2xl border border-gray-100 bg-white px-8 py-4 text-xs font-black uppercase tracking-widest text-gray-400 transition-all hover:bg-gray-50 sm:w-auto"
                 >
                     Discard
                 </button>
                 <button
                     onClick={handleSave}
-                    className="px-10 py-4 bg-[#1877F2] text-white rounded-2xl text-xs font-black uppercase tracking-widest shadow-xl shadow-blue-200 hover:bg-blue-700 transition-all flex items-center gap-2"
+                    className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#1877F2] px-10 py-4 text-xs font-black uppercase tracking-widest text-white shadow-xl shadow-blue-200 transition-all hover:bg-blue-700 sm:w-auto"
                 >
                     <Save size={18} /> Save All Changes
                 </button>

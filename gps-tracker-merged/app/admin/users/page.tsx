@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import Table from "@/components/ui/Table";
 import Pagination from "@/components/ui/Pagination";
 import ApiErrorBoundary from "@/components/admin/ErrorBoundary/ApiErrorBoundary";
-import { Plus, Edit, Trash2, Filter, Loader2 } from "lucide-react";
+import { Plus, Edit, Trash2, Filter } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
 import {
@@ -51,15 +51,22 @@ export interface User {
   status: "active" | "inactive";
 }
 
+type UserRoleOption = {
+  label: string;
+  value: "admin" | "driver";
+};
+
+type UserFormValues = Record<string, string | number | boolean | File>;
+
 export default function UsersPage() {
   const { openPopup, closePopup, isPopupOpen } = usePopups();
 
   // 🔐 ORG CONTEXT UPDATE
-  const { user, orgId, isSuperAdmin, isRootOrgAdmin, isSubOrgAdmin } = useOrgContext();
+  const { user, orgId, orgName, isSuperAdmin, isRootOrgAdmin, isSubOrgAdmin } = useOrgContext();
   const searchParams = useSearchParams();
   const searchQueryParam = searchParams.get("search");
 
-  const [showFilters, setShowFilters] = useState(false);
+  const [showFilters, setShowFilters] = useState(!!searchQueryParam);
   const [page, setPage] = useState(1);
   const LIMIT = 10;
 
@@ -146,6 +153,17 @@ export default function UsersPage() {
     [users],
   );
 
+  const availableRoleOptions = useMemo<UserRoleOption[]>(() => {
+    if (isSuperAdmin || isRootOrgAdmin) {
+      return [
+        { label: "Admin", value: "admin" },
+        { label: "Driver", value: "driver" },
+      ];
+    }
+
+    return [{ label: "Driver", value: "driver" }];
+  }, [isRootOrgAdmin, isSuperAdmin]);
+
   useEffect(() => {
     setPage(1);
   }, [
@@ -160,9 +178,8 @@ export default function UsersPage() {
     filters.endDate,
   ]);
 
-  const handleSubmit = async (
-    data: Record<string, string | number | boolean | File>,
-  ) => {
+
+  const handleSubmit = async (data: UserFormValues) => {
     try {
       if (editingUser) {
         // For update, only send allowed fields: firstName, lastName, email, mobile, status
@@ -185,6 +202,7 @@ export default function UsersPage() {
           mobile: data.mobile?.toString().trim(),
           role: data.role,
           organizationId: data.organizationId,
+          status: data.status,
           password: data.password,
         };
         
@@ -203,6 +221,29 @@ export default function UsersPage() {
   };
 
   const userFormFields: FormField[] = useMemo(() => [
+    ...(!editingUser
+      ? [
+          {
+            name: "organizationId",
+            label: "Organization",
+            type: "select" as const,
+            required: true,
+            options: isSuperAdmin
+              ? organizations.map((org) => ({
+                  label: org.name,
+                  value: org._id,
+                }))
+              : orgId
+                ? [{ label: orgName || "Current Organization", value: orgId }]
+                : [],
+            helperText: isSuperAdmin
+              ? "Select the organization that this user should belong to."
+              : "This user will be created inside your current organization.",
+            disabled: !isSuperAdmin,
+            icon: <Building2 size={14} className="text-slate-500" />,
+          },
+        ]
+      : []),
     {
       name: "firstName",
       label: "First Name",
@@ -247,6 +288,15 @@ export default function UsersPage() {
           placeholder: "********",
           icon: <Lock size={14} className="text-slate-500" />,
         },
+        {
+          name: "confirmPassword",
+          label: "Confirm Password",
+          type: "password" as const,
+          required: true,
+          placeholder: "Re-enter password",
+          helperText: "Must match the password above",
+          icon: <Lock size={14} className="text-slate-500" />,
+        },
       ]
       : []),
     ...(!editingUser
@@ -256,11 +306,19 @@ export default function UsersPage() {
             label: "Role",
             type: "select" as const,
             required: true,
-            options: [
-              { label: "Admin", value: "admin" },
-              { label: "Driver", value: "driver" },
-            ],
+            options: availableRoleOptions,
             icon: <ShieldCheck size={14} className="text-slate-500" />,
+          },
+          {
+            name: "status",
+            label: "Status",
+            type: "select" as const,
+            required: true,
+            options: [
+              { label: "Active", value: "active" },
+              { label: "Inactive", value: "inactive" },
+            ],
+            icon: <ToggleRight size={14} className="text-slate-500" />,
           },
         ]
       : [
@@ -276,20 +334,7 @@ export default function UsersPage() {
             icon: <ToggleRight size={14} className="text-slate-500" />,
           },
         ]),
-    // 🔐 ORG CONTEXT UPDATE
-    ...(isSuperAdmin && !editingUser ? [
-      {
-        name: "organizationId",
-        label: "Organization",
-        type: "select" as const,
-        options: organizations.map((org) => ({
-          label: org.name,
-          value: org._id,
-        })),
-        icon: <Building2 size={14} className="text-slate-500" />,
-      }
-    ] : []),
-  ], [editingUser, organizations, isSuperAdmin]);
+  ], [availableRoleOptions, editingUser, isSuperAdmin, orgId, orgName, organizations]);
 
   const userSchema = useMemo(() => {
     const base = z.object({
@@ -301,15 +346,24 @@ export default function UsersPage() {
       status: z.enum(["active", "inactive"]).optional(),
       organizationId: z.string().optional(),
       password: z.string().optional(),
+      confirmPassword: z.string().optional(),
     });
 
     if (!editingUser) {
       return base.extend({
-        role: z.enum(["admin", "driver"]),
-        password: z.string().min(6, "Password is required (min 6)"),
+        role: z.enum(
+          availableRoleOptions.map((option) => option.value) as ["admin" | "driver", ...("admin" | "driver")[]],
+        ),
+        status: z.enum(["active", "inactive"]),
+        password: z.string().min(6, "Password must be at least 6 characters"),
+        confirmPassword: z.string().min(6, "Confirm password is required"),
       }).superRefine((val, ctx) => {
         if (isSuperAdmin && !val.organizationId) {
           ctx.addIssue({ code: "custom", path: ["organizationId"], message: "Organization is required" });
+        }
+
+        if (val.password !== val.confirmPassword) {
+          ctx.addIssue({ code: "custom", path: ["confirmPassword"], message: "Passwords do not match" });
         }
       });
     }
@@ -319,10 +373,12 @@ export default function UsersPage() {
         ctx.addIssue({ code: "custom", path: ["status"], message: "Status is required" });
       }
     });
-  }, [editingUser, isSuperAdmin]);
+  }, [availableRoleOptions, editingUser, isSuperAdmin]);
 
-
-
+  const openCreateModal = () => {
+    setEditingUser(null);
+    openPopup("userModal");
+  };
 
   const openEditModal = (user: User) => {
     setEditingUser(user);
@@ -497,6 +553,16 @@ export default function UsersPage() {
                 <Filter size={16} /> Filter Users
               </span>
             </button>
+            {canCreateUser && (
+              <button
+                onClick={openCreateModal}
+                className="rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-black uppercase tracking-[0.22em] text-white shadow-sm transition hover:bg-blue-700"
+              >
+                <span className="inline-flex items-center gap-2">
+                  <Plus size={16} /> Add User
+                </span>
+              </button>
+            )}
           </div>}
         />
 
@@ -703,8 +769,12 @@ export default function UsersPage() {
           <DynamicModal
             isOpen={isPopupOpen("userModal")}
             onClose={closeModal}
-            title={editingUser ? "Edit User" : "New User"}
-            description="Define roles and assign organization scope."
+            title={editingUser ? "Edit User" : "Add User"}
+            description={
+              editingUser
+                ? "Update user identity, mobile, and account status."
+                : "Create a new user with role, status, password, and organization assignment."
+            }
             fields={userFormFields}
             schema={userSchema}
             initialData={
@@ -716,7 +786,17 @@ export default function UsersPage() {
                   mobile: editingUser.mobile,
                   status: editingUser.status,
                 }
-                : undefined
+                : {
+                    organizationId: isSuperAdmin ? "" : orgId || "",
+                    firstName: "",
+                    lastName: "",
+                    email: "",
+                    mobile: "",
+                    password: "",
+                    confirmPassword: "",
+                    role: "",
+                    status: "active",
+                  }
             }
             onSubmit={handleSubmit}
             submitLabel={editingUser ? "Update User" : "Create User"}

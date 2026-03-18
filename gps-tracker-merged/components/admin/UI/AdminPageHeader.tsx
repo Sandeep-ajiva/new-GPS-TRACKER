@@ -21,18 +21,18 @@ export default function AdminPageHeader({
   return (
     <div
       className={clsx(
-        "flex flex-col gap-4 rounded-[24px] border border-slate-200/80 bg-gradient-to-br from-white via-slate-50 to-blue-50/70 p-5 shadow-[0_10px_30px_rgba(15,23,42,0.06)] sm:flex-row sm:items-start sm:justify-between",
+        "flex flex-col gap-4 rounded-[20px] border border-slate-200/80 bg-gradient-to-br from-white via-slate-50 to-blue-50/70 p-4 shadow-[0_10px_30px_rgba(15,23,42,0.06)] sm:rounded-[24px] sm:p-5 lg:flex-row lg:items-start lg:justify-between",
         className,
       )}
     >
-      <div className="space-y-2">
+      <div className="min-w-0 space-y-2">
         {eyebrow ? (
           <p className="text-[11px] font-black uppercase tracking-[0.34em] text-slate-400">
             {eyebrow}
           </p>
         ) : null}
         <div className="space-y-1">
-          <h1 className="text-2xl font-black tracking-tight text-slate-950 sm:text-[30px]">
+          <h1 className="text-xl font-black tracking-tight text-slate-950 sm:text-2xl lg:text-[30px]">
             {title}
           </h1>
           {description ? (
@@ -44,7 +44,7 @@ export default function AdminPageHeader({
       </div>
 
       {actions ? (
-        <div className="flex flex-wrap items-center gap-3 sm:justify-end">{actions}</div>
+        <div className="flex w-full flex-wrap items-stretch gap-3 lg:w-auto lg:justify-end">{actions}</div>
       ) : null}
     </div>
   );

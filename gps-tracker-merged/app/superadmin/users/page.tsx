@@ -38,7 +38,7 @@ export interface User {
   lastName: string;
   email: string;
   mobile: string;
-  role: "admin" | "manager" | "superadmin" | "driver" | "viewer";
+  role: "admin" | "superadmin" | "driver" | "viewer";
   organizationId?: string | { _id: string; name: string };
   status: "active" | "inactive";
 }
@@ -173,7 +173,6 @@ export default function UsersPage() {
       options: [
         { label: "Super Admin", value: "superadmin" },
         { label: "Organization Admin", value: "admin" },
-        { label: "Manager", value: "manager" },
         { label: "Driver", value: "driver" },
         { label: "Viewer", value: "viewer" },
       ],
@@ -210,7 +209,7 @@ export default function UsersPage() {
       email: z.string().email("Valid email is required"),
       mobile: z.string().optional(),
       password: z.string().optional(),
-      role: z.enum(["superadmin", "admin", "manager", "driver", "viewer"]),
+      role: z.enum(["superadmin", "admin", "driver", "viewer"]),
       organizationId: z.string().optional(),
       status: z.enum(["active", "inactive"]),
     }).superRefine((val, ctx) => {
@@ -220,7 +219,7 @@ export default function UsersPage() {
       if (val.password && val.password.length < 6) {
         ctx.addIssue({ code: "custom", path: ["password"], message: "Password must be at least 6 characters" });
       }
-      if ((val.role === "admin" || val.role === "manager" || val.role === "driver" || val.role === "viewer") && !val.organizationId) {
+      if ((val.role === "admin" || val.role === "driver" || val.role === "viewer") && !val.organizationId) {
         ctx.addIssue({ code: "custom", path: ["organizationId"], message: "Organization is required for this role" });
       }
     });
@@ -372,10 +371,20 @@ export default function UsersPage() {
         </div>
 
         {/* Filters */}
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+        <div className="rounded-[24px] border border-slate-800/80 bg-slate-900/65 p-6 shadow-[0_24px_60px_-45px_rgba(15,23,42,0.85)]">
+          <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-500">
+                Search & Filters
+              </p>
+              <p className="mt-1 text-sm text-slate-400">
+                Find users across all organizations and narrow the global result set.
+              </p>
+            </div>
+          </div>
           <div className="flex flex-col lg:flex-row gap-4">
             <div className="flex-1">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="mb-2 block text-[11px] font-black uppercase tracking-[0.22em] text-slate-400">
                 Search Users
               </label>
               <input
@@ -383,36 +392,35 @@ export default function UsersPage() {
                 placeholder="Search by name, email..."
                 value={filters.name}
                 onChange={(e) => setFilters({ ...filters, name: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                className="w-full rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2.5 text-sm font-medium text-slate-100 placeholder:text-slate-500 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
               />
             </div>
             
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="mb-2 block text-[11px] font-black uppercase tracking-[0.22em] text-slate-400">
                 Role
               </label>
               <select
                 value={filters.role}
                 onChange={(e) => setFilters({ ...filters, role: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                className="w-full rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2.5 text-sm font-medium text-slate-100 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
               >
                 <option value="">All Roles</option>
                 <option value="superadmin">Super Admin</option>
                 <option value="admin">Admin</option>
-                <option value="manager">Manager</option>
                 <option value="driver">Driver</option>
                 <option value="viewer">Viewer</option>
               </select>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="mb-2 block text-[11px] font-black uppercase tracking-[0.22em] text-slate-400">
                 Organization
               </label>
               <select
                 value={filters.organizationId}
                 onChange={(e) => setFilters({ ...filters, organizationId: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                className="w-full rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2.5 text-sm font-medium text-slate-100 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
               >
                 <option value="">All Organizations</option>
                 {displayOrgs.map((org: any) => (
@@ -426,17 +434,17 @@ export default function UsersPage() {
         </div>
 
         {/* Table */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100">
+        <div className="rounded-[24px] border border-slate-800/80 bg-slate-900/65 shadow-[0_24px_60px_-45px_rgba(15,23,42,0.85)]">
           <Table
             columns={columns}
             data={paginatedUsers}
             loading={isLoading}
-            variant="light"
+            variant="dark"
           />
           
           {/* Pagination */}
           {totalPages > 1 && (
-            <div className="p-4 border-t border-gray-100">
+            <div className="border-t border-slate-800 p-4">
               <Pagination
                 page={page}
                 totalPages={totalPages}

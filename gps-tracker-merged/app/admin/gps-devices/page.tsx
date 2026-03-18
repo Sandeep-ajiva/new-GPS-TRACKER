@@ -30,6 +30,8 @@ import { FormField } from "@/lib/formTypes";
 // 🔐 ORG CONTEXT UPDATE
 import { useOrgContext } from "@/hooks/useOrgContext";
 import ImportExportButton from "@/components/admin/import-export/ImportExportButton";
+import AdminPageHeader from "@/components/admin/UI/AdminPageHeader";
+import AdminPageShell from "@/components/admin/UI/AdminPageShell";
 import { InventoryLayer } from "@/components/gps-devices/InventoryLayer";
 import { InventoryStatusBadge } from "@/components/gps-devices/InventoryStatusBadge";
 import type { GpsDeviceRecord } from "@/components/gps-devices/inventoryTypes";
@@ -374,6 +376,7 @@ export default function GpsDevicesPage() {
     warrantyExpiry: "",
     organizationId: "",
   });
+
 
   const deviceQueryParams = useMemo(
     () => ({
@@ -888,16 +891,12 @@ export default function GpsDevicesPage() {
 
   return (
     <ApiErrorBoundary hasError={false}>
-      <div className="space-y-6">
-        {/* Header Section */}
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-2xl font-black text-slate-900">GPS Devices</h1>
-            <p className="text-sm text-slate-500">
-              Manage GPS tracking devices and their assignments.
-            </p>
-          </div>
-          <div className="flex flex-col gap-3 sm:flex-row">
+      <AdminPageShell contentClassName="space-y-6">
+        <AdminPageHeader
+          eyebrow="Hardware Registry"
+          title="GPS Devices"
+          description="Manage GPS tracking devices, inventory state, and mapping handoffs."
+          actions={<div className="flex w-full flex-col gap-3 sm:flex-row lg:w-auto">
             {canUseImportExport && (
               <ImportExportButton
                 moduleName="devices"
@@ -921,22 +920,23 @@ export default function GpsDevicesPage() {
             )}
             <button
               onClick={() => setShowFilters(!showFilters)}
-              className="bg-slate-100 text-slate-900 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 hover:bg-slate-200 transition-colors"
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-black uppercase tracking-widest text-slate-700 transition-colors hover:bg-slate-50"
             >
               <Filter size={16} /> Filters
             </button>
             {canCreateDevice && (
               <button
                 onClick={openCreateModal}
-                className="bg-blue-600 text-white px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 hover:bg-blue-700 transition-colors"
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-black uppercase tracking-widest text-white transition-colors hover:bg-blue-700"
               >
                 <Plus size={16} /> Add Device
               </button>
             )}
-          </div>
-        </div>
+          </div>}
+        />
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="-mx-1 overflow-x-auto px-1 pb-1">
+        <div className="flex min-w-max items-center gap-2">
           {([
             { key: "overview", label: "Overview" },
             { key: "inventory", label: "Inventory" },
@@ -955,6 +955,7 @@ export default function GpsDevicesPage() {
               {tab.label}
             </button>
           ))}
+        </div>
         </div>
 
         {activeTab === "inventory" ? (
@@ -1205,7 +1206,7 @@ export default function GpsDevicesPage() {
                       </select>
                     </div>
                   )}
-                  <div className="flex items-end">
+                  <div className="flex items-end sm:col-span-2 lg:col-span-1">
                     <button
                       onClick={clearFilters}
                       className="w-full bg-slate-100 text-slate-700 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-slate-200 transition-colors"
@@ -1218,8 +1219,8 @@ export default function GpsDevicesPage() {
             )}
 
             {/* Table Section */}
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-              <div className="flex items-center justify-end gap-2 border-b border-slate-200 bg-slate-50 px-4 py-3">
+            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+              <div className="flex flex-wrap items-center justify-end gap-2 border-b border-slate-200 bg-slate-50 px-3 py-3 sm:px-4">
                 <span className="mr-auto text-[10px] font-black uppercase tracking-[0.22em] text-slate-500">
                   Move Table
                 </span>
@@ -1240,7 +1241,7 @@ export default function GpsDevicesPage() {
                   <ChevronRight size={14} />
                 </button>
               </div>
-              <div ref={tableScrollRef} className="overflow-x-auto">
+              <div ref={tableScrollRef} className="overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch]">
                 <Table<GpsDeviceRecord>
                   columns={columns}
                   data={devices}
@@ -1257,7 +1258,7 @@ export default function GpsDevicesPage() {
             </div>
           </>
         )}
-      </div>
+      </AdminPageShell>
 
       {canCreateDevice && (
         <DynamicModal

@@ -23,6 +23,9 @@ import {
   NOTIFICATION_TYPE_OPTIONS,
   getNotificationPrimaryRoute,
 } from "@/lib/adminNotifications";
+import AdminPageHeader from "@/components/admin/UI/AdminPageHeader";
+import AdminPageShell from "@/components/admin/UI/AdminPageShell";
+import AdminSectionCard from "@/components/admin/UI/AdminSectionCard";
 import { useGetOrganizationsQuery } from "@/redux/api/organizationApi";
 import {
   useBulkMarkAdminNotificationsAsAcknowledgedMutation,
@@ -219,18 +222,12 @@ export default function NotificationsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <div className="border-b border-slate-200 bg-white shadow-sm">
-        <div className="mx-auto max-w-7xl px-4 py-5 sm:px-6 lg:px-8">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <h1 className="text-2xl font-black text-slate-900">Notifications</h1>
-              <p className="mt-1 text-sm text-slate-600">
-                Review alert, import, mapping, and admin activity in one place.
-              </p>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
+    <AdminPageShell contentClassName="space-y-6">
+      <AdminPageHeader
+        eyebrow="Alerts Center"
+        title="Notifications"
+        description="Review alert, import, mapping, and admin activity in one place."
+        actions={<div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap lg:w-auto lg:justify-end">
               <Button
                 type="button"
                 size="sm"
@@ -274,12 +271,8 @@ export default function NotificationsPage() {
                 <RefreshCw className="mr-2 h-4 w-4" />
                 Refresh
               </Button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+            </div>}
+      />
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
           <CountCard label="Total" value={counts?.total || 0} accent="text-slate-900" />
           <CountCard label="Unread" value={counts?.unread || 0} accent="text-blue-600" />
@@ -288,7 +281,7 @@ export default function NotificationsPage() {
           <CountCard label="Resolved" value={counts?.resolved || 0} accent="text-emerald-600" />
         </div>
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <AdminSectionCard title="Filters" description="Search and narrow notifications by organization, severity, workflow status, and date." bodyClassName="p-4">
           <div className="mb-4 flex items-center gap-2">
             <Filter className="h-4 w-4 text-slate-500" />
             <h2 className="text-sm font-semibold text-slate-900">Filters</h2>
@@ -415,7 +408,7 @@ export default function NotificationsPage() {
               </Button>
             </div>
           </div>
-        </div>
+        </AdminSectionCard>
 
         {error ? (
           <div className="rounded-2xl border border-red-200 bg-red-50 p-8 text-center">
@@ -508,7 +501,6 @@ export default function NotificationsPage() {
           notifications currently open the history view because that route exists and is the safest place
           to investigate recent event context.
         </div>
-      </div>
-    </div>
+    </AdminPageShell>
   );
 }

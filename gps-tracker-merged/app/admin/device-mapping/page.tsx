@@ -14,6 +14,9 @@ import { useGetVehiclesQuery } from "@/redux/api/vehicleApi";
 import { useGetGpsDevicesQuery } from "@/redux/api/gpsDeviceApi";
 import { useGetOrganizationsQuery } from "@/redux/api/organizationApi";
 import ImportExportButton from "@/components/admin/import-export/ImportExportButton";
+import AdminPageHeader from "@/components/admin/UI/AdminPageHeader";
+import AdminPageShell from "@/components/admin/UI/AdminPageShell";
+import AdminSectionCard from "@/components/admin/UI/AdminSectionCard";
 import SearchableEntitySelect from "@/components/admin/UI/SearchableEntitySelect";
 // 🔐 ORG CONTEXT UPDATE
 import { useOrgContext } from "@/hooks/useOrgContext";
@@ -386,14 +389,12 @@ export default function DeviceMappingPage() {
 
     return (
         <ApiErrorBoundary hasError={false}>
-            <div className="space-y-6">
-                <div className="flex flex-wrap items-center justify-between gap-4">
-                    <div>
-                        <p className="text-[11px] font-black uppercase tracking-[0.3em] text-slate-400">Operations</p>
-                        <h1 className="text-2xl font-black text-slate-900">Device Mapping</h1>
-                        <p className="text-sm text-slate-500">Associate GPS devices with vehicles.</p>
-                    </div>
-                    <div className="flex flex-col gap-3 sm:flex-row">
+            <AdminPageShell contentClassName="space-y-6">
+                <AdminPageHeader
+                    eyebrow="Operations"
+                    title="Device Mapping"
+                    description="Associate GPS devices with vehicles using responsive searchable selectors and a safer mobile flow."
+                    actions={<div className="flex w-full flex-col gap-3 sm:flex-row lg:w-auto">
                         <ImportExportButton
                             moduleName="deviceMapping"
                             importUrl="/importexport/import/devicemapping"
@@ -414,22 +415,22 @@ export default function DeviceMappingPage() {
                         />
                         <button
                             onClick={() => setShowFilters(!showFilters)}
-                            className="rounded-xl bg-slate-100 px-4 py-2 text-xs font-black uppercase tracking-widest text-slate-700 shadow-sm transition hover:bg-slate-200"
+                            className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-black uppercase tracking-widest text-slate-700 shadow-sm transition hover:bg-slate-50"
                         >
                             <span className="inline-flex items-center gap-2"><Filter size={16} /> Filters</span>
                         </button>
                         <button
                             onClick={openCreateModal}
-                            className="rounded-xl bg-blue-600 px-4 py-2 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-blue-200 transition hover:bg-blue-700 disabled:opacity-60"
+                            className="inline-flex items-center justify-center rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-blue-200 transition hover:bg-blue-700 disabled:opacity-60"
                             disabled={!canAssign}
                         >
                             <span className="inline-flex items-center gap-2"><Link2 size={16} /> Assign Device</span>
                         </button>
-                    </div>
-                </div>
+                    </div>}
+                />
 
                 {showFilters && (
-                    <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                    <AdminSectionCard title="Filter Mappings" description="Refine mapped pairs by vehicle, device, organization, and date." bodyClassName="p-4">
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                             <div>
                                 <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
@@ -491,17 +492,25 @@ export default function DeviceMappingPage() {
                                 </button>
                             </div>
                         </div>
-                    </div>
+                    </AdminSectionCard>
                 )}
 
-                <Table columns={columns} data={filteredMappings} loading={isLoading} />
+                <AdminSectionCard
+                    title="Mapped Assets"
+                    description="Operational table of current device-to-vehicle associations."
+                    bodyClassName="p-0"
+                >
+                    <div className="overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch]">
+                        <Table columns={columns} data={filteredMappings} loading={isLoading} />
+                    </div>
+                </AdminSectionCard>
 
                 {isModalOpen && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-md p-4">
-                        <div className="mapping-modal w-full max-w-3xl rounded-[32px] border border-slate-200 bg-white shadow-[0_25px_60px_rgba(15,23,42,0.25)] overflow-hidden">
-                            <div className="px-8 py-7 border-b border-slate-100 flex items-start justify-between">
+                    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-2 backdrop-blur-md sm:items-center sm:p-4">
+                        <div className="mapping-modal flex max-h-[min(100dvh-1rem,80rem)] w-full max-w-3xl flex-col overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_25px_60px_rgba(15,23,42,0.25)] sm:rounded-[32px]">
+                            <div className="flex items-start justify-between border-b border-slate-100 px-4 py-4 sm:px-8 sm:py-7">
                                 <div>
-                                    <h2 className="text-[40px] leading-[1.02] font-black text-slate-900 tracking-tight">Establish New Link</h2>
+                                    <h2 className="text-2xl font-black leading-[1.02] tracking-tight text-slate-900 sm:text-[40px]">Establish New Link</h2>
                                     <p className="mt-1 text-sm text-slate-500">Select assets below to create a real-time tracking association.</p>
                                 </div>
                                 <button
@@ -513,7 +522,7 @@ export default function DeviceMappingPage() {
                                 </button>
                             </div>
 
-                            <form onSubmit={handleSubmit} className="px-8 py-8">
+                            <form onSubmit={handleSubmit} className="overflow-y-auto px-4 py-4 sm:px-8 sm:py-8">
                                 {/* 🔐 Optional organization filter for superadmin/root admin */}
                                 {canFilterOrg && organizations.length > 0 && (
                                     <div className="mb-6">
@@ -542,7 +551,7 @@ export default function DeviceMappingPage() {
                                         </select>
                                     </div>
                                 )}
-                                <div className="grid grid-cols-1 md:grid-cols-11 gap-5 items-end">
+                                <div className="grid grid-cols-1 gap-4 md:grid-cols-11 md:items-end md:gap-5">
                                     <div className="md:col-span-5">
                                         <label className="mb-2 block text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">
                                             <span className="inline-flex items-center gap-2"><Car size={12} className="text-blue-500" /> Select Vehicle</span>
@@ -566,7 +575,7 @@ export default function DeviceMappingPage() {
                                         )}
                                     </div>
 
-                                    <div className="md:col-span-1 flex items-center justify-center pb-1">
+                                    <div className="hidden md:col-span-1 md:flex items-center justify-center pb-1">
                                         <div className="h-10 w-10 rounded-full border border-slate-200 bg-slate-50 text-slate-300 flex items-center justify-center">
                                             <ArrowRight size={16} />
                                         </div>
@@ -643,7 +652,7 @@ export default function DeviceMappingPage() {
                                     </div>
                                 )}
 
-                                <div className="mt-9 pt-6 border-t border-slate-100 flex items-center justify-between gap-4">
+                                <div className="mt-9 flex flex-col gap-3 border-t border-slate-100 pt-6 sm:flex-row sm:items-center sm:justify-between">
                                     <button
                                         type="button"
                                         onClick={closeModal}
@@ -654,7 +663,7 @@ export default function DeviceMappingPage() {
                                     <button
                                         type="submit"
                                         disabled={!canAssign || !formData.vehicleId || !formData.deviceId || isAssigning}
-                                        className="min-w-[245px] h-10 rounded-2xl bg-slate-300 px-6 text-[11px] font-black uppercase tracking-[0.14em] text-white disabled:opacity-100 disabled:cursor-not-allowed enabled:bg-slate-900 enabled:hover:bg-black transition-colors"
+                                        className="h-11 w-full rounded-2xl bg-slate-300 px-6 text-[11px] font-black uppercase tracking-[0.14em] text-white transition-colors disabled:cursor-not-allowed disabled:opacity-100 enabled:bg-slate-900 enabled:hover:bg-black sm:min-w-[245px] sm:w-auto"
                                     >
                                         {isAssigning ? "Processing..." : "Confirm Mapping Connection"}
                                     </button>
@@ -663,7 +672,7 @@ export default function DeviceMappingPage() {
                         </div>
                     </div>
                 )}
-            </div>
+            </AdminPageShell>
         </ApiErrorBoundary>
     );
 }

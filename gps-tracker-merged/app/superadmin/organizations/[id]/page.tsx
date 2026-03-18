@@ -1,222 +1,125 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import OrganizationMap from "@/components/admin/Map/OrganizationMap";
+import { useGetOrganizationQuery } from "@/redux/api/organizationApi";
+import { formatDateTime, formatStatus } from "@/components/superadmin/superadmin-data";
 
-const orgs = [
-  {
-    id: "org_ajiva",
-    name: "Ajiva Tracker",
-    address: "24 Connaught Place, New Delhi",
-    admin: "Diana Kapoor",
-    email: "admin@ajiva.com",
-    phone: "+91 98765 43210",
-    status: "active",
-    position: { lat: 28.6329, lng: 77.2195 },
-    branches: [
-      {
-        id: "org_ajiva_br_1",
-        name: "Ajiva East Branch",
-        address: "Laxmi Nagar, Delhi",
-        manager: "Sahil Verma",
-        status: "active",
-        position: { lat: 28.6412, lng: 77.2863 },
-      },
-      {
-        id: "org_ajiva_br_2",
-        name: "Ajiva South Branch",
-        address: "Saket, Delhi",
-        manager: "Neha Rao",
-        status: "paused",
-        position: { lat: 28.5244, lng: 77.2066 },
-      },
-    ],
-  },
-  {
-    id: "org_north",
-    name: "North Branch",
-    address: "Sector 17, Chandigarh",
-    admin: "Rohan Singh",
-    email: "north@ajiva.com",
-    phone: "+91 98765 43211",
-    status: "active",
-    position: { lat: 30.7333, lng: 76.7794 },
-    branches: [
-      {
-        id: "org_north_br_1",
-        name: "North Logistics Hub",
-        address: "Industrial Area, Chandigarh",
-        manager: "Kunal Kapoor",
-        status: "active",
-        position: { lat: 30.7112, lng: 76.806 },
-      },
-    ],
-  },
-];
-
-const vehicles = [
-  {
-    id: "org_ajiva:veh_1",
-    orgId: "org_ajiva",
-    label: "DL 10CK1840",
-    driverName: "Dave Mathew",
-    speed: 46,
-    lastUpdated: "2m ago",
-    location: "Connaught Place, Delhi",
-    status: "running",
-    position: { lat: 28.6312, lng: 77.2167 },
-  },
-  {
-    id: "org_north:veh_1",
-    orgId: "org_north",
-    label: "PB 10AX2234",
-    driverName: "Mitchell John",
-    speed: 12,
-    lastUpdated: "1m ago",
-    location: "Sector 17, Chandigarh",
-    status: "idle",
-    position: { lat: 30.7394, lng: 76.7752 },
-  },
-];
+type Coordinates = { lat: number; lng: number };
 
 export default function OrganizationDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
-  const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
-  const org = orgs.find((item) => item.id === params.id);
-  const orgVehicles = vehicles.filter((vehicle) => vehicle.orgId === params.id);
-  const orgBranches = org?.branches ?? [];
+  const organizationId = Array.isArray(params?.id) ? params.id[0] : params?.id;
 
-  const orgPoints = useMemo(
+  const { data, isLoading, isError } = useGetOrganizationQuery(organizationId, {
+    skip: !organizationId,
+    refetchOnMountOrArgChange: true,
+  });
+
+  const organization = useMemo(() => {
+    if (!data || typeof data !== "object") return null;
+    if ("data" in data && data.data && typeof data.data === "object") return data.data as Record<string, unknown>;
+    return data as Record<string, unknown>;
+  }, [data]);
+
+  const position = useMemo(() => getCoordinates(organization), [organization]);
+  const organizationPoint = useMemo(
     () =>
-      org
+      position && organizationId
         ? [
-          {
-            id: org.id,
-            name: org.name,
-            position: org.position,
-          },
-        ]
+            {
+              id: organizationId,
+              name: readString(organization?.name) || "Organization",
+              position,
+            },
+          ]
         : [],
-    [org]
+    [organization, organizationId, position],
   );
 
-  const vehiclePoints = useMemo(
-    () =>
-      orgVehicles.map((vehicle) => ({
-        id: vehicle.id,
-        status: vehicle.status as any,
-        position: vehicle.position,
-        label: vehicle.label,
-        driverName: vehicle.driverName,
-        speed: vehicle.speed,
-        lastUpdated: vehicle.lastUpdated,
-        location: vehicle.location,
-      })),
-    [orgVehicles]
-  );
-
-  if (!org) {
-    return (
-      <div className="rounded-2xl border border-slate-800/80 bg-slate-900/60 p-8 text-slate-300">
-        Organization not found.
-      </div>
-    );
+  if (isLoading) {
+    return <StateCard text="Loading organization details..." />;
   }
 
+  if (isError || !organization) {
+    return <StateCard text="Organization details are unavailable." danger />;
+  }
+
+  const name = readString(organization.name) || "Organization";
+  const email = readString(organization.email);
+  const phone = readString(organization.phone);
+  const status = formatStatus(readString(organization.status) || "unknown");
+  const address = formatAddress(organization.address);
+  const adminName = getAdminName(organization);
+  const createdAt = formatDateTime(readString(organization.createdAt));
+  const updatedAt = formatDateTime(readString(organization.updatedAt));
+
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-[11px] font-black uppercase tracking-[0.3em] text-emerald-400/70">Organization</p>
-          <h1 className="text-2xl font-black text-slate-100">{org.name}</h1>
+    <div className="space-y-6 pb-8">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="space-y-2">
+          <p className="text-[11px] font-black uppercase tracking-[0.3em] text-emerald-400/70">Organization Detail</p>
+          <h1 className="text-2xl font-black text-slate-100 sm:text-3xl">{name}</h1>
+          <p className="max-w-2xl text-sm text-slate-400">
+            Superadmin view of organization identity, contact data, and available location context.
+          </p>
         </div>
         <button
+          type="button"
           onClick={() => router.back()}
-          className="rounded-xl border border-slate-800 bg-slate-950/70 px-4 py-2 text-xs font-black uppercase tracking-widest text-slate-200 hover:bg-slate-900"
+          className="rounded-xl border border-slate-800 bg-slate-950/70 px-4 py-2 text-xs font-black uppercase tracking-widest text-slate-200 transition hover:bg-slate-900"
         >
           Back
         </button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[360px_1fr] gap-6">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[0.95fr_1.05fr]">
         <div className="space-y-4">
-          <div className="rounded-2xl border border-slate-800/80 bg-slate-900/60 p-6 shadow-[0_20px_60px_-40px_rgba(15,23,42,0.8)]">
-            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Details</p>
-            <h2 className="text-lg font-black text-slate-100">{org.name}</h2>
-            <p className="text-sm text-slate-400">{org.address}</p>
-            <div className="mt-4 grid gap-3 text-xs text-slate-300">
-              <InfoItem label="Admin" value={org.admin} />
-              <InfoItem label="Contact" value={org.phone} />
-              <InfoItem label="Email" value={org.email} />
+          <section className="rounded-2xl border border-slate-800/80 bg-slate-900/60 p-5 shadow-[0_20px_60px_-40px_rgba(15,23,42,0.8)]">
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Identity</p>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <InfoItem label="Organization" value={name} />
+              <InfoItem label="Status" value={status} />
+              <InfoItem label="Email" value={email || "Unavailable"} />
+              <InfoItem label="Phone" value={phone || "Unavailable"} />
+              <InfoItem label="Primary Admin" value={adminName || "Unavailable"} />
+              <InfoItem label="Created" value={createdAt || "Unavailable"} />
             </div>
-          </div>
-          <div className="rounded-2xl border border-slate-800/80 bg-slate-900/60 p-6 shadow-[0_20px_60px_-40px_rgba(15,23,42,0.8)]">
-            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Branches</p>
-            <div className="mt-4 space-y-3">
-              {orgBranches.map((branch) => (
-                <div key={branch.id} className="rounded-xl border border-slate-800/80 bg-slate-950/60 p-3 text-sm text-slate-200">
-                  <div className="flex items-center justify-between">
-                    <p className="font-black">{branch.name}</p>
-                    <span className="text-[10px] uppercase tracking-widest text-slate-400">{branch.status}</span>
-                  </div>
-                  <p className="text-xs text-slate-400">{branch.address}</p>
-                  <p className="text-xs text-slate-500">Manager: {branch.manager}</p>
-                </div>
-              ))}
-              {orgBranches.length === 0 && (
-                <p className="text-xs text-slate-400">No branches assigned yet.</p>
-              )}
+          </section>
+
+          <section className="rounded-2xl border border-slate-800/80 bg-slate-900/60 p-5 shadow-[0_20px_60px_-40px_rgba(15,23,42,0.8)]">
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Operational Context</p>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <InfoItem label="Last Updated" value={updatedAt || "Unavailable"} />
+              <InfoItem label="Organization ID" value={readString(organization._id) || organizationId || "Unavailable"} />
             </div>
-          </div>
-          <div className="rounded-2xl border border-slate-800/80 bg-slate-900/60 p-6 shadow-[0_20px_60px_-40px_rgba(15,23,42,0.8)]">
-            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Vehicles</p>
-            <div className="mt-4 space-y-3">
-              {orgVehicles.map((vehicle) => {
-                const isActive = selectedVehicleId === vehicle.id;
-                return (
-                  <button
-                    key={vehicle.id}
-                    onClick={() => setSelectedVehicleId(vehicle.id)}
-                    className={`w-full rounded-xl border p-3 text-left text-sm transition ${isActive
-                        ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-100"
-                        : "border-slate-800/80 bg-slate-950/60 text-slate-200 hover:border-emerald-500/20"
-                      }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <p className="font-black">{vehicle.label}</p>
-                      <span className="text-[10px] uppercase tracking-widest text-slate-400">
-                        {vehicle.status}
-                      </span>
-                    </div>
-                    <p className="text-xs text-slate-400">Driver: {vehicle.driverName}</p>
-                    <p className="text-xs text-slate-500">
-                      Speed {vehicle.speed} km/h · {vehicle.lastUpdated}
-                    </p>
-                  </button>
-                );
-              })}
-              {orgVehicles.length === 0 && (
-                <p className="text-xs text-slate-400">No vehicles assigned yet.</p>
-              )}
+            <div className="mt-4 rounded-xl border border-slate-800/80 bg-slate-950/60 p-4">
+              <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Address</p>
+              <p className="mt-2 text-sm leading-6 text-slate-300">{address || "Address details are unavailable."}</p>
             </div>
-          </div>
+          </section>
         </div>
-        <div className="h-[520px] rounded-2xl border border-slate-800/80 bg-slate-900/60 p-1 shadow-[0_20px_60px_-40px_rgba(15,23,42,0.8)]">
-          <OrganizationMap
-            organizations={orgPoints}
-            secondaryOrganizations={orgBranches.map((branch) => ({
-              id: branch.id,
-              name: branch.name,
-              position: branch.position,
-            }))}
-            vehicles={vehiclePoints}
-            selectedOrgId={org.id}
-            selectedVehicleId={selectedVehicleId || undefined}
-            onVehicleSelect={(vehicleId) => setSelectedVehicleId(vehicleId || null)}
-          />
-        </div>
+
+        <section className="rounded-2xl border border-slate-800/80 bg-slate-900/60 p-4 shadow-[0_20px_60px_-40px_rgba(15,23,42,0.8)]">
+          <div className="mb-4">
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Location</p>
+            <p className="mt-1 text-sm text-slate-400">
+              Map renders only when valid organization coordinates are available from the current backend response.
+            </p>
+          </div>
+
+          {position ? (
+            <div className="h-[420px] overflow-hidden rounded-2xl border border-slate-800/80 bg-slate-950/60">
+              <OrganizationMap organizations={organizationPoint} selectedOrgId={organizationId} />
+            </div>
+          ) : (
+            <div className="flex h-[420px] items-center justify-center rounded-2xl border border-dashed border-slate-800 bg-slate-950/60 p-6 text-center text-sm font-medium leading-6 text-slate-400">
+              Location coordinates are not available for this organization, so the map has been hidden instead of showing demo data.
+            </div>
+          )}
+        </section>
       </div>
     </div>
   );
@@ -226,7 +129,78 @@ function InfoItem({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-xl border border-slate-800/80 bg-slate-950/60 p-3">
       <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{label}</p>
-      <p className="text-sm font-semibold text-slate-100">{value}</p>
+      <p className="mt-1 text-sm font-semibold text-slate-100">{value}</p>
     </div>
   );
+}
+
+function StateCard({ text, danger = false }: { text: string; danger?: boolean }) {
+  return (
+    <div className={`rounded-2xl border p-8 text-sm font-semibold ${danger ? "border-rose-500/30 bg-rose-500/10 text-rose-100" : "border-slate-800/80 bg-slate-900/60 text-slate-300"}`}>
+      {text}
+    </div>
+  );
+}
+
+function readString(value: unknown) {
+  return typeof value === "string" && value.trim() ? value : "";
+}
+
+function formatAddress(address: unknown) {
+  if (typeof address === "string" && address.trim()) return address;
+  if (!address || typeof address !== "object") return "";
+
+  const source = address as Record<string, unknown>;
+  return [
+    readString(source.addressLine),
+    readString(source.city),
+    readString(source.state),
+    readString(source.country),
+    readString(source.pincode),
+  ]
+    .filter(Boolean)
+    .join(", ");
+}
+
+function getAdminName(organization: Record<string, unknown> | null) {
+  if (!organization) return "";
+
+  const directAdmin = organization.adminUser;
+  if (directAdmin && typeof directAdmin === "object") {
+    const admin = directAdmin as Record<string, unknown>;
+    const fullName = [readString(admin.firstName), readString(admin.lastName)].filter(Boolean).join(" ").trim();
+    return fullName || readString(admin.name) || readString(admin.email);
+  }
+
+  return readString(organization.adminUser);
+}
+
+function getCoordinates(source: Record<string, unknown> | null): Coordinates | null {
+  if (!source) return null;
+
+  const candidates: Array<Record<string, unknown>> = [];
+
+  if (source.geo && typeof source.geo === "object") candidates.push(source.geo as Record<string, unknown>);
+  if (source.location && typeof source.location === "object") candidates.push(source.location as Record<string, unknown>);
+  candidates.push(source);
+
+  for (const candidate of candidates) {
+    const lat = readNumber(candidate.lat ?? candidate.latitude);
+    const lng = readNumber(candidate.lng ?? candidate.longitude ?? candidate.lon);
+
+    if (lat !== null && lng !== null) {
+      return { lat, lng };
+    }
+  }
+
+  return null;
+}
+
+function readNumber(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
 }

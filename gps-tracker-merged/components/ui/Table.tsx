@@ -83,7 +83,7 @@ export default function Table<T extends TableRow>({
               {columns.map((col, colIdx) => (
                 <td
                   key={colIdx}
-                  className={`px-4 py-3 align-top sm:px-6 sm:py-4 font-medium ${cellTextClass} ${col.cellClassName || ""}`}
+                  className={`px-3 py-3 align-top text-xs sm:px-6 sm:py-4 sm:text-sm font-medium ${cellTextClass} ${col.cellClassName || ""}`}
                 >
                   {typeof col.accessor === "function"
                     ? col.accessor(row)
@@ -102,7 +102,7 @@ export default function Table<T extends TableRow>({
 
   return (
     <div className={`${containerClass} overflow-hidden`}>
-      <div ref={scrollContainerRef} className="overflow-x-auto">
+      <div ref={scrollContainerRef} className="overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch]">
         {tableMarkup}
       </div>
     </div>

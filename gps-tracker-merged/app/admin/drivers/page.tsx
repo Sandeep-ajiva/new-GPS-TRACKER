@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import Table from "@/components/ui/Table";
 import Pagination from "@/components/ui/Pagination";
 import ApiErrorBoundary from "@/components/admin/ErrorBoundary/ApiErrorBoundary";
@@ -31,13 +32,15 @@ import ImportExportButton from "@/components/admin/import-export/ImportExportBut
 
 export default function DriversPage() {
     const { openPopup, closePopup, isPopupOpen } = usePopups();
+    const searchParams = useSearchParams();
+    const searchQueryParam = searchParams.get("search");
 
     // 🔐 ORG CONTEXT UPDATE
     const { orgId, role, user, isSuperAdmin, isRootOrgAdmin, isSubOrgAdmin } = useOrgContext();
     const canUseImportExport = role === "admin" || role === "superadmin";
     const canSelectImportOrganization = isSuperAdmin || (role === "admin" && !user?.parentOrganizationId);
 
-    const [showFilters, setShowFilters] = useState(false);
+    const [showFilters, setShowFilters] = useState(!!searchQueryParam);
     const [page, setPage] = useState(1);
     const LIMIT = 10;
 
@@ -47,7 +50,7 @@ export default function DriversPage() {
     const canDeleteDriver = isSuperAdmin || isRootOrgAdmin;
 
     const [filters, setFilters] = useState({
-        name: "",
+        name: searchQueryParam || "",
         phone: "",
         licenseNumber: "",
         vehicleNumber: "",

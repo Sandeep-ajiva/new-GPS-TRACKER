@@ -98,8 +98,8 @@ export default function Sidebar({ className, showClose, onClose, onNavigate, rol
         .filter((group) => group.items.length > 0);
 
     return (
-        <aside className={`fixed left-0 top-0 z-50 flex h-screen w-72 flex-col border-r border-slate-200/80 bg-white/90 shadow-[0_24px_60px_rgba(15,23,42,0.08)] backdrop-blur ${className || ""}`}>
-            <div className="border-b border-slate-200 px-6 py-5">
+        <aside className={`fixed left-0 top-0 z-50 flex h-screen w-[min(18rem,calc(100vw-1rem))] max-w-full flex-col border-r border-slate-200/80 bg-white/90 shadow-[0_24px_60px_rgba(15,23,42,0.08)] backdrop-blur sm:w-72 ${className || ""}`}>
+            <div className="border-b border-slate-200 px-4 py-4 sm:px-6 sm:py-5">
                 <div className="flex items-start justify-between gap-3">
                     <div>
                         <p className="text-[10px] font-black uppercase tracking-[0.34em] text-slate-400">Operations Console</p>
@@ -110,22 +110,22 @@ export default function Sidebar({ className, showClose, onClose, onNavigate, rol
                             Admin Workspace
                         </span>
                     </div>
+                    {showClose && (
+                        <button
+                            type="button"
+                            className="md:hidden rounded-xl border border-slate-200 p-2 text-slate-500 transition hover:bg-slate-100"
+                            onClick={onClose}
+                            aria-label="Close sidebar"
+                        >
+                            <X size={18} />
+                        </button>
+                    )}
                 </div>
-                {showClose && (
-                    <button
-                        type="button"
-                        className="md:hidden rounded-xl p-2 text-slate-500 transition hover:bg-slate-100"
-                        onClick={onClose}
-                        aria-label="Close sidebar"
-                    >
-                        <X size={18} />
-                    </button>
-                )}
             </div>
 
             {/* Navigation */}
-            <nav className="flex-1 overflow-y-auto py-6">
-                <div className="space-y-7 px-4">
+            <nav className="flex-1 overflow-y-auto py-4 sm:py-6">
+                <div className="space-y-6 px-3 sm:space-y-7 sm:px-4">
                     {visibleGroups.map((group) => (
                         <div key={group.title}>
                             <h3 className="mb-3 px-2 text-[10px] font-black uppercase tracking-[0.34em] text-slate-400">
@@ -166,7 +166,7 @@ export default function Sidebar({ className, showClose, onClose, onNavigate, rol
             </nav>
 
             {/* Footer / Logout */}
-            <div className="border-t border-slate-200 p-4">
+            <div className="border-t border-slate-200 p-3 sm:p-4">
                 <button
                     onClick={() => {
                         if (typeof window !== "undefined") {

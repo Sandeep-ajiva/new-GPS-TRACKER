@@ -116,6 +116,7 @@ export default function VehiclesPage() {
     deviceAssigned: "",
   });
 
+
   const vehicleQueryParams = useMemo(
     () => ({
       page: page - 1,
@@ -1184,8 +1185,8 @@ export default function VehiclesPage() {
       </AdminPageShell>
 
       {isPopupOpen("assignDeviceModal") && (
-        <div className="fixed inset-0 bg-slate-950/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl border border-slate-200">
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/50 p-2 backdrop-blur-sm sm:items-center sm:p-4">
+          <div className="max-h-[min(100dvh-1rem,90vh)] w-full max-w-md overflow-y-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl sm:p-6">
             <h2 className="text-xl text-slate-900 font-bold mb-4">Assign GPS Device</h2>
             <p className="text-sm text-slate-500 mb-4">
               Assign a GPS device to{" "}
@@ -1220,7 +1221,7 @@ text-left cursor-pointer"
                 ))}
               </div>
             )}
-            <div className="flex gap-3 mt-6">
+            <div className="mt-6 flex gap-3">
               <button
                 type="button"
                 onClick={() => {

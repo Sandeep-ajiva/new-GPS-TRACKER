@@ -1,7 +1,7 @@
 "use client";
 
 import { ReactNode, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Table from "@/components/ui/Table";
 import Pagination from "@/components/ui/Pagination";
 import ApiErrorBoundary from "@/components/admin/ErrorBoundary/ApiErrorBoundary";
@@ -57,6 +57,8 @@ type OrganizationTableColumn = {
 
 export default function OrganizationsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const searchQueryParam = searchParams.get("search");
 
   // 🔐 ORG CONTEXT UPDATE
   const { role, orgId, orgName, isSuperAdmin, isRootOrgAdmin } = useOrgContext();
@@ -86,9 +88,9 @@ export default function OrganizationsPage() {
   ---------------------------------------- */
   const [editingOrg, setEditingOrg] = useState<Organization | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [showFilters, setShowFilters] = useState(false);
+  const [showFilters, setShowFilters] = useState(!!searchQueryParam);
   const [filters, setFilters] = useState({
-    name: "",
+    name: searchQueryParam || "",
     type: "",
     status: "",
   });

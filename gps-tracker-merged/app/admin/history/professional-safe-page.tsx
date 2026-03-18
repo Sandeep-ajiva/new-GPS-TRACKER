@@ -753,9 +753,9 @@ export default function ProfessionalHistoryPage() {
 
   return (
     <ApiErrorBoundary hasError={hasError}>
-      <div className="min-h-screen bg-white p-4 text-gray-900">
-        <div className="rounded-2xl border border-gray-200 bg-white px-4 py-4 shadow-sm">
-          <div className="mb-3 flex items-center justify-between">
+      <div className="min-h-screen bg-white p-3 text-gray-900 sm:p-4">
+        <div className="rounded-2xl border border-gray-200 bg-white px-3 py-4 shadow-sm sm:px-4">
+          <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-[11px] font-black uppercase tracking-[0.2em] text-gray-500">Professional History</p>
               <h1 className="text-xl font-black text-gray-900">Vehicle Playback</h1>
@@ -770,7 +770,7 @@ export default function ProfessionalHistoryPage() {
             </div>
           </div>
 
-          <form onSubmit={handleSearch} className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-6">
+          <form onSubmit={handleSearch} className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-6">
             <div>
               <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-gray-600">Vehicle</label>
               <select
@@ -825,7 +825,7 @@ export default function ProfessionalHistoryPage() {
               />
             </div>
 
-            <div className="flex items-end gap-2">
+            <div className="flex flex-wrap items-end gap-2 xl:flex-nowrap">
               <Button
                 type="button"
                 variant="outline"
@@ -845,7 +845,7 @@ export default function ProfessionalHistoryPage() {
               </Button>
             </div>
 
-            <div className="flex items-end gap-2">
+            <div className="flex flex-wrap items-end gap-2 xl:flex-nowrap">
               {(["yesterday", "lastweek"] as const).map((preset) => (
                 <Button
                   key={preset}
@@ -924,7 +924,7 @@ export default function ProfessionalHistoryPage() {
                   </div>
                 )}
 
-                <div className="flex flex-wrap items-center gap-2 border-b border-gray-200 px-4 py-3">
+                <div className="flex flex-wrap items-center gap-2 border-b border-gray-200 px-3 py-3 sm:px-4">
                   <Button size="sm" onClick={handlePrevious} disabled={currentIndex <= 0 || activeDayPoints.length === 0}>
                     <SkipBack size={14} />
                   </Button>
@@ -939,7 +939,7 @@ export default function ProfessionalHistoryPage() {
                   </Button>
 
                   <select
-                    className="rounded border border-gray-300 px-2 py-1 text-sm"
+                    className="min-w-[5rem] rounded border border-gray-300 px-2 py-1 text-sm"
                     value={playbackSpeed}
                     onChange={(event) => setPlaybackSpeed(Number(event.target.value))}
                   >
@@ -981,7 +981,7 @@ export default function ProfessionalHistoryPage() {
                     <MapContainer
                       center={mapCenter}
                       zoom={vehicleId ? 12 : 5}
-                      className="h-[56vh] min-h-[420px] w-full"
+                      className="h-[52vh] min-h-[320px] w-full sm:min-h-[420px]"
                       scrollWheelZoom={true}
                     >
                       <MapInstanceAccessor onMap={(map) => { leafletMapRef.current = map; }} />
@@ -1177,8 +1177,8 @@ export default function ProfessionalHistoryPage() {
 
       {/* Driver Modal */}
       {isDriverModalOpen && (
-        <div className="fixed inset-0 bg-black/30 z-[1000] flex items-center justify-center p-4" onClick={() => setIsDriverModalOpen(false)}>
-          <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-[1000] flex items-end justify-center bg-black/30 p-2 sm:items-center sm:p-4" onClick={() => setIsDriverModalOpen(false)}>
+          <div className="max-h-[min(100dvh-1rem,90vh)] w-full max-w-sm overflow-y-auto rounded-xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
               <div className="flex items-center gap-3">
                 <div className="rounded-full bg-emerald-500/20 p-2">

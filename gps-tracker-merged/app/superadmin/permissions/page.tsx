@@ -1,482 +1,279 @@
 "use client";
-import React, { useEffect, useMemo, useState } from "react";
 
-const defaultActions = ["create", "read", "update", "delete"];
+import { Building2, Car, CheckCircle2, Radio, ShieldCheck, Users, XCircle } from "lucide-react";
+import { useGetUsersQuery } from "@/redux/api/usersApi";
+import { useGetOrganizationsQuery } from "@/redux/api/organizationApi";
+import { useGetVehiclesQuery } from "@/redux/api/vehicleApi";
+import { useGetGpsDevicesQuery } from "@/redux/api/gpsDeviceApi";
+import { getCollection } from "@/components/superadmin/superadmin-data";
 
-const demoPermissions: PermissionRecord[] = [
+type RoleKey = "superadmin" | "admin" | "driver" | "viewer";
+
+type ModuleAccess = {
+  label: string;
+  key: string;
+  icon: typeof Building2;
+  support: Record<RoleKey, string>;
+};
+
+const roleDefinitions: Array<{
+  key: RoleKey;
+  label: string;
+  scope: string;
+  description: string;
+}> = [
   {
-    id: "perm_superadmin",
-    role: "superadmin",
-    hierarchy: 4,
-    modules: {
-      organizations: ["create", "read", "update", "delete"],
-      users: ["create", "read", "update", "delete"],
-      vehicle: ["create", "read", "update", "delete"],
-      gpsDevice: ["create", "read", "update", "delete"],
-      deviceMapping: ["create", "read", "update", "delete"],
-      gpsLiveData: ["create", "read", "update", "delete"],
-      gpsHistory: ["create", "read", "update", "delete"],
+    key: "superadmin",
+    label: "Super Admin",
+    scope: "Global platform authority",
+    description: "Full cross-organization control across organizations, users, vehicles, devices, mappings, and platform configuration surfaces.",
+  },
+  {
+    key: "admin",
+    label: "Organization Admin",
+    scope: "Organization-level authority",
+    description: "Operational control over organization-scoped users, vehicles, devices, and day-to-day administration inside assigned workspace boundaries.",
+  },
+  {
+    key: "driver",
+    label: "Driver",
+    scope: "Field operations access",
+    description: "Limited operational role tied to assigned fleet activity and status visibility, without platform administration permissions.",
+  },
+  {
+    key: "viewer",
+    label: "Viewer",
+    scope: "Read-only visibility",
+    description: "Observation-only access for monitoring and review workflows where editing or platform-wide changes are not required.",
+  },
+];
+
+const moduleAccess: ModuleAccess[] = [
+  {
+    key: "organizations",
+    label: "Organizations",
+    icon: Building2,
+    support: {
+      superadmin: "Create, update, and globally manage all organizations.",
+      admin: "View assigned organization context only.",
+      driver: "No direct access.",
+      viewer: "No direct access.",
     },
   },
   {
-    id: "perm_admin",
-    role: "admin",
-    hierarchy: 3,
-    modules: {
-      organizations: ["create", "read", "update"],
-      users: ["create", "read", "update"],
-      vehicle: ["create", "read", "update", "delete"],
-      gpsDevice: ["create", "read", "update", "delete"],
-      deviceMapping: ["create", "read", "update"],
-      gpsLiveData: ["read"],
-      gpsHistory: ["read"],
+    key: "users",
+    label: "Users",
+    icon: Users,
+    support: {
+      superadmin: "Create and manage users across the platform.",
+      admin: "Manage users inside assigned organization scope.",
+      driver: "Own account visibility only where exposed by the product.",
+      viewer: "Read-only visibility where available.",
     },
   },
   {
-    id: "perm_manager",
-    role: "manager",
-    hierarchy: 2,
-    modules: {
-      organizations: [],
-      users: ["read"],
-      vehicle: ["create", "read", "update"],
-      gpsDevice: ["read"],
-      deviceMapping: ["read"],
-      gpsLiveData: ["read"],
-      gpsHistory: ["read"],
+    key: "vehicles",
+    label: "Vehicles",
+    icon: Car,
+    support: {
+      superadmin: "Global vehicle visibility and management.",
+      admin: "Manage vehicles inside organization scope.",
+      driver: "Assigned vehicle context only.",
+      viewer: "Read-only fleet visibility where permitted.",
+    },
+  },
+  {
+    key: "gpsDevices",
+    label: "GPS Devices",
+    icon: Radio,
+    support: {
+      superadmin: "Global hardware inventory and mapping control.",
+      admin: "Manage organization-scoped devices and assignment.",
+      driver: "No direct device administration.",
+      viewer: "Read-only device visibility where available.",
+    },
+  },
+  {
+    key: "platformControls",
+    label: "Platform Controls",
+    icon: ShieldCheck,
+    support: {
+      superadmin: "Permissions, settings, and global operational control surfaces.",
+      admin: "No superadmin-level platform controls.",
+      driver: "No platform control access.",
+      viewer: "No platform control access.",
     },
   },
 ];
 
-type PermissionRecord = {
-  id?: string;
-  _id?: string;
-  role: string;
-  hierarchy?: number;
-  modules?: Record<string, string[]>;
-  business_type?: string;
-};
+const roleOrder: RoleKey[] = ["superadmin", "admin", "driver", "viewer"];
 
-const getRecordId = (record: PermissionRecord) =>
-  record.id || record._id || "";
+export default function PermissionsPage() {
+  const { data: usersData, isLoading: usersLoading } = useGetUsersQuery(
+    { page: 0, limit: 1000 },
+    { refetchOnMountOrArgChange: true },
+  );
+  const { data: orgData, isLoading: organizationsLoading } = useGetOrganizationsQuery(
+    { page: 0, limit: 1000 },
+    { refetchOnMountOrArgChange: true },
+  );
+  const { data: vehiclesData, isLoading: vehiclesLoading } = useGetVehiclesQuery(
+    { page: 0, limit: 1000 },
+    { refetchOnMountOrArgChange: true },
+  );
+  const { data: devicesData, isLoading: devicesLoading } = useGetGpsDevicesQuery(
+    { page: 0, limit: 1000 },
+    { refetchOnMountOrArgChange: true },
+  );
 
-const buildModulesForRole = (
-  roleModules: Record<string, string[]> | undefined,
-  allModules: string[]
-) => {
-  const moduleNames =
-    allModules.length > 0 ? allModules : Object.keys(roleModules || {});
-  const result: Record<string, string[]> = {};
+  const users = getCollection<{ role?: string }>(usersData, ["users", "data", "docs", "users"]);
+  const organizations = getCollection(orgData, ["organizations", "data", "docs", "organizations"]);
+  const vehicles = getCollection(vehiclesData, ["vehicles", "data", "docs", "vehicles"]);
+  const devices = getCollection(devicesData, ["data", "docs"]);
 
-  moduleNames.forEach((moduleName) => {
-    const actions = roleModules?.[moduleName];
-    result[moduleName] = Array.isArray(actions) ? [...actions] : [];
-  });
+  const roleCounts = roleOrder.reduce<Record<RoleKey, number>>((accumulator, role) => {
+    accumulator[role] = users.filter((user) => user.role === role).length;
+    return accumulator;
+  }, { superadmin: 0, admin: 0, driver: 0, viewer: 0 });
 
-  return result;
-};
-
-const PermissionsForm = () => {
-  const [permissionRecords, setPermissionRecords] =
-    useState<PermissionRecord[]>(demoPermissions);
-  const [permissions, setPermissions] = useState<
-    Record<string, { hierarchy?: number; modules: Record<string, string[]> }>
-  >({});
-  const [formData, setFormData] = useState({ roleId: "", hierarchy: "" });
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const [loading] = useState(false);
-  const [loadError] = useState("");
-
-  const moduleList = useMemo(() => {
-    const modules = new Set<string>();
-    permissionRecords.forEach((record) => {
-      Object.keys(record.modules || {}).forEach((moduleName) =>
-        modules.add(moduleName)
-      );
-    });
-    return Array.from(modules);
-  }, [permissionRecords]);
-
-  useEffect(() => {
-    if (permissionRecords.length > 0) {
-      const first = permissionRecords[0];
-      setFormData({
-        roleId: getRecordId(first),
-        hierarchy:
-          typeof first.hierarchy === "number" ? `${first.hierarchy}` : "",
-      });
-    }
-  }, [permissionRecords]);
-
-  useEffect(() => {
-    if (!formData.roleId) {
-      setPermissions({});
-      return;
-    }
-
-    const record = permissionRecords.find(
-      (item) => getRecordId(item) === formData.roleId
-    );
-    if (!record) {
-      return;
-    }
-
-    const roleModules = buildModulesForRole(record.modules, moduleList);
-    setPermissions({
-      [record.role]: {
-        hierarchy: record.hierarchy,
-        modules: roleModules,
-      },
-    });
-  }, [formData.roleId, permissionRecords, moduleList]);
-
-  const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
-  ) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
-  };
-
-  const handleBlur = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
-  ) => {
-    const { name, value } = e.target;
-    if (!value) {
-      setErrors((prev) => ({
-        ...prev,
-        [name]: "This field is required",
-      }));
-    } else {
-      setErrors((prev) => ({
-        ...prev,
-        [name]: "",
-      }));
-    }
-  };
-
-  const togglePermission = (role: string, module: string, action: string) => {
-    setPermissions((prev) => {
-      const updated = { ...prev };
-      const perms = updated[role].modules[module];
-      if (perms.includes(action)) {
-        updated[role].modules[module] = perms.filter((p) => p !== action);
-      } else {
-        updated[role].modules[module] = [...perms, action];
-      }
-      return updated;
-    });
-  };
-
-  const toggleAllModulePermissions = (role: string, moduleName: string) => {
-    setPermissions((prev) => {
-      const currentActions = prev[role].modules[moduleName];
-      const allActions = ["create", "read", "update", "delete"];
-      const updatedModules = {
-        ...prev[role].modules,
-        [moduleName]:
-          currentActions.length === allActions.length ? [] : allActions,
-      };
-
-      return {
-        ...prev,
-        [role]: {
-          ...prev[role],
-          modules: updatedModules,
-        },
-      };
-    });
-  };
-
-  const toggleAllPermissions = (role: string, action: string) => {
-    setPermissions((prev) => {
-      const updatedModules = { ...prev[role].modules };
-      const allChecked = Object.values(updatedModules).every((actions) =>
-        actions.includes(action)
-      );
-
-      Object.keys(updatedModules).forEach((module) => {
-        const hasAction = updatedModules[module].includes(action);
-        if (allChecked && hasAction) {
-          updatedModules[module] = updatedModules[module].filter(
-            (a) => a !== action
-          );
-        } else if (!allChecked && !hasAction) {
-          updatedModules[module].push(action);
-        }
-      });
-
-      return {
-        ...prev,
-        [role]: {
-          ...prev[role],
-          modules: updatedModules,
-        },
-      };
-    });
-  };
-  const getFilteredPermissions = () => {
-    const cleaned: Record<
-      string,
-      { hierarchy?: number; modules: Record<string, string[]> }
-    > = {};
-
-    for (const role in permissions) {
-      const modules = permissions[role].modules;
-      const filteredModules: Record<string, string[]> = {};
-
-      for (const moduleName in modules) {
-        const actions = modules[moduleName];
-        if (actions.length > 0) {
-          filteredModules[moduleName] = actions;
-        }
-      }
-
-      // Only add role if it has at least one module with actions
-      if (Object.keys(filteredModules).length > 0) {
-        cleaned[role] = {
-          ...permissions[role],
-          modules: filteredModules,
-        };
-      }
-    }
-
-    return cleaned;
-  };
-
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const selectedRecord = permissionRecords.find(
-      (record) => getRecordId(record) === formData.roleId
-    );
-    if (!selectedRecord) {
-      setErrors((prev) => ({
-        ...prev,
-        roleId: "Please select a role",
-      }));
-      return;
-    }
-    if (!formData.hierarchy) {
-      setErrors((prev) => ({
-        ...prev,
-        hierarchy: "Please set hierarchy",
-      }));
-      return;
-    }
-
-    const roleName = selectedRecord.role;
-    const updatedPermissions = getFilteredPermissions();
-    const modules = updatedPermissions[roleName]?.modules || {};
-    setPermissionRecords((prev) =>
-      prev.map((record) =>
-        getRecordId(record) === getRecordId(selectedRecord)
-          ? {
-              ...record,
-              hierarchy: Number(formData.hierarchy),
-              modules,
-            }
-          : record
-      )
-    );
-    alert("Permissions updated successfully (demo)");
-  };
-
-  if (loading) {
-    return (
-      <div className="rounded-2xl border border-slate-800/80 bg-slate-900/60 p-6 shadow-[0_20px_60px_-40px_rgba(15,23,42,0.8)]">
-        <p className="text-sm font-semibold text-slate-300">
-          Loading permissions...
-        </p>
-      </div>
-    );
-  }
-
-  if (loadError) {
-    return (
-      <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 p-6 text-sm font-semibold text-rose-200 shadow-[0_20px_60px_-40px_rgba(15,23,42,0.8)]">
-        {loadError}
-      </div>
-    );
-  }
-
-  const activeRoleName = Object.keys(permissions)[0];
-  const activeModules = activeRoleName
-    ? permissions[activeRoleName]?.modules || {}
-    : {};
+  const isLoading = usersLoading || organizationsLoading || vehiclesLoading || devicesLoading;
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
-      <div className="rounded-2xl border border-slate-800/80 bg-slate-900/60 p-6 shadow-[0_20px_60px_-40px_rgba(15,23,42,0.8)]">
-        <p className="text-[11px] font-black uppercase tracking-[0.3em] text-emerald-400/70">Access Control</p>
-        <h2 className="text-2xl font-black text-slate-100">Permissions</h2>
-        <p className="text-sm text-slate-400">Set module access by role hierarchy.</p>
-
-        <div className="mt-5 grid gap-4 md:grid-cols-[1.2fr_0.6fr]">
-          <div>
-            <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-slate-400">Role</label>
-            <select
-              name="roleId"
-              value={formData.roleId}
-              onChange={handleChange}
-              onBlur={handleBlur}
-              className="w-full rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
-            >
-              <option value="" disabled></option>
-              {permissionRecords.map((record) => (
-                <option key={getRecordId(record)} value={getRecordId(record)}>
-                  {record.role}
-                </option>
-              ))}
-            </select>
-            {errors.roleId && (
-              <p className="mt-1 text-xs font-semibold text-rose-300">{errors.roleId}</p>
-            )}
+    <div className="space-y-6 pb-8 sm:space-y-8">
+      <section className="rounded-[28px] border border-slate-800/80 bg-slate-900/65 p-5 shadow-[0_24px_60px_-45px_rgba(15,23,42,0.85)] sm:p-6">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <div className="max-w-3xl space-y-2">
+            <p className="text-[11px] font-black uppercase tracking-[0.3em] text-emerald-400/70">Authority Matrix</p>
+            <h1 className="text-3xl font-black tracking-tight text-slate-100">Permissions</h1>
+            <p className="text-sm font-medium text-slate-400">
+              This superadmin view reflects the current platform authority model with real usage counts and role scope. Unsupported demo permission editing has been removed to keep this area operationally honest.
+            </p>
           </div>
-          <div>
-            <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-slate-400">Hierarchy</label>
-            <input
-              type="number"
-              name="hierarchy"
-              value={formData.hierarchy}
-              onChange={handleChange}
-              onBlur={handleBlur}
-              className="w-full rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/30"
-              min="0"
-            />
-            {errors.hierarchy && (
-              <p className="mt-1 text-xs font-semibold text-rose-300">{errors.hierarchy}</p>
-            )}
+
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <SummaryChip label="Organizations" value={`${organizations.length}`} />
+            <SummaryChip label="Users" value={`${users.length}`} />
+            <SummaryChip label="Vehicles" value={`${vehicles.length}`} />
+            <SummaryChip label="GPS Devices" value={`${devices.length}`} />
           </div>
         </div>
-      </div>
+      </section>
 
-      <div className="rounded-2xl border border-slate-800/80 bg-slate-900/60 p-4 shadow-[0_20px_60px_-40px_rgba(15,23,42,0.8)]">
-        <div className="overflow-x-auto">
-          {Object.entries(permissions).map(([role, { modules }]) => (
-            <div key={role} className="mb-6 last:mb-0">
-              <div className="mb-3 flex items-center justify-between">
-                <h3 className="text-sm font-black uppercase tracking-widest text-slate-300">Permissions</h3>
-                <span className="rounded-full border border-emerald-500/30 bg-emerald-500/20 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-emerald-200">
-                  {role}
-                </span>
+      <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+        <div className="rounded-[24px] border border-slate-800/80 bg-slate-900/65 p-5 shadow-[0_24px_60px_-45px_rgba(15,23,42,0.85)]">
+          <div className="space-y-2">
+            <p className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-500">Role Coverage</p>
+            <h2 className="text-xl font-black text-slate-100">Supported authority levels</h2>
+            <p className="text-sm text-slate-400">
+              The dedicated superadmin frontend now reflects only roles that are actively supported by the current product flow.
+            </p>
+          </div>
+
+          <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2">
+            {roleDefinitions.map((role) => (
+              <div key={role.key} className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-black text-slate-100">{role.label}</p>
+                    <p className="mt-1 text-[11px] font-black uppercase tracking-[0.18em] text-emerald-200">{role.scope}</p>
+                  </div>
+                  <span className="rounded-full border border-slate-700 bg-slate-900 px-3 py-1 text-xs font-bold text-slate-300">
+                    {roleCounts[role.key]} active
+                  </span>
+                </div>
+                <p className="mt-3 text-sm leading-6 text-slate-400">{role.description}</p>
               </div>
-              <table className="min-w-full table-auto border-collapse">
-                <thead>
-                  <tr className="bg-slate-900/80 text-left text-[10px] font-black uppercase tracking-widest text-slate-400">
-                    <th className="border-b border-slate-800 px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          onChange={() => {
-                            const updatedModules: Record<string, string[]> = {};
-                            const isAllChecked = Object.values(modules).every(
-                              (actions) =>
-                                actions.includes("create") &&
-                                actions.includes("read") &&
-                                actions.includes("update") &&
-                                actions.includes("delete")
-                            );
+            ))}
+          </div>
+        </div>
 
-                            Object.keys(modules).forEach((moduleName) => {
-                              updatedModules[moduleName] = isAllChecked
-                                ? []
-                                : defaultActions;
-                            });
+        <div className="rounded-[24px] border border-slate-800/80 bg-slate-900/65 p-5 shadow-[0_24px_60px_-45px_rgba(15,23,42,0.85)]">
+          <div className="space-y-2">
+            <p className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-500">Policy Notes</p>
+            <h2 className="text-xl font-black text-slate-100">What changed</h2>
+          </div>
 
-                            setPermissions({
-                              ...permissions,
-                              [role]: {
-                                ...permissions[role],
-                                modules: updatedModules,
-                              },
-                            });
-                          }}
-                          checked={Object.values(modules).every(
-                            (actions) =>
-                              actions.includes("create") &&
-                              actions.includes("read") &&
-                              actions.includes("update") &&
-                              actions.includes("delete")
-                          )}
-                          className="h-4 w-4 rounded border-slate-600 text-emerald-400 focus:ring-emerald-500/30"
-                        />
-                        Module
+          <div className="mt-5 space-y-3">
+            <PolicyNote text="Manager has been removed from the dedicated superadmin role controls and authority matrix." />
+            <PolicyNote text="This screen no longer presents fake editable permission toggles without backend persistence." />
+            <PolicyNote text="Role descriptions below are aligned with the currently exposed frontend routes and operational scope." />
+            <PolicyNote text="If a backend permission service is introduced later, this page can become a real editor without changing superadmin navigation structure." />
+          </div>
+
+          <div className="mt-5 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4">
+            <p className="text-[10px] font-black uppercase tracking-[0.22em] text-emerald-200">Current Status</p>
+            <p className="mt-2 text-sm font-medium leading-6 text-emerald-50">
+              {isLoading
+                ? "Refreshing platform role usage and authority coverage..."
+                : "Role coverage and scope summary are now driven by live platform datasets instead of demo permission records."}
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-[24px] border border-slate-800/80 bg-slate-900/65 p-5 shadow-[0_24px_60px_-45px_rgba(15,23,42,0.85)]">
+        <div className="space-y-2">
+          <p className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-500">Module Access</p>
+          <h2 className="text-xl font-black text-slate-100">Operational authority by module</h2>
+          <p className="text-sm text-slate-400">
+            This matrix shows the intended access envelope for the supported roles inside the current platform experience.
+          </p>
+        </div>
+
+        <div className="mt-5 space-y-4">
+          {moduleAccess.map((module) => (
+            <div key={module.key} className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/15 text-emerald-200">
+                  <module.icon size={18} />
+                </div>
+                <div>
+                  <p className="text-sm font-black text-slate-100">{module.label}</p>
+                  <p className="text-xs text-slate-500">Role-correct scope for the current superadmin product surface</p>
+                </div>
+              </div>
+
+              <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+                {roleOrder.map((role) => {
+                  const hasAccess = module.support[role] && !module.support[role].toLowerCase().startsWith("no ");
+                  return (
+                    <div key={`${module.key}-${role}`} className="rounded-2xl border border-slate-800 bg-slate-900/70 p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-300">
+                          {roleDefinitions.find((item) => item.key === role)?.label}
+                        </p>
+                        {hasAccess ? (
+                          <CheckCircle2 size={16} className="text-emerald-300" />
+                        ) : (
+                          <XCircle size={16} className="text-slate-600" />
+                        )}
                       </div>
-                    </th>
-                    {["create", "read", "update", "delete"].map((action) => (
-                      <th
-                        key={action}
-                        className="border-b border-slate-800 px-4 py-3 text-center"
-                      >
-                        <div className="flex items-center justify-center gap-2">
-                          <input
-                            type="checkbox"
-                            onChange={() => toggleAllPermissions(role, action)}
-                            checked={Object.values(modules).every((a) =>
-                              a.includes(action)
-                            )}
-                            className="h-4 w-4 rounded border-slate-600 text-emerald-400 focus:ring-emerald-500/30"
-                          />
-                          {action}
-                        </div>
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-
-                <tbody>
-                  {Object.entries(modules).map(([moduleName, actions]) => (
-                    <tr key={moduleName} className="text-sm text-slate-200">
-                      <td className="border-b border-slate-800 px-4 py-3 font-semibold capitalize">
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="checkbox"
-                            onChange={() =>
-                              toggleAllModulePermissions(role, moduleName)
-                            }
-                            checked={["create", "read", "update", "delete"].every(
-                              (action) => actions.includes(action)
-                            )}
-                            className="h-4 w-4 rounded border-slate-600 text-emerald-400 focus:ring-emerald-500/30"
-                          />
-                          {moduleName}
-                        </div>
-                      </td>
-                      {["create", "read", "update", "delete"].map((action) => (
-                        <td
-                          key={action}
-                          className="border-b border-slate-800 px-4 py-3 text-center"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={actions.includes(action)}
-                            onChange={() =>
-                              togglePermission(role, moduleName, action)
-                            }
-                            className="h-4 w-4 rounded border-slate-600 text-emerald-400 focus:ring-emerald-500/30"
-                          />
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                      <p className="mt-3 text-sm leading-6 text-slate-400">{module.support[role]}</p>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           ))}
         </div>
-      </div>
-
-      <button
-        type="submit"
-        className="rounded-xl border border-emerald-500/30 bg-emerald-500/20 px-6 py-2.5 text-xs font-black uppercase tracking-widest text-emerald-200 transition hover:bg-emerald-500/30 disabled:opacity-50"
-        disabled={!activeRoleName || Object.keys(activeModules).length === 0}
-      >
-        Update Permissions
-      </button>
-    </form>
+      </section>
+    </div>
   );
-};
+}
 
-export default PermissionsForm;
+function SummaryChip({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl border border-slate-800 bg-slate-950/70 px-4 py-3">
+      <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-500">{label}</p>
+      <p className="mt-2 text-lg font-black text-slate-100">{value}</p>
+    </div>
+  );
+}
+
+function PolicyNote({ text }: { text: string }) {
+  return (
+    <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4 text-sm font-medium leading-6 text-slate-300">
+      {text}
+    </div>
+  );
+}

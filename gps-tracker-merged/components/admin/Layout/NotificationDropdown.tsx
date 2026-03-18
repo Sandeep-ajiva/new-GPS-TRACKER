@@ -131,7 +131,8 @@ export function NotificationDropdown({ isOpen, onClose }: NotificationDropdownPr
   };
 
   return (
-    <div className="absolute right-0 top-full z-[99999] mt-2 w-[24rem] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_20px_45px_rgba(15,23,42,0.16)]">
+    <div className="fixed inset-0 z-[99999] flex items-start justify-center px-2 pt-24 sm:absolute sm:inset-auto sm:right-0 sm:top-full sm:block sm:p-0">
+      <div className="w-[min(24rem,calc(100vw-1rem))] max-w-[calc(100vw-1rem)] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_20px_45px_rgba(15,23,42,0.16)] sm:mt-2 sm:w-[24rem] sm:max-w-[24rem]">
       <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3">
         <div className="flex items-center gap-2">
           <Bell className="h-4 w-4 text-slate-600" />
@@ -165,7 +166,7 @@ export function NotificationDropdown({ isOpen, onClose }: NotificationDropdownPr
         </div>
       </div>
 
-      <div className="max-h-[32rem] overflow-y-auto p-3">
+      <div className="max-h-[min(32rem,calc(100dvh-9rem))] overflow-y-auto p-3">
         {isLoading ? (
           <div className="space-y-3">
             {Array.from({ length: 4 }).map((_, index) => (
@@ -233,6 +234,7 @@ export function NotificationDropdown({ isOpen, onClose }: NotificationDropdownPr
         >
           View all notifications
         </Button>
+      </div>
       </div>
     </div>
   );

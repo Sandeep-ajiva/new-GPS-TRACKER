@@ -265,7 +265,7 @@ export default function LiveTrackingPage() {
           className="flex-1"
           bodyClassName="p-2"
         >
-          <div className="relative h-[calc(100vh-300px)] min-h-[460px] overflow-hidden rounded-[22px] border border-slate-200 bg-slate-50">
+          <div className="relative h-[calc(100vh-320px)] min-h-[360px] overflow-hidden rounded-[22px] border border-slate-200 bg-slate-50 sm:min-h-[420px] lg:min-h-[460px]">
             <LiveMap vehicles={vehicles} />
           </div>
         </AdminSectionCard>

@@ -109,8 +109,8 @@ export default function SearchableEntitySelect({
       180,
       Math.min(preferredHeight, shouldOpenUpward ? spaceAbove : spaceBelow),
     );
-    const width = Math.min(rect.width, viewportWidth - 24);
-    const left = Math.min(rect.left, viewportWidth - width - 12);
+    const width = Math.min(Math.max(rect.width, Math.min(280, viewportWidth - 24)), viewportWidth - 24);
+    const left = Math.min(Math.max(12, rect.left), viewportWidth - width - 12);
     const top = shouldOpenUpward
       ? Math.max(12, rect.top - maxHeight - 8)
       : rect.bottom + 8;

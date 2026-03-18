@@ -1,463 +1,374 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Activity, Car, ExternalLink, Plus, Radio, Users } from "lucide-react";
-import { useRouter } from "next/navigation";
-import OrganizationCreateModal from "@/components/admin/Modals/OrganizationCreateModal";
-import OrganizationMap from "@/components/admin/Map/OrganizationMap";
+import { useMemo, type ReactNode } from "react";
+import Link from "next/link";
+import {
+  Activity,
+  ArrowRight,
+  Building2,
+  Car,
+  Link2,
+  Radio,
+  Settings,
+  ShieldCheck,
+  Users,
+  type LucideIcon,
+} from "lucide-react";
+import { useGetMeQuery, useGetUsersQuery } from "@/redux/api/usersApi";
 import { useGetOrganizationsQuery } from "@/redux/api/organizationApi";
 import { useGetVehiclesQuery } from "@/redux/api/vehicleApi";
 import { useGetGpsDevicesQuery } from "@/redux/api/gpsDeviceApi";
 import { useGetLiveVehiclesQuery } from "@/redux/api/gpsLiveApi";
-import { formatAddress } from "@/lib/locations";
+import { superAdminNavItems } from "@/components/superadmin/Layout/navigation";
+import {
+  formatDateTime,
+  formatStatus,
+  getCollection,
+  getDisplayName,
+  getInitials,
+} from "@/components/superadmin/superadmin-data";
 
-interface ApiOrg {
+type OrganizationRecord = {
   _id: string;
-  name: string;
-  address?: {
-    addressLine?: string;
-    city?: string;
-    state?: string;
-    country?: string;
-    pincode?: string;
-  } | string;
-  adminUser?: string;
-  email: string;
-  phone: string;
-  status: string;
-  geo?: {
-    lat?: number;
-    lng?: number;
-  };
-}
-
-interface ApiVehicle {
-  _id: string;
-  organizationId: string;
-  vehicleNumber: string;
-  driverId?: string;
-}
-
-interface ApiLiveDataItem {
-  vehicleId?: { _id: string } | string;
-  currentSpeed?: number;
-  updatedAt?: string;
-  currentLocation?: string;
-  movementStatus?: string;
-  latitude?: number;
-  longitude?: number;
-}
-
-type BranchRecord = {
-  id: string;
-  name: string;
-  address: string;
-  manager: string;
-  status: "active" | "paused";
-  position: { lat: number; lng: number };
+  name?: string;
+  email?: string;
+  status?: string;
+  createdAt?: string;
 };
 
-type OrgRecord = {
-  id: string;
-  name: string;
-  address: string;
-  adminId: string;
-  adminName: string;
-  email: string;
-  phone: string;
-  status: "active" | "paused";
-  position: { lat: number; lng: number };
-  branches: BranchRecord[];
+type UserRecord = {
+  _id: string;
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  role?: string;
+  status?: string;
+  createdAt?: string;
 };
 
 type VehicleRecord = {
-  id: string;
-  orgId: string;
-  branchId?: string;
-  label: string;
-  driverName: string;
-  driverId: string;
-  speed: number;
-  lastUpdated: string;
-  location: string;
-  status: "running" | "idle" | "stopped";
-  position: { lat: number; lng: number };
+  _id: string;
+  vehicleNumber?: string;
+  model?: string;
+  status?: string;
+  createdAt?: string;
 };
 
-export default function DashboardPage() {
-  const router = useRouter();
-  const [isOrgModalOpen, setIsOrgModalOpen] = useState(false);
-  const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
-  const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
+type DeviceRecord = {
+  _id: string;
+  imei?: string;
+  deviceModel?: string;
+  status?: string;
+  createdAt?: string;
+};
 
-  const { data: orgsData, isLoading: isOrgsLoading } = useGetOrganizationsQuery({});
-  const { data: vehiclesData, isLoading: isVehiclesLoading } = useGetVehiclesQuery({});
-  const { data: devicesData, isLoading: isDevicesLoading } = useGetGpsDevicesQuery({});
-  const { data: liveData, isLoading: isLiveLoading } = useGetLiveVehiclesQuery({});
+type LiveRecord = {
+  movementStatus?: string;
+  status?: string;
+  currentSpeed?: number;
+};
 
-  const orgs: OrgRecord[] = useMemo(() => {
-    if (!orgsData?.docs) return [];
-    return orgsData.docs.map((org: ApiOrg) => ({
-      id: org._id,
-      name: org.name,
-      address: formatAddress(org.address) || "N/A",
-      adminId: org.adminUser || "N/A",
-      adminName: "Admin", // Should be fetched or populated
-      email: org.email,
-      phone: org.phone,
-      status: org.status === "active" ? "active" : "paused",
-      position: { lat: org.geo?.lat || 28.6139, lng: org.geo?.lng || 77.2090 },
-      branches: [], // Nested branches not currently returned by API
-    }));
-  }, [orgsData]);
+export default function SuperAdminDashboardPage() {
+  const { data: meData } = useGetMeQuery(undefined, { refetchOnMountOrArgChange: true });
+  const { data: orgData, isLoading: isOrgsLoading } = useGetOrganizationsQuery({ page: 0, limit: 1000 });
+  const { data: usersData, isLoading: isUsersLoading } = useGetUsersQuery({ page: 0, limit: 1000 });
+  const { data: vehiclesData, isLoading: isVehiclesLoading } = useGetVehiclesQuery({ page: 0, limit: 1000 });
+  const { data: devicesData, isLoading: isDevicesLoading } = useGetGpsDevicesQuery({ page: 0, limit: 1000 });
+  const { data: liveData, isLoading: isLiveLoading } = useGetLiveVehiclesQuery(undefined);
 
-  const vehicles: VehicleRecord[] = useMemo(() => {
-    if (!vehiclesData?.docs) return [];
+  const me = meData?.data;
+  const displayName = getDisplayName(me);
+  const initials = getInitials(displayName);
 
-    // Create a map of live data by vehicleId for quick lookup
-    const liveDataMap = new Map();
-    if (liveData?.data) {
-      liveData.data.forEach((item: ApiLiveDataItem) => {
-        if (item.vehicleId) {
-          const vId = typeof item.vehicleId === 'string' ? item.vehicleId : item.vehicleId._id;
-          liveDataMap.set(vId, item);
-        }
-      });
-    }
-
-    return vehiclesData.docs.map((vehicle: ApiVehicle) => {
-      const liveInfo = liveDataMap.get(vehicle._id);
-      return {
-        id: vehicle._id,
-        orgId: vehicle.organizationId,
-        branchId: undefined, // Branch logic needed
-        label: vehicle.vehicleNumber,
-        driverName: "Unknown Driver", // Not populated
-        driverId: vehicle.driverId || "N/A",
-        speed: liveInfo?.currentSpeed || 0,
-        lastUpdated: liveInfo?.updatedAt ? new Date(liveInfo.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Recently",
-        location: liveInfo?.currentLocation || "Location Unavailable",
-        status: liveInfo?.movementStatus === "moving" ? "running" : (liveInfo?.movementStatus || "stopped"),
-        position: { lat: liveInfo?.latitude || 28.6139, lng: liveInfo?.longitude || 77.2090 },
-      };
-    });
-  }, [vehiclesData, liveData]);
-
-  const devices = useMemo(() => {
-    if (!devicesData?.docs) return [];
-    return devicesData.docs;
-  }, [devicesData]);
-
-  const orgPoints = useMemo(
-    () =>
-      orgs.map((org) => ({
-        id: org.id,
-        name: org.name,
-        position: org.position,
-      })),
-    [orgs]
+  const organizations = useMemo(
+    () => getCollection<OrganizationRecord>(orgData, ["data", "docs", "organizations"]),
+    [orgData],
+  );
+  const users = useMemo(
+    () => getCollection<UserRecord>(usersData, ["data", "docs", "users"]),
+    [usersData],
+  );
+  const vehicles = useMemo(
+    () => getCollection<VehicleRecord>(vehiclesData, ["data", "docs", "vehicles"]),
+    [vehiclesData],
+  );
+  const devices = useMemo(
+    () => getCollection<DeviceRecord>(devicesData, ["data", "docs"]),
+    [devicesData],
+  );
+  const liveVehicles = useMemo(
+    () => getCollection<LiveRecord>(liveData, ["data", "docs"]),
+    [liveData],
   );
 
-  const vehiclePoints = useMemo(
+  const onlineVehicles = useMemo(
     () =>
-      vehicles.map((vehicle) => ({
-        id: vehicle.id,
-        status: vehicle.status as any,
-        position: vehicle.position,
-        label: vehicle.label,
-        driverName: vehicle.driverName,
-        speed: vehicle.speed,
-        lastUpdated: vehicle.lastUpdated,
-        location: vehicle.location,
-      })),
-    [vehicles]
+      liveVehicles.filter((item) => {
+        const status = (item.movementStatus || item.status || "").toLowerCase();
+        return status === "moving" || status === "running" || status === "online" || (item.currentSpeed || 0) > 0;
+      }).length,
+    [liveVehicles],
   );
 
-  const displayLiveData = vehicles.map((vehicle) => ({ status: vehicle.status }));
-  const onlineVehicles = displayLiveData.filter((v) => v.status === "running").length;
-  // const offlineVehicles = vehicles.length - onlineVehicles;
+  const activeOrganizations = useMemo(
+    () => organizations.filter((item) => (item.status || "").toLowerCase() === "active").length,
+    [organizations],
+  );
 
-  const selectedOrg = orgs.find((org) => org.id === selectedOrgId) || null;
-  const selectedBranches = selectedOrg ? selectedOrg.branches : [];
-  const selectedOrgVehicles = vehicles.filter((vehicle) => vehicle.orgId === selectedOrgId);
+  const activeUsers = useMemo(
+    () => users.filter((item) => (item.status || "").toLowerCase() === "active").length,
+    [users],
+  );
 
-  const handleSelectOrg = (orgId: string) => {
-    setSelectedOrgId(orgId);
-    setSelectedVehicleId(null);
-  };
+  const recentOrganizations = useMemo(() => organizations.slice(0, 5), [organizations]);
+  const recentUsers = useMemo(() => users.slice(0, 5), [users]);
+  const recentVehicles = useMemo(() => vehicles.slice(0, 5), [vehicles]);
 
-  if (isOrgsLoading || isVehiclesLoading || isDevicesLoading || isLiveLoading) {
-    return <div className="p-10 text-center text-slate-400">Loading Dashboard...</div>;
-  }
+  const isLoading = isOrgsLoading || isUsersLoading || isVehiclesLoading || isDevicesLoading || isLiveLoading;
 
   return (
-    <div className="space-y-8 pb-10">
-      <div className="flex flex-wrap items-end justify-between gap-6">
-        <div>
-          <p className="text-[11px] font-black uppercase tracking-[0.4em] text-emerald-400/70">Command</p>
-          <h1 className="text-3xl font-black text-slate-100 tracking-tight">SuperAdmin Console</h1>
-          <p className="mt-2 text-sm text-slate-400">Track org performance before drilling into live fleets.</p>
-        </div>
-        <div className="flex gap-3 items-center">
-          <button
-            onClick={() => setIsOrgModalOpen(true)}
-            className="rounded-xl border border-emerald-500/30 bg-emerald-500/20 px-4 py-2 text-xs font-black uppercase tracking-widest text-emerald-200 transition hover:bg-emerald-500/30"
-          >
-            <Plus className="h-4 w-4" />
-            Add Organization
-          </button>
-          <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/20 px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 text-emerald-200">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-            System Live
-          </div>
-        </div>
-      </div>
-
-      <OrganizationCreateModal
-        isOpen={isOrgModalOpen}
-        onClose={() => setIsOrgModalOpen(false)}
-        variant="dark"
-        onCreate={() => {
-          // Ideally should call createOrganization mutation here
-        }}
-      />
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard title="Total Organizations" value={orgs.length} icon={<Users size={20} />} color="blue" />
-        <StatCard title="Total Vehicles" value={vehicles.length} icon={<Car size={20} />} color="orange" />
-        <StatCard title="GPS Devices" value={devices.length} icon={<Radio size={20} />} color="purple" />
-        <StatCard title="Online Vehicles" value={onlineVehicles} icon={<Activity size={20} />} color="green" />
-      </div>
-
-      <div className="grid grid-cols-1 xl:grid-cols-[360px_1fr] gap-6">
-        <div className="space-y-4">
-          <div className="rounded-2xl border border-slate-800/80 bg-slate-900/60 p-5 shadow-[0_20px_60px_-40px_rgba(15,23,42,0.8)]">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.3em] text-emerald-400/70">Organizations</p>
-                <h2 className="text-lg font-black text-slate-100">Admin-Owned Orgs</h2>
-              </div>
-              <span className="rounded-full border border-emerald-500/30 bg-emerald-500/20 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-emerald-200">
-                {orgs.length} active
-              </span>
+    <div className="space-y-6 pb-8 sm:space-y-8">
+      <section className="rounded-[28px] border border-slate-800/80 bg-slate-900/65 p-5 shadow-[0_30px_80px_-50px_rgba(15,23,42,0.85)] sm:p-6 lg:p-7">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+          <div className="space-y-3">
+            <p className="text-[11px] font-black uppercase tracking-[0.34em] text-emerald-400/70">Platform Authority</p>
+            <div className="space-y-2">
+              <h1 className="text-3xl font-black tracking-tight text-slate-50 sm:text-4xl">SuperAdmin Console</h1>
+              <p className="max-w-3xl text-sm font-medium leading-6 text-slate-400">
+                Global control across organizations, users, vehicles, GPS devices, mappings, permissions, and platform settings.
+              </p>
             </div>
           </div>
-          <div className="space-y-3 h-[600px] overflow-y-auto pr-2 custom-scrollbar">
-            {orgs.map((org) => {
-              const vehicleCount = vehicles.filter((vehicle) => vehicle.orgId === org.id).length;
-              const isActive = org.id === selectedOrgId;
-              return (
-                <div
-                  key={org.id}
-                  onClick={() => handleSelectOrg(org.id)}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      handleSelectOrg(org.id);
-                    }
-                  }}
-                  className={`w-full rounded-2xl border px-4 py-4 text-left transition ${isActive
-                      ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-100"
-                      : "border-slate-800/80 bg-slate-900/60 text-slate-200 hover:border-emerald-500/20"
-                    }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-black">{org.adminName}</p>
-                      <p className="text-xs text-slate-400">{org.name}</p>
-                    </div>
-                    <span className={`text-[10px] font-black uppercase tracking-widest ${org.status === "active" ? "text-emerald-300" : "text-amber-300"
-                      }`}>
-                      {org.status}
-                    </span>
-                  </div>
-                  <div className="mt-3 flex items-center justify-between text-xs text-slate-400">
-                    <span>{vehicleCount} vehicles</span>
-                    <span>Admin ID: {org.adminId}</span>
-                  </div>
-                  <div className="mt-3 flex items-center justify-between text-[10px] font-black uppercase tracking-widest text-emerald-200">
-                    <span>Open Admin Console</span>
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        if (typeof window !== "undefined") {
-                          sessionStorage.setItem("adminSelectedOrgId", org.id);
-                          sessionStorage.setItem("adminFromSuperadmin", "true");
-                        }
-                        router.push("/admin");
-                      }}
-                      className="inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/20 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-emerald-200 hover:bg-emerald-500/30"
-                    >
-                      <ExternalLink className="h-3.5 w-3.5" />
-                      View
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
+
+          <div className="flex min-w-0 items-center gap-4 rounded-[24px] border border-emerald-500/20 bg-emerald-500/10 p-4">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-400 text-lg font-black text-slate-950">
+              {initials}
+            </div>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-black text-slate-50">{displayName}</p>
+              <p className="truncate text-xs font-semibold uppercase tracking-[0.22em] text-emerald-200">
+                {formatStatus(me?.role || "superadmin")}
+              </p>
+              <p className="truncate text-xs text-slate-400">{me?.email || "Global platform access"}</p>
+            </div>
           </div>
+        </div>
+      </section>
+
+      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <StatCard title="Organizations" value={organizations.length} helper={`${activeOrganizations} active`} icon={Building2} />
+        <StatCard title="Users" value={users.length} helper={`${activeUsers} active`} icon={Users} />
+        <StatCard title="Vehicles" value={vehicles.length} helper="Global fleet visibility" icon={Car} />
+        <StatCard title="GPS Devices" value={devices.length} helper="Hardware tracked" icon={Radio} />
+        <StatCard title="Online Vehicles" value={onlineVehicles} helper="From live telemetry" icon={Activity} />
+      </section>
+
+      <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1.05fr_0.95fr]">
+        <div className="space-y-6">
+          <SectionCard
+            title="Quick Actions"
+            description="Jump directly into the highest-authority tasks of the platform."
+          >
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {superAdminNavItems.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className="flex items-start gap-3 rounded-2xl border border-slate-800 bg-slate-950/70 p-4 transition hover:border-emerald-500/25 hover:bg-slate-950"
+                >
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/15 text-emerald-200">
+                    <item.icon size={18} />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-black text-slate-100">{item.label}</p>
+                    <p className="mt-1 text-xs leading-5 text-slate-400">{item.description}</p>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </SectionCard>
+
+          <SectionCard
+            title="Recent Organizations"
+            description="Latest global organizations visible to the superadmin."
+            actionHref="/superadmin/organizations"
+          >
+            <RecordList
+              items={recentOrganizations.map((item) => ({
+                title: item.name || "Organization",
+                meta: [item.email || "No email", formatStatus(item.status)].filter(Boolean).join(" • "),
+                extra: formatDateTime(item.createdAt) || "Recently created",
+              }))}
+              emptyLabel={isLoading ? "Loading organizations..." : "No organizations available yet."}
+            />
+          </SectionCard>
         </div>
 
         <div className="space-y-6">
-          <div className="rounded-2xl border border-slate-800/80 bg-slate-900/60 p-6 shadow-[0_20px_60px_-40px_rgba(15,23,42,0.8)]">
-            {selectedOrg ? (
-              <div className="space-y-4">
-                <div className="flex flex-wrap items-start justify-between gap-4">
-                  <div>
-                    <p className="text-[10px] font-black uppercase tracking-[0.3em] text-emerald-400/70">Selected Organization</p>
-                    <h2 className="text-xl font-black text-slate-100">{selectedOrg.name}</h2>
-                    <p className="text-sm text-slate-400">{selectedOrg.address}</p>
-                  </div>
-                  <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/20 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-emerald-200">
-                    {selectedOrg.status}
-                  </div>
-                </div>
-                <div className="grid gap-4 md:grid-cols-3 text-xs text-slate-300">
-                  <InfoItem label="Admin" value={selectedOrg.adminName} />
-                  <InfoItem label="Contact" value={selectedOrg.phone} />
-                  <InfoItem label="Email" value={selectedOrg.email} />
-                </div>
-                <div className="flex items-center justify-between rounded-xl border border-slate-800/80 bg-slate-950/60 px-4 py-3 text-xs text-slate-300">
-                  <span>Jump to the org admin dashboard for full operational controls.</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (typeof window !== "undefined") {
-                        sessionStorage.setItem("adminSelectedOrgId", selectedOrg.id);
-                        sessionStorage.setItem("adminFromSuperadmin", "true");
-                      }
-                      router.push("/admin");
-                    }}
-                    className="inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/20 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-emerald-200 hover:bg-emerald-500/30"
-                  >
-                    <ExternalLink className="h-3.5 w-3.5" />
-                    View Admin Dashboard
-                  </button>
-                </div>
-                <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-500">Branches</p>
-                  <div className="mt-3 grid gap-3 md:grid-cols-2">
-                    {selectedBranches.map((branch) => (
-                      <div
-                        key={branch.id}
-                        className="rounded-xl border border-slate-800/80 bg-slate-950/60 p-3 text-sm text-slate-200"
-                      >
-                        <div className="flex items-center justify-between">
-                          <p className="font-black">{branch.name}</p>
-                          <span className="text-[10px] uppercase tracking-widest text-slate-400">
-                            {branch.status}
-                          </span>
-                        </div>
-                        <p className="text-xs text-slate-400">{branch.address}</p>
-                        <p className="text-xs text-slate-500">Manager: {branch.manager}</p>
-                      </div>
-                    ))}
-                    {selectedBranches.length === 0 && (
-                      <div className="rounded-xl border border-slate-800/80 bg-slate-950/60 p-4 text-xs text-slate-400">
-                        No branches added yet.
-                      </div>
-                    )}
-                  </div>
-                </div>
-                <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-500">Vehicles</p>
-                  <div className="mt-3 grid gap-3 md:grid-cols-2">
-                    {selectedOrgVehicles.map((vehicle) => {
-                      const active = vehicle.id === selectedVehicleId;
-                      return (
-                        <button
-                          key={vehicle.id}
-                          onClick={() => setSelectedVehicleId(vehicle.id)}
-                          className={`rounded-xl border px-4 py-3 text-left transition ${active
-                              ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-100"
-                              : "border-slate-800/80 bg-slate-950/60 text-slate-200 hover:border-emerald-500/20"
-                            }`}
-                        >
-                          <div className="flex items-center justify-between">
-                            <p className="text-sm font-black">{vehicle.label}</p>
-                            <span className="text-[10px] uppercase tracking-widest text-slate-400">
-                              {vehicle.status}
-                            </span>
-                          </div>
-                          <p className="text-xs text-slate-400">Driver: {vehicle.driverName}</p>
-                          <p className="text-xs text-slate-500">Speed {vehicle.speed} km/h · {vehicle.lastUpdated}</p>
-                          <p className="text-[10px] uppercase tracking-widest text-slate-500">Driver ID: {vehicle.driverId}</p>
-                        </button>
-                      );
-                    })}
-                    {selectedOrgVehicles.length === 0 && (
-                      <div className="rounded-xl border border-slate-800/80 bg-slate-950/60 p-4 text-xs text-slate-400">
-                        No vehicles assigned yet.
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="text-center py-10 text-slate-400">
-                <p className="text-[10px] font-black uppercase tracking-[0.3em] text-emerald-400/70">Select an organization</p>
-                <p className="mt-2 text-sm">Pick an organization to reveal its overview and live map.</p>
-              </div>
-            )}
-          </div>
+          <SectionCard
+            title="Recent Users"
+            description="Newest platform user records across all organizations."
+            actionHref="/superadmin/users"
+          >
+            <RecordList
+              items={recentUsers.map((item) => ({
+                title: [item.firstName, item.lastName].filter(Boolean).join(" ").trim() || item.email || "User",
+                meta: [formatStatus(item.role), item.email || ""].filter(Boolean).join(" • "),
+                extra: formatDateTime(item.createdAt) || "Recently created",
+              }))}
+              emptyLabel={isLoading ? "Loading users..." : "No users available yet."}
+            />
+          </SectionCard>
 
-          <div className="h-105 rounded-2xl border border-slate-800/80 bg-slate-900/60 p-1 shadow-[0_20px_60px_-40px_rgba(15,23,42,0.8)]">
-            {selectedOrg ? (
-              <OrganizationMap
-                organizations={orgPoints}
-                secondaryOrganizations={selectedBranches.map((branch) => ({
-                  id: branch.id,
-                  name: branch.name,
-                  position: branch.position,
-                }))}
-                vehicles={vehiclePoints}
-                selectedOrgId={selectedOrgId}
-                selectedVehicleId={selectedVehicleId || undefined}
-                onOrgSelect={handleSelectOrg}
-                onVehicleSelect={(vehicleId) => setSelectedVehicleId(vehicleId || null)}
+          <SectionCard
+            title="Fleet Snapshot"
+            description="Latest visible vehicle records and operational context."
+            actionHref="/superadmin/vehicles"
+          >
+            <RecordList
+              items={recentVehicles.map((item) => ({
+                title: item.vehicleNumber || "Vehicle",
+                meta: [item.model || "", formatStatus(item.status)].filter(Boolean).join(" • "),
+                extra: formatDateTime(item.createdAt) || "Recently updated",
+              }))}
+              emptyLabel={isLoading ? "Loading vehicles..." : "No vehicles available yet."}
+            />
+          </SectionCard>
+
+          <SectionCard
+            title="Platform Control Areas"
+            description="High-impact superadmin sections that should remain role-correct and operational."
+          >
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <AuthorityCard
+                icon={Link2}
+                title="Device Mapping"
+                description="Control hardware assignment across all organizations."
+                href="/superadmin/device-mapping"
               />
-            ) : (
-              <div className="flex h-full items-center justify-center text-sm font-semibold text-slate-500">
-                Map appears after you select an organization.
-              </div>
-            )}
-          </div>
+              <AuthorityCard
+                icon={Settings}
+                title="Settings"
+                description="Platform-level system and environment context."
+                href="/superadmin/settings"
+              />
+              <AuthorityCard
+                icon={ShieldCheck}
+                title="Permissions"
+                description="Review supported authority levels and access scope."
+                href="/superadmin/permissions"
+              />
+            </div>
+          </SectionCard>
         </div>
-      </div>
+      </section>
     </div>
   );
 }
 
-function StatCard({ title, value, icon, color }: { title: string; value: number | string; icon: React.ReactNode; color: string }) {
-  const colors: Record<string, string> = {
-    blue: "bg-slate-900/70 text-emerald-200 ring-1 ring-emerald-500/40",
-    orange: "bg-slate-900/70 text-amber-200 ring-1 ring-amber-500/40",
-    green: "bg-slate-900/70 text-emerald-200 ring-1 ring-emerald-500/40",
-    purple: "bg-slate-900/70 text-indigo-200 ring-1 ring-indigo-500/40"
-  };
-
+function StatCard({
+  title,
+  value,
+  helper,
+  icon: Icon,
+}: {
+  title: string;
+  value: number;
+  helper: string;
+  icon: LucideIcon;
+}) {
   return (
-    <div className="rounded-2xl border border-slate-800/80 bg-slate-900/60 p-6 shadow-[0_20px_60px_-40px_rgba(15,23,42,0.8)] flex flex-col justify-between">
-      <div className="flex justify-between items-start mb-4">
-        <div className={`p-3 rounded-xl ${colors[color]}`}>
-          {icon}
+    <div className="rounded-[24px] border border-slate-800/80 bg-slate-900/65 p-5 shadow-[0_24px_60px_-45px_rgba(15,23,42,0.85)]">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-[11px] font-black uppercase tracking-[0.28em] text-slate-500">{title}</p>
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/15 text-emerald-200">
+          <Icon size={18} />
         </div>
       </div>
-      <div>
-        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{title}</p>
-        <h3 className="mt-1 text-2xl font-black text-slate-100">{value}</h3>
-      </div>
+      <p className="mt-4 text-3xl font-black tracking-tight text-slate-50">{value}</p>
+      <p className="mt-1 text-xs font-medium text-slate-400">{helper}</p>
     </div>
   );
 }
 
-function InfoItem({ label, value }: { label: string; value: string }) {
+function SectionCard({
+  title,
+  description,
+  children,
+  actionHref,
+}: {
+  title: string;
+  description: string;
+  children: ReactNode;
+  actionHref?: string;
+}) {
   return (
-    <div className="rounded-xl border border-slate-800/80 bg-slate-950/60 p-3">
-      <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{label}</p>
-      <p className="text-sm font-semibold text-slate-100">{value}</p>
+    <section className="rounded-[24px] border border-slate-800/80 bg-slate-900/65 shadow-[0_24px_60px_-45px_rgba(15,23,42,0.85)]">
+      <div className="flex flex-col gap-3 border-b border-slate-800 px-5 py-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h2 className="text-base font-black text-slate-50">{title}</h2>
+          <p className="mt-1 text-sm leading-6 text-slate-400">{description}</p>
+        </div>
+        {actionHref ? (
+          <Link
+            href={actionHref}
+            className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-[0.2em] text-emerald-200 transition hover:text-emerald-100"
+          >
+            Open
+            <ArrowRight size={14} />
+          </Link>
+        ) : null}
+      </div>
+      <div className="p-5">{children}</div>
+    </section>
+  );
+}
+
+function RecordList({
+  items,
+  emptyLabel,
+}: {
+  items: Array<{ title: string; meta: string; extra: string }>;
+  emptyLabel: string;
+}) {
+  if (items.length === 0) {
+    return <p className="text-sm font-medium text-slate-400">{emptyLabel}</p>;
+  }
+
+  return (
+    <div className="space-y-3">
+      {items.map((item) => (
+        <div key={`${item.title}-${item.extra}`} className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+          <p className="text-sm font-black text-slate-100">{item.title}</p>
+          <p className="mt-1 text-xs font-medium text-slate-400">{item.meta}</p>
+          <p className="mt-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">{item.extra}</p>
+        </div>
+      ))}
     </div>
+  );
+}
+
+function AuthorityCard({
+  icon: Icon,
+  title,
+  description,
+  href,
+}: {
+  icon: LucideIcon;
+  title: string;
+  description: string;
+  href: string;
+}) {
+  return (
+    <Link
+      href={href}
+      className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4 transition hover:border-emerald-500/25 hover:bg-slate-950"
+    >
+      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/15 text-emerald-200">
+        <Icon size={18} />
+      </div>
+      <p className="mt-3 text-sm font-black text-slate-100">{title}</p>
+      <p className="mt-1 text-xs leading-5 text-slate-400">{description}</p>
+    </Link>
   );
 }
