@@ -15,7 +15,10 @@ import { NotificationListItem } from "@/components/admin/notifications/Notificat
 import { Button } from "@/components/ui/button";
 import type {
   AdminNotification,
+  NotificationSeverity,
   NotificationQueryParams,
+  NotificationStatus,
+  NotificationType,
 } from "@/lib/adminNotifications";
 import {
   NOTIFICATION_SEVERITY_OPTIONS,
@@ -43,9 +46,9 @@ const PAGE_SIZE = 20;
 
 type FiltersState = {
   organizationId: string;
-  type: string;
-  severity: string;
-  status: string;
+  type: NotificationType | "";
+  severity: NotificationSeverity | "";
+  status: NotificationStatus | "";
   dateFrom: string;
   dateTo: string;
 };

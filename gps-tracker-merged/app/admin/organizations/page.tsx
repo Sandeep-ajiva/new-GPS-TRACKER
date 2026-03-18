@@ -48,7 +48,7 @@ interface Organization extends Record<string, unknown> {
 
 type OrganizationTableColumn = {
   header: string;
-  accessor: keyof Organization | ((row: Organization) => ReactNode);
+  accessor: Extract<keyof Organization, string> | ((row: Organization) => ReactNode);
   headerClassName?: string;
   cellClassName?: string;
 };

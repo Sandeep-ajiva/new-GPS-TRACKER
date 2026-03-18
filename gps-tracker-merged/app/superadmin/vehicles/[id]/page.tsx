@@ -9,6 +9,13 @@ import { formatDateTime, formatStatus } from "@/components/superadmin/superadmin
 
 type Coordinates = { lat: number; lng: number };
 
+const normalizeMapVehicleStatus = (value?: string) => {
+  const status = (value || "").toLowerCase();
+  if (status === "running") return "running" as const;
+  if (status === "idle") return "idle" as const;
+  return "stopped" as const;
+};
+
 export default function VehicleDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
@@ -72,7 +79,12 @@ export default function VehicleDetailPage() {
         id: vehicleId,
         label: getVehicleName(vehicle),
         position,
-        status: (readString(liveRecord?.movementStatus) || readString(liveRecord?.status) || readString(vehicle?.status) || "unknown").toLowerCase(),
+        status: normalizeMapVehicleStatus(
+          readString(liveRecord?.movementStatus) ||
+            readString(liveRecord?.status) ||
+            readString(vehicle?.status) ||
+            "unknown",
+        ),
         driverName: getDriverName(vehicle),
         speed: readNumber(liveRecord?.currentSpeed) || 0,
         lastUpdated: formatDateTime(readString(liveRecord?.updatedAt) || readString(vehicle?.updatedAt)) || "Unavailable",

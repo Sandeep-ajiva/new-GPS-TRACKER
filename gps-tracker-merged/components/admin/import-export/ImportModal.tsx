@@ -992,6 +992,7 @@ export default function ImportModal({
                                 {previewSlice.map((row) => {
                                   const rowId = row.__index as number;
                                   const isExcluded = excludedRows.has(rowId);
+                                  const previewRow = row as Record<string, unknown>;
                                   return (
                                     <tr key={String(row.__index)} className={isExcluded ? "bg-slate-100 text-slate-400" : invalidRowIds.has(rowId) ? "bg-amber-50 text-slate-700" : "bg-white text-slate-700"}>
                                       <td className="border-b border-slate-100 px-3 py-3 align-top">
@@ -1003,7 +1004,7 @@ export default function ImportModal({
                                         })} />
                                       </td>
                                       {visiblePreviewColumns.map((column) => (
-                                        <td key={column} className="border-b border-slate-100 px-3 py-3 whitespace-nowrap">{String(row[column] ?? "")}</td>
+                                        <td key={column} className="border-b border-slate-100 px-3 py-3 whitespace-nowrap">{String(previewRow[column] ?? "")}</td>
                                       ))}
                                     </tr>
                                   );

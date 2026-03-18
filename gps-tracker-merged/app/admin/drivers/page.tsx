@@ -152,7 +152,7 @@ export default function DriversPage() {
         {
             name: "firstName",
             label: "First Name",
-            type: "text",
+            type: "text" as const,
             required: true,
             placeholder: "John",
             icon: <User size={14} className="text-slate-500" />,
@@ -160,7 +160,7 @@ export default function DriversPage() {
         {
             name: "lastName",
             label: "Last Name",
-            type: "text",
+            type: "text" as const,
             required: true,
             placeholder: "Doe",
             icon: <User size={14} className="text-slate-500" />,
@@ -168,7 +168,7 @@ export default function DriversPage() {
         {
             name: "email",
             label: "Email Address",
-            type: "email",
+            type: "email" as const,
             required: true,
             placeholder: "driver@example.com",
             icon: <Mail size={14} className="text-slate-500" />,
@@ -176,7 +176,7 @@ export default function DriversPage() {
         {
             name: "phone",
             label: "Phone Number",
-            type: "tel",
+            type: "tel" as const,
             required: true,
             placeholder: "+1 234 567 890",
             helperText: "Include country code",
@@ -185,7 +185,7 @@ export default function DriversPage() {
         {
             name: "licenseNumber",
             label: "License Number",
-            type: "text",
+            type: "text" as const,
             required: true,
             placeholder: "DL12345678",
             helperText: "Required",
@@ -239,7 +239,7 @@ export default function DriversPage() {
                 {
                     name: "licenseExpiry",
                     label: "License Expiry",
-                    type: "date",
+                    type: "date" as const,
                     icon: <Calendar size={14} className="text-slate-500" />,
                 },
                 {

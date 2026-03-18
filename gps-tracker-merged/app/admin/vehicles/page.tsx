@@ -320,7 +320,7 @@ export default function VehiclesPage() {
           if (normalizedValue !== "") {
             body[key] = normalizedValue;
           }
-        } else if (value !== "") {
+        } else {
           body[key] = value;
         }
       });
@@ -489,7 +489,7 @@ export default function VehiclesPage() {
     {
       name: "vehicleType",
       label: "Vehicle Type",
-      type: "select",
+      type: "select" as const,
       required: true,
       options: [
         { label: "Car", value: "car" },
@@ -504,7 +504,7 @@ export default function VehiclesPage() {
     {
       name: "vehicleNumber",
       label: "Vehicle Number",
-      type: "text",
+      type: "text" as const,
       required: true,
       placeholder: "e.g. MH12AB1234",
       icon: <Hash size={14} className="text-slate-500" />,
@@ -607,7 +607,7 @@ export default function VehiclesPage() {
           {
             name: "model",
             label: "Model",
-            type: "text",
+            type: "text" as const,
             placeholder: "e.g. Fortuner",
             icon: <Info size={14} className="text-slate-500" />,
             section: "Optional Details",
@@ -615,7 +615,7 @@ export default function VehiclesPage() {
           {
             name: "year",
             label: "Year",
-            type: "number",
+            type: "number" as const,
             placeholder: "e.g. 2024",
             icon: <Calendar size={14} className="text-slate-500" />,
             section: "Optional Details",
@@ -623,7 +623,7 @@ export default function VehiclesPage() {
           {
             name: "color",
             label: "Color",
-            type: "text",
+            type: "text" as const,
             placeholder: "e.g. White",
             icon: <Palette size={14} className="text-slate-500" />,
             section: "Optional Details",
@@ -739,6 +739,7 @@ export default function VehiclesPage() {
     () =>
       editingVehicle
         ? {
+            organizationId: "",
             vehicleType: editingVehicle.vehicleType,
             vehicleNumber: editingVehicle.vehicleNumber,
             model: editingVehicle.model || "",
@@ -755,6 +756,7 @@ export default function VehiclesPage() {
             model: "",
             year: "",
             color: "",
+            status: "",
             deviceId: "",
             driverId: "",
           },
