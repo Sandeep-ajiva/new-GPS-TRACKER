@@ -1,8 +1,9 @@
 "use client"
 
 import { useMemo, useState, useEffect } from "react"
-import { Building2, CalendarRange, Car, Filter, ChevronDown, Search, Truck, Zap, Calendar, ArrowRight } from "lucide-react"
+import { Building2, CalendarRange, Car, Filter, ChevronDown, Search, Truck, Zap, Calendar, ArrowRight, Download } from "lucide-react"
 import { AnalyticsFilterModal } from "./AnalyticsFilterModal"
+import { ExportModal } from "./ExportModal"
 
 export type ReportFilterState = {
     organizationId: string
@@ -62,6 +63,8 @@ export function ReportFilterBar({
     userOrgId,
     value,
     onApply,
+    reportData,
+    reportType,
 }: {
     organizations: any[]
     vehicles: any[]
@@ -69,9 +72,12 @@ export function ReportFilterBar({
     userOrgId: string | null
     value: ReportFilterState
     onApply: (next: ReportFilterState) => void
+    reportData?: any[]
+    reportType?: string
 }) {
     const [draft, setDraft] = useState<ReportFilterState>(value)
     const [isAdvancedModalOpen, setIsAdvancedModalOpen] = useState(false)
+    const [isExportModalOpen, setIsExportModalOpen] = useState(false)
 
     const normalizedRole = userRole?.toLowerCase() || "user"
     const isSuperAdmin = normalizedRole === "superadmin" || normalizedRole === "root"
@@ -155,6 +161,10 @@ export function ReportFilterBar({
         const to = new Date(value.to).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
         return `${from} → ${to}`
     }, [value.from, value.to])
+
+    const handleExportClick = () => {
+        setIsExportModalOpen(true)
+    }
 
     return (
         <div className="flex flex-col border-b border-slate-200 bg-white shadow-sm z-10 sticky top-0">
@@ -270,7 +280,17 @@ export function ReportFilterBar({
                 </div>
 
                 {/* Final Action */}
-                <div className="ml-auto flex items-center pr-4 py-2">
+                <div className="ml-auto flex items-center pr-4 py-2 gap-2">
+                    <button
+                        type="button"
+                        onClick={handleExportClick}
+                        disabled={!reportData || reportData.length === 0}
+                        className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#d8e6d2] bg-white px-4 text-[10px] font-black uppercase tracking-[0.2em] text-slate-700 transition shadow-sm hover:bg-[#eef8ec] hover:text-[#2f8d35] disabled:opacity-50 disabled:cursor-not-allowed group"
+                        title="Export current report data"
+                    >
+                        <Download className="h-3.5 w-3.5 group-hover:scale-110 transition-transform" />
+                        Export
+                    </button>
                     <button
                         type="button"
                         onClick={() => onApply(draft)}
@@ -321,6 +341,16 @@ export function ReportFilterBar({
                         onApply(next)
                         setIsAdvancedModalOpen(false)
                     }}
+                />
+            )}
+
+            {isExportModalOpen && (
+                <ExportModal
+                    isOpen={isExportModalOpen}
+                    onClose={() => setIsExportModalOpen(false)}
+                    reportData={reportData || []}
+                    reportType={reportType || ""}
+                    currentFilters={{ from: value.from, to: value.to }}
                 />
             )}
         </div>

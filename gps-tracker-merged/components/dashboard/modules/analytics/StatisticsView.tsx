@@ -9,6 +9,7 @@ import {
     AnalyticsFilterState,
     getDefaultAnalyticsFilter,
 } from "./AnalyticsFilterModal"
+import { ReportFilterBar, getDefaultReportFilter } from "./ReportFilterBar"
 
 const formatDuration = (seconds?: number) => {
     const total = Math.max(0, Number(seconds || 0))
@@ -42,6 +43,32 @@ export function StatisticsView({
     const daywiseRows = daywiseQuery.data?.data?.days ?? []
     const totalDaywiseDistance = daywiseRows.reduce((sum: number, row: { distance?: number }) => sum + Number(row.distance || 0), 0)
 
+    // Prepare report data for export
+    const reportData = mode === "statistics" 
+        ? [
+            ["Total Distance", `${Number(statistics?.totalDistance || 0).toFixed(2)} km`],
+            ["Average Speed", `${Number(statistics?.avgSpeed || 0).toFixed(1)} km/h`],
+            ["Max Speed", `${Number(statistics?.maxSpeed || 0).toFixed(1)} km/h`],
+            ["Running Time", formatDuration(statistics?.runningTime)],
+            ["Idle Time", formatDuration(statistics?.idleTime)],
+            ["Ignition On Count", String(statistics?.ignitionOnCount || 0)],
+          ].map(([label, value]) => ({ Metric: label, Value: value }))
+        : daywiseRows.map((row: { date: string; distance?: number }) => ({
+            Date: row.date,
+            Distance: `${Number(row.distance || 0).toFixed(2)} km`
+          }))
+
+    const reportType = mode === "statistics" ? "statistics" : "daywise"
+
+    // Mock data for ReportFilterBar (it expects organizations and vehicles)
+    const mockOrganizations = [{ _id: "all", name: "All Organizations" }]
+    const mockVehicles = selectedVehicle ? [{ _id: selectedVehicle.id, vehicleNumber: selectedVehicle.vehicleNumber || selectedVehicle.id }] : []
+
+    const reportFilters = getDefaultReportFilter()
+    reportFilters.from = filters.from
+    reportFilters.to = filters.to
+    reportFilters.vehicleId = vehicleId || "all"
+
     if (!selectedVehicle) {
         return (
             <div className="rounded-[28px] border border-[#d8e6d2] bg-[#f7fbf5] p-8 text-center text-sm font-semibold text-slate-500">
@@ -52,6 +79,24 @@ export function StatisticsView({
 
     return (
         <>
+            <ReportFilterBar
+                organizations={mockOrganizations}
+                vehicles={mockVehicles}
+                userRole={null}
+                userOrgId={null}
+                value={reportFilters}
+                onApply={(next) => {
+                    // Update the analytics filters when report filters change
+                    setFilters({
+                        ...filters,
+                        from: next.from,
+                        to: next.to
+                    })
+                }}
+                reportData={reportData}
+                reportType={reportType}
+            />
+
             <div className="space-y-5">
                 <div className="flex flex-wrap items-center justify-between gap-3 rounded-[28px] border border-[#d8e6d2] bg-[#f7fbf5] p-5">
                     <div>

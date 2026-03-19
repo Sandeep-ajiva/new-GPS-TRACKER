@@ -1,13 +1,15 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import { Calendar, Car, ChevronDown, ChevronRight, Clock, Clock3, History, LayoutDashboard, LogOut, Menu, MessageSquare, Settings, AlertTriangle, User, Settings2 } from "lucide-react"
+import { Calendar, Car, ChevronDown, ChevronRight, Clock, Clock3, History, LayoutDashboard, LogOut, Menu, MessageSquare, Settings, AlertTriangle, User, Settings2, Bell } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { getSecureItem } from "@/app/admin/Helpers/encryptionHelper"
+import { NotificationDropdown } from "@/components/dashboard/NotificationDropdown"
+import { useGetNotificationCountsQuery } from "@/redux/api/notificationsApi"
 import { useGetMeQuery } from "@/redux/api/usersApi"
 import { baseApi } from "@/redux/api/baseApi"
 import { useDispatch } from "react-redux"
-import { NotificationCenter } from "@/components/common/NotificationCenter"
+import { Badge } from "@/components/ui/badge"
 import { setActiveTab } from "@/redux/features/vehicleSlice"
 
 type HeaderUser = {
@@ -98,6 +100,7 @@ export function Header({
 }) {
     const [showProfileDropdown, setShowProfileDropdown] = useState(false)
     const [showStaticsDropdown, setShowStaticsDropdown] = useState(false)
+    const [showNotifications, setShowNotifications] = useState(false)
     const [activeMenuSection, setActiveMenuSection] = useState("statistics")
     const [now, setNow] = useState(() => new Date())
     const [userRole, setUserRole] = useState<string | null>(null)
@@ -105,12 +108,17 @@ export function Header({
     const dispatch = useDispatch()
     const profileRef = useRef<HTMLDivElement>(null)
     const staticsRef = useRef<HTMLDivElement>(null)
+    const notifRef = useRef<HTMLDivElement>(null)
 
     useEffect(() => {
         setUserRole(getSecureItem("userRole"))
     }, [])
 
     const { data: meData } = useGetMeQuery(undefined, { refetchOnMountOrArgChange: true })
+    const { data: notificationCounts } = useGetNotificationCountsQuery(undefined, {
+        pollingInterval: 30000,
+        refetchOnMountOrArgChange: true,
+    })
     const user = meData?.data
     const displayName = useMemo(() => {
         if (!user) return "User"
@@ -120,6 +128,7 @@ export function Header({
     const role = user?.role || userRole || "user"
     const normalizedRole = String(role).toLowerCase()
     const canOpenStatics = normalizedRole === "admin" || normalizedRole === "manager" || normalizedRole === "subadmin"
+    const unreadCount = notificationCounts?.unread || notificationCounts?.data?.unread || 0
     const headerMenuSections = useMemo<HeaderMenuSection[]>(() => {
         const sections: HeaderMenuSection[] = []
 
@@ -192,6 +201,9 @@ export function Header({
             }
             if (staticsRef.current && !staticsRef.current.contains(e.target as Node)) {
                 setShowStaticsDropdown(false)
+            }
+            if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
+                setShowNotifications(false)
             }
         }
         document.addEventListener("mousedown", handler)
@@ -359,6 +371,32 @@ export function Header({
                 </div>
 
                 <div className="flex items-center gap-3">
+                    {/* Notification Bell */}
+                    <div className="relative" ref={notifRef}>
+                        <button
+                            onClick={() => setShowNotifications(!showNotifications)}
+                            className="relative rounded-2xl border border-white/25 bg-white/10 p-2.5 text-white shadow-sm transition-colors hover:bg-white/15"
+                            title="Notifications"
+                        >
+                            <Bell size={20} />
+                            {/* Unread count badge */}
+                            {unreadCount > 0 && (
+                                <Badge 
+                                    variant="default" 
+                                    className="absolute -top-1 -right-1 min-w-[20px] h-5 text-xs font-bold bg-red-600 text-white flex items-center justify-center"
+                                >
+                                    {unreadCount > 99 ? '99+' : unreadCount}
+                                </Badge>
+                            )}
+                        </button>
+
+                        {/* Notification Dropdown */}
+                        <NotificationDropdown 
+                            isOpen={showNotifications} 
+                            onClose={() => setShowNotifications(false)} 
+                        />
+                    </div>
+
                     <div ref={profileRef} className="relative flex items-center gap-2">
                         <div className="flex items-center gap-2 rounded-full border border-white/25 bg-white/10 px-2 py-1 transition hover:bg-white/15">
                             <div className="h-9 w-9 rounded-full bg-[#0076bb] border-2 border-white shadow-sm overflow-hidden flex items-center justify-center">

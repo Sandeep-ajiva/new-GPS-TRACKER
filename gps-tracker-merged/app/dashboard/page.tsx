@@ -25,7 +25,6 @@ import { useAppDispatch, useAppSelector } from "@/redux/hooks"
 import { setActiveTab, setSelectedVehicle as setReduxSelectedVehicle } from "@/redux/features/vehicleSlice"
 import { useDashboardContext } from "@/components/dashboard/DashboardContext"
 import { getVehicleStatus, RUNNING_SPEED_THRESHOLD } from "@/lib/vehicleStatusUtils"
-import { ReportView } from "@/components/dashboard/modules/ReportView"
 import { GeofenceView } from "@/components/dashboard/modules/GeofenceView"
 import { LicensingView } from "@/components/dashboard/modules/LicensingView"
 import { AlertView } from "@/components/dashboard/modules/AlertView"
@@ -39,6 +38,7 @@ import { AlertSummaryPage } from "@/components/dashboard/modules/analytics/Alert
 import { DaywiseDistancePage } from "@/components/dashboard/modules/analytics/DaywiseDistancePage"
 import { ACSummaryPage } from "@/components/dashboard/modules/analytics/ACSummaryPage"
 import { X } from "lucide-react"
+import { ReportsModal } from "@/components/dashboard/modules/ReportsModal"
 
 type LiveGpsItem = {
   vehicleId?: string | { _id?: string }
@@ -166,6 +166,7 @@ export default function DashboardPage() {
   const [selectedOrgId, setSelectedOrgId] = useState<string>("all")
   const [isOrgOpen, setIsOrgOpen] = useState(false)
   const [clockMs, setClockMs] = useState(() => Date.now())
+  const [showReportsModal, setShowReportsModal] = useState(false)
   const user = meData?.data
   const rawOrgId = user?.organizationId?._id || user?.organizationId || ""
   const organizationIdParam = searchParams.get("organizationId")
@@ -919,7 +920,7 @@ const handleGpsUpdate = useCallback((update: LiveGpsItem) => {
 
               {/* Map Area (Right ~60%) */}
               <div className={`${mobileView === "map" ? "flex" : "hidden md:flex"} lg:flex lg:col-span-7 xl:col-span-8 flex-col min-h-[620px] overflow-hidden rounded-[28px] border border-[#d8e6d2] bg-white shadow-sm lg:h-full lg:min-h-[700px]`}>
-                <ActionToolbar compact />
+                <ActionToolbar compact onReportsClick={() => setShowReportsModal(true)} />
                 <div className="flex-1 min-h-0">
                   <MapWrapper />
                 </div>
@@ -958,7 +959,6 @@ const handleGpsUpdate = useCallback((update: LiveGpsItem) => {
               </div>
 
               <div className="flex-1 overflow-auto">
-                {activeTab === "Reports" && <ReportView />}
                 {activeTab === "Geofences" && <GeofenceView />}
                 {activeTab === "Licensing" && <LicensingView />}
                 {activeTab === "Alerts" && <AlertView />}
@@ -982,6 +982,12 @@ const handleGpsUpdate = useCallback((update: LiveGpsItem) => {
           </div>
         )}
       </div>
+
+      {/* Reports Modal */}
+      <ReportsModal 
+        isOpen={showReportsModal} 
+        onClose={() => setShowReportsModal(false)} 
+      />
     </div>
   )
 }

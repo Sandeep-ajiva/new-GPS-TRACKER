@@ -185,6 +185,72 @@ export function TravelSummaryPage({
         [trips],
     );
 
+    // Prepare report data for export
+    const reportData = useMemo(() => {
+        console.log("TravelSummaryPage - mode:", mode)
+        console.log("TravelSummaryPage - trips array:", trips)
+        console.log("TravelSummaryPage - trips length:", trips.length)
+        
+        if (mode === "travel") {
+            const exportData = trips.map((trip) => ({
+                Branch: trip.branchName || "-",
+                Vehicle: trip.vehicleNumber || "-",
+                "Vehicle Make": trip.make || "-",
+                "Vehicle Model": trip.model || "-",
+                Driver: trip.driverName || "-",
+                "IMEI No": trip.imei || "-",
+                Distance: Number(trip.distance || 0).toFixed(2),
+                Running: formatDuration(trip.runningTime),
+                Idle: formatDuration(trip.idleTime),
+                Stop: formatDuration(trip.stopTime),
+                Inactive: formatDuration(trip.inactiveTime),
+                "Running V/S Stop": `${formatDuration(trip.runningTime)} / ${formatDuration(trip.stopTime)}`,
+                "First Ignition On": formatDateTime(trip.firstIgnitionOn),
+                "Last Ignition Off": formatDateTime(trip.lastIgnitionOff),
+                Speed: `${Number(trip.avgSpeed || 0).toFixed(1)} km/h`,
+                IMMobilize: trip.isImmobilized ? "Yes" : "No",
+                "Over speed": trip.overspeedCount || 0,
+                "Alert(s)": trip.alertCount || 0,
+                "No of trip": trip.tripCount || 0,
+                Playback: trip.hasPlayback ? "Yes" : "No",
+                "On Time": formatDateTime(trip.onTime),
+                "On location": trip.onLocation || "-",
+                "Off Time": formatDateTime(trip.offTime),
+                "Off location": trip.offLocation || "-",
+                AVG: `${Number(trip.avgSpeed || 0).toFixed(1)} km/h`,
+                MAX: `${Number(trip.maxSpeed || 0).toFixed(1)} km/h`
+            }))
+            console.log("TravelSummaryPage - export data:", exportData)
+            return exportData
+        } else {
+            // Trip mode - flatten individual trips
+            const flattenedTrips: any[] = []
+            trips.forEach((vehicle) => {
+                const individualTrips = Array.isArray(vehicle.individualTrips) ? vehicle.individualTrips : []
+                individualTrips.forEach((trip: any) => {
+                    flattenedTrips.push({
+                        Branch: vehicle.branchName || "-",
+                        Vehicle: vehicle.vehicleNumber || "-",
+                        "Vehicle Make": vehicle.make || "-",
+                        "Vehicle Model": vehicle.model || "-",
+                        Driver: vehicle.driverName || "-",
+                        "IMEI No": vehicle.imei || "-",
+                        "Trip Start": formatDateTime(trip.startTime),
+                        "Trip End": formatDateTime(trip.endTime),
+                        Distance: Number(trip.distance || 0).toFixed(2),
+                        Duration: formatDuration(trip.duration),
+                        "Max Speed": `${Number(trip.maxSpeed || 0).toFixed(1)} km/h`,
+                        "Avg Speed": `${Number(trip.avgSpeed || 0).toFixed(1)} km/h`,
+                        "Start Location": formatLocation(trip.startLocation),
+                        "End Location": formatLocation(trip.endLocation)
+                    })
+                })
+            })
+            console.log("TravelSummaryPage - flattened trips:", flattenedTrips)
+            return flattenedTrips
+        }
+    }, [trips, mode])
+
     const toggleTripDay = (vehicleId: string, dayKey: string) => {
         setExpandedTripDays((current) => ({
             ...current,
@@ -231,6 +297,8 @@ export function TravelSummaryPage({
                 userOrgId={userOrgId}
                 value={filters}
                 onApply={setFilters}
+                reportData={reportData}
+                reportType={mode === "travel" ? "travel-summary" : "trip-summary"}
             />
 
             <div className="flex-1 overflow-auto p-2">

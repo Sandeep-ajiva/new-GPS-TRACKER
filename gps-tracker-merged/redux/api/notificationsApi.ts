@@ -7,6 +7,10 @@ export const notificationsApi = baseApi.injectEndpoints({
             query: () => "/alerts", // Backend uses /alerts
             providesTags: ["Notification"],
         }),
+        getNotificationCounts: builder.query({
+            query: () => "/alerts/counts", // Assuming backend has this endpoint
+            providesTags: ["Notification"],
+        }),
         markAsRead: builder.mutation({
             query: (id) => ({
                 url: `/alerts/${id}/ack`, // Backend uses /alerts/:id/ack
@@ -40,6 +44,7 @@ export const notificationsApi = baseApi.injectEndpoints({
 
 export const {
     useGetNotificationsQuery,
+    useGetNotificationCountsQuery,
     useMarkAsReadMutation,
     useMarkAllAsReadMutation,
     useDeleteNotificationMutation,

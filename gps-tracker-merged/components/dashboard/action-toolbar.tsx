@@ -6,9 +6,11 @@ import { AnalyticsDropdown } from "./modules/analytics/AnalyticsDropdown"
 export function ActionToolbar({
     compact = false,
     className = "",
+    onReportsClick,
 }: {
     compact?: boolean
     className?: string
+    onReportsClick?: () => void
 }) {
     const dispatch = useAppDispatch()
     const activeTab = useAppSelector((state) => state.vehicle.activeTab)
@@ -29,7 +31,13 @@ export function ActionToolbar({
                     <button
                         key={action.label}
                         type="button"
-                        onClick={() => dispatch(setActiveTab(action.label))}
+                        onClick={() => {
+                            if (action.label === "Reports" && onReportsClick) {
+                                onReportsClick();
+                            } else {
+                                dispatch(setActiveTab(action.label));
+                            }
+                        }}
                         className={`group relative flex shrink-0 items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition-colors ${isActive
                             ? "bg-[#ecf8ea] text-[#2f8d35]"
                             : "text-slate-500 hover:bg-[#f4faf2] hover:text-[#2f8d35]"

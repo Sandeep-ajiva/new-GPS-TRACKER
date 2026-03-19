@@ -42,6 +42,29 @@ export function DaywiseDistancePage({
         return dates
     }, [filters.from, filters.to])
 
+    // Prepare report data for export
+    const reportData = useMemo(() => {
+        return vehiclesSummary.map((vehicle) => {
+            const row: any = {
+                Branch: vehicle.branchName || "-",
+                Vehicle: vehicle.vehicleNumber,
+                "Vehicle Brand": vehicle.brand || "-",
+                "Vehicle Model": vehicle.model || "-",
+                "Total Distance": Number(vehicle.distance || 0).toFixed(2)
+            }
+            
+            // Add daily distances
+            columns.forEach(date => {
+                const ddmm = formatDateToDDMMYYYY(date)
+                const dayData = vehicle.dailyBreakdown?.find((d: any) => d.date === ddmm)
+                const distance = dayData?.distance || 0
+                row[date] = distance.toFixed(2)
+            })
+            
+            return row
+        })
+    }, [vehiclesSummary, columns])
+
     const formatDateToDD = (dateStr: string) => {
         return dateStr.split('-')[2]
     }
@@ -64,6 +87,8 @@ export function DaywiseDistancePage({
                 userOrgId={userOrgId}
                 value={filters}
                 onApply={setFilters}
+                reportData={reportData}
+                reportType="daywise-distance"
             />
 
             <div className="flex-1 overflow-auto">
