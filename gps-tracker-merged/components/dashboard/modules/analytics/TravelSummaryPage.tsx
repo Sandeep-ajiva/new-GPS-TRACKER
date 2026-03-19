@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useRef, useEffect } from "react"
 import dynamic from "next/dynamic"
 import { PlayCircle, Navigation, Filter as FilterIcon, ChevronRight, CalendarDays, History } from "lucide-react"
 import {
@@ -20,6 +20,53 @@ const TravelPlaybackInline = dynamic(() => import("@/components/reports/TravelPl
         </div>
     )
 })
+
+const PLAYBACK_PANEL_HEIGHT = 560
+
+function DragScrollArea({
+    children,
+    className = "",
+}: {
+    children: React.ReactNode
+    className?: string
+}) {
+    const dragState = useRef({ active: false, startX: 0, scrollLeft: 0 })
+
+    const stopDragging = (element?: HTMLDivElement | null) => {
+        dragState.current.active = false
+        if (element) {
+            element.style.cursor = "grab"
+        }
+    }
+
+    return (
+        <div
+            className={`cursor-grab select-none ${className}`}
+            onMouseDown={(event) => {
+                const target = event.target as HTMLElement
+                if (target.closest("button, a, input, select, textarea, label")) return
+                const element = event.currentTarget
+                dragState.current = {
+                    active: true,
+                    startX: event.clientX,
+                    scrollLeft: element.scrollLeft,
+                }
+                element.style.cursor = "grabbing"
+            }}
+            onMouseMove={(event) => {
+                if (!dragState.current.active) return
+                event.preventDefault()
+                const element = event.currentTarget
+                const deltaX = event.clientX - dragState.current.startX
+                element.scrollLeft = dragState.current.scrollLeft - deltaX
+            }}
+            onMouseUp={(event) => stopDragging(event.currentTarget)}
+            onMouseLeave={(event) => stopDragging(event.currentTarget)}
+        >
+            {children}
+        </div>
+    )
+}
 
 const formatDuration = (seconds?: number) => {
     const total = Math.max(0, Number(seconds || 0))
@@ -160,6 +207,9 @@ export function TravelSummaryPage({
     const [playbackVehicleId, setPlaybackVehicleId] = useState<string | null>(null)
     const [playbackDate, setPlaybackDate] = useState<string | null>(null)
     const [playbackRange, setPlaybackRange] = useState<{ from: string; to: string; dayKey?: string | null; tripKey?: string | null } | null>(null)
+    const tableCardRef = useRef<HTMLDivElement | null>(null)
+    const playbackAnchorRefs = useRef<Record<string, HTMLDivElement | null>>({})
+    const [playbackPanelTop, setPlaybackPanelTop] = useState<number | null>(null)
 
     const isValidVehicle = filters.vehicleId !== ""
 
@@ -184,6 +234,38 @@ export function TravelSummaryPage({
             ),
         [trips],
     );
+    const selectedPlaybackRow = useMemo(
+        () => trips.find((row) => row.vehicleId === playbackVehicleId) || null,
+        [trips, playbackVehicleId],
+    );
+
+    useEffect(() => {
+        if (!selectedPlaybackRow?.vehicleId || !tableCardRef.current) {
+            setPlaybackPanelTop(null)
+            return
+        }
+
+        const updatePlaybackPanelTop = () => {
+            const container = tableCardRef.current
+            const anchor = playbackAnchorRefs.current[selectedPlaybackRow.vehicleId]
+
+            if (!container || !anchor) {
+                setPlaybackPanelTop(null)
+                return
+            }
+
+            const containerRect = container.getBoundingClientRect()
+            const anchorRect = anchor.getBoundingClientRect()
+            setPlaybackPanelTop(anchorRect.top - containerRect.top)
+        }
+
+        updatePlaybackPanelTop()
+        window.addEventListener("resize", updatePlaybackPanelTop)
+
+        return () => {
+            window.removeEventListener("resize", updatePlaybackPanelTop)
+        }
+    }, [selectedPlaybackRow, expandedVehicleId, expandedTripDays, playbackDate, playbackRange, mode, trips.length])
 
     // Prepare report data for export
     const reportData = useMemo(() => {
@@ -316,10 +398,10 @@ export function TravelSummaryPage({
                         <p className="text-sm font-bold">Failed to load {mode} data.</p>
                     </div>
                 ) : (
-                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                        <div className="overflow-x-auto">
+                    <div ref={tableCardRef} className="relative bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                        <DragScrollArea className="w-full overflow-x-auto overflow-y-hidden">
                             {mode === "travel" ? (
-                                <table className="w-full border-collapse text-[10px] text-slate-600">
+                                <table className="w-max min-w-full border-collapse text-[10px] text-slate-600">
                                     <thead>
                                         <tr className="bg-[#2f8d35] text-white">
                                             <th className="border border-white/10 p-2 text-center w-6"><FilterIcon size={10} /></th>
@@ -331,7 +413,7 @@ export function TravelSummaryPage({
                                             <th className="border border-white/10 p-2 font-bold whitespace-normal text-center max-w-[100px] break-words">Vehicle Model</th>
                                             <th className="border border-white/10 p-2 font-bold whitespace-normal text-center max-w-[100px] break-words">Driver</th>
                                             <th className="border border-white/10 p-2 font-bold whitespace-normal text-center max-w-[100px] break-words">IMEI No</th>
-                                            <th className="border border-white/10 p-2 font-bold whitespace-normal text-center max-w-[100px] break-words">Start Location</th>
+                                            <th className="border border-white/10 p-2 font-bold whitespace-normal text-center min-w-[220px] max-w-[280px] break-words">Start Location</th>
                                             <th className="border border-white/10 p-2 font-bold whitespace-normal text-center max-w-[100px] break-words">Start Odometer</th>
                                             <th className="border border-white/10 p-2 font-bold whitespace-normal text-center max-w-[100px] break-words">Distance</th>
                                             <th className="border border-white/10 p-2 font-bold whitespace-normal text-center max-w-[100px] break-words">Running V/S Stop</th>
@@ -346,7 +428,7 @@ export function TravelSummaryPage({
                                             <th className="border border-white/10 p-2 font-bold whitespace-normal text-center max-w-[100px] break-words">Over speed</th>
                                             <th className="border border-white/10 p-2 font-bold whitespace-normal text-center max-w-[100px] break-words">Alert(s)</th>
                                             <th className="border border-white/10 p-2 font-bold whitespace-normal text-center max-w-[100px] break-words">End Odometer</th>
-                                            <th className="border border-white/10 p-2 font-bold whitespace-normal text-center max-w-[100px] break-words">End Location</th>
+                                            <th className="border border-white/10 p-2 font-bold whitespace-normal text-center min-w-[220px] max-w-[280px] break-words">End Location</th>
                                             <th className="border border-white/10 p-2 font-bold whitespace-normal text-center max-w-[100px] break-words">Playback</th>
                                         </tr>
                                     </thead>
@@ -363,7 +445,7 @@ export function TravelSummaryPage({
                                                         <td className="p-2 text-center">{row.model}</td>
                                                         <td className="p-2 text-center text-slate-400">{row.driverName}</td>
                                                         <td className="p-2 text-center">{row.imei}</td>
-                                                        <td className="p-2 text-center max-w-[80px] break-words" title={formatLocation(row.startLocation)}>{formatLocation(row.startLocation)}</td>
+                                                        <td className="min-w-[220px] max-w-[280px] p-2 text-center whitespace-normal break-words" title={formatLocation(row.startLocation)}>{formatLocation(row.startLocation)}</td>
                                                         <td className="p-2 text-center">{Number(row.startOdometer || 0).toFixed(2)}</td>
                                                         <td className="p-2 font-bold text-center">{Number(row.distance || 0).toFixed(2)}</td>
                                                         <td className="p-2 text-center min-w-[100px]">{renderProgressBar(row.runningTime, row.stopTime, row.idleTime)}</td>
@@ -378,7 +460,7 @@ export function TravelSummaryPage({
                                                         <td className="p-2 text-center">{row.overSpeedCount || 0}</td>
                                                         <td className="p-2 text-[#ea4335] font-bold text-center">{row.alerts || 0}</td>
                                                         <td className="p-2 text-center">{Number(row.endOdometer || 0).toFixed(2)}</td>
-                                                        <td className="p-2 text-center max-w-[80px] break-words" title={formatLocation(row.endLocation)}>{formatLocation(row.endLocation)}</td>
+                                                        <td className="min-w-[220px] max-w-[280px] p-2 text-center whitespace-normal break-words" title={formatLocation(row.endLocation)}>{formatLocation(row.endLocation)}</td>
                                                         <td className="p-2 text-center">
                                                             <button
                                                                 onClick={() => {
@@ -402,13 +484,14 @@ export function TravelSummaryPage({
                                                     {isExpanded && row.dailyBreakdown && (
                                                         <tr>
                                                             <td colSpan={24} className="bg-slate-800 p-0">
-                                                                <table className="w-full text-[9px] text-white/70 border-collapse">
+                                                                <DragScrollArea className="overflow-x-auto overflow-y-hidden">
+                                                                <table className="w-max min-w-full border-collapse text-[9px] text-white/70">
                                                                     <thead className="bg-[#1a3d1a] text-white/50 uppercase font-bold text-[8px]">
                                                                         <tr>
                                                                             <th className="p-2 border border-white/5">Date</th>
                                                                             <th className="p-2 border border-white/5">Day</th>
                                                                             <th className="p-2 border border-white/5 text-[#2f8d35]">First Ignition ON</th>
-                                                                            <th className="p-2 border border-white/5">Start Location</th>
+                                                                            <th className="min-w-[220px] max-w-[280px] p-2 border border-white/5">Start Location</th>
                                                                             <th className="p-2 border border-white/5">Distance</th>
                                                                             <th className="p-2 border border-white/5 text-[#2f8d35]">Running</th>
                                                                             <th className="p-2 border border-white/5 text-[#f2a600]">Idle</th>
@@ -420,7 +503,7 @@ export function TravelSummaryPage({
                                                                             <th className="p-2 border border-white/5">Alert</th>
                                                                             <th className="p-2 border border-white/5">Odometer (Start/End)</th>
                                                                             <th className="p-2 border border-white/5 text-[#ea4335]">Last Ignition Off</th>
-                                                                            <th className="p-2 border border-white/5">End Location</th>
+                                                                            <th className="min-w-[220px] max-w-[280px] p-2 border border-white/5">End Location</th>
                                                                             <th className="p-2 border border-white/5">History</th>
                                                                             <th className="p-2 border border-white/5">Playback</th>
                                                                         </tr>
@@ -431,7 +514,7 @@ export function TravelSummaryPage({
                                                                                 <td className="p-2 text-center text-white">{day.date}</td>
                                                                                 <td className="p-2 text-center">{day.day}</td>
                                                                                 <td className="p-2 text-center text-[#2f8d35]">{formatDateTime(day.firstIgnitionOn?.time)}</td>
-                                                                                <td className="p-2 text-center max-w-[100px] break-words" title={formatLocation(day.startLocation)}>{formatLocation(day.startLocation)}</td>
+                                                                                <td className="min-w-[220px] max-w-[280px] p-2 text-center whitespace-normal break-words" title={formatLocation(day.startLocation)}>{formatLocation(day.startLocation)}</td>
                                                                                 <td className="p-2 text-center font-bold text-white">{Number(day.distance || 0).toFixed(2)}</td>
                                                                                 <td className="p-2 text-center text-[#2f8d35] font-bold">{formatDuration(day.runningTime)}</td>
                                                                                 <td className="p-2 text-center text-[#f2a600] font-bold">{formatDuration(day.idleTime)}</td>
@@ -443,7 +526,7 @@ export function TravelSummaryPage({
                                                                                 <td className="p-2 text-center text-[#ea4335]">{day.alerts || 0}</td>
                                                                                 <td className="p-2 text-center">{Number(day.startOdometer || 0).toFixed(1)} / {Number(day.endOdometer || 0).toFixed(1)}</td>
                                                                                 <td className="p-2 text-center text-[#ea4335]">{formatDateTime(day.lastIgnitionOff?.time)}</td>
-                                                                                <td className="p-2 text-center max-w-[100px] break-words" title={formatLocation(day.endLocation)}>{formatLocation(day.endLocation)}</td>
+                                                                                <td className="min-w-[220px] max-w-[280px] p-2 text-center whitespace-normal break-words" title={formatLocation(day.endLocation)}>{formatLocation(day.endLocation)}</td>
                                                                                 <td className="p-2 text-center"><button className="text-[#2f8d35] hover:scale-110"><History size={12} /></button></td>
                                                                                 <td className="p-2 text-center">
                                                                                     <button
@@ -466,36 +549,18 @@ export function TravelSummaryPage({
                                                                         ))}
                                                                     </tbody>
                                                                 </table>
+                                                                </DragScrollArea>
                                                             </td>
                                                         </tr>
                                                     )}
                                                     {playbackVehicleId === row.vehicleId && (
                                                         <tr>
-                                                            <td colSpan={24} className="p-0 bg-white border-none">
-                                                                <TravelPlaybackInline
-                                                                    vehicleId={row.vehicleId}
-                                                                    vehicleNumber={row.vehicleNumber}
-                                                                    from={filters.from}
-                                                                    to={filters.to}
-                                                                    metadata={{
-                                                                        brand: row.make,
-                                                                        model: row.model,
-                                                                        driverName: row.driverName,
-                                                                        imei: row.imei,
-                                                                        organization: row.branchName,
-                                                                        totalDistance: Number(row.distance || 0),
-                                                                        avgSpeed: Number(row.avgSpeed || 0),
-                                                                        vehicleType: row.model
+                                                            <td colSpan={24} className="border-none bg-transparent p-0">
+                                                                <div
+                                                                    ref={(node) => {
+                                                                        playbackAnchorRefs.current[row.vehicleId] = node
                                                                     }}
-                                                                    onClose={() => {
-                                                                        setPlaybackVehicleId(null);
-                                                                        setPlaybackRange(null);
-                                                                        setPlaybackDate(null);
-                                                                    }}
-                                                                    initialDay={playbackRange?.dayKey || playbackDate || undefined}
-                                                                    isTripPlayback={!!playbackRange}
-                                                                    initialTripRange={playbackRange}
-                                                                    tripDayGroups={tripGroupsByVehicle[row.vehicleId] || []}
+                                                                    style={{ height: PLAYBACK_PANEL_HEIGHT }}
                                                                 />
                                                             </td>
                                                         </tr>
@@ -506,7 +571,7 @@ export function TravelSummaryPage({
                                     </tbody>
                                 </table>
                             ) : (
-                                <table className="w-full border-collapse text-[10px] text-slate-600">
+                                <table className="w-max min-w-full border-collapse text-[10px] text-slate-600">
                                     <thead>
                                         <tr className="bg-[#2f8d35] text-white">
                                             <th rowSpan={2} className="border border-white/10 p-2 text-center w-6"><FilterIcon size={10} /></th>
@@ -560,11 +625,11 @@ export function TravelSummaryPage({
                                                         <td className="p-2 text-[#4285f4] font-bold text-center">{formatDuration(row.inactiveTime)}</td>
                                                         <td className="p-2 text-center min-w-[80px]">{renderProgressBar(row.runningTime, row.stopTime, row.idleTime)}</td>
                                                         <td className="p-1 text-center font-bold text-[#2f8d35]">{formatDateTime(row.firstIgnitionOn?.time)}</td>
-                                                        <td className="p-1 text-center text-[9px] max-w-[80px] break-words" title={formatLocation(row.firstIgnitionOn?.location)}>
+                                                        <td className="min-w-[220px] max-w-[280px] p-1 text-center text-[9px] whitespace-normal break-words" title={formatLocation(row.firstIgnitionOn?.location)}>
                                                             {formatLocation(row.firstIgnitionOn?.location)}
                                                         </td>
                                                         <td className="p-1 text-center font-bold text-[#ea4335]">{formatDateTime(row.lastIgnitionOff?.time)}</td>
-                                                        <td className="p-1 text-center text-[9px] max-w-[80px] break-words" title={formatLocation(row.lastIgnitionOff?.location)}>
+                                                        <td className="min-w-[220px] max-w-[280px] p-1 text-center text-[9px] whitespace-normal break-words" title={formatLocation(row.lastIgnitionOff?.location)}>
                                                             {formatLocation(row.lastIgnitionOff?.location)}
                                                         </td>
                                                         <td className="p-2 text-center font-bold">{Math.round(row.avgSpeed)}</td>
@@ -654,15 +719,15 @@ export function TravelSummaryPage({
                                                                                 </div>
 
                                                                                 {isDayExpanded && (
-                                                                                    <div className="overflow-x-auto border-t border-white/5 bg-[#111111]">
-                                                                                        <table className="w-full border-collapse text-[9px] text-white/65">
+                                                                                    <DragScrollArea className="overflow-x-auto overflow-y-hidden border-t border-white/5 bg-[#111111]">
+                                                                                        <table className="w-max min-w-full border-collapse text-[9px] text-white/65">
                                                                                             <thead className="bg-[#151515] text-[8px] font-black uppercase tracking-[0.12em] text-white/45">
                                                                                                 <tr>
                                                                                                     <th className="border border-white/5 p-2 text-center">Start Time</th>
-                                                                                                    <th className="border border-white/5 p-2 text-center">Start Location</th>
+                                                                                                    <th className="min-w-[220px] max-w-[280px] border border-white/5 p-2 text-center">Start Location</th>
                                                                                                     <th className="border border-white/5 p-2 text-center">Start Odometer</th>
                                                                                                     <th className="border border-white/5 p-2 text-center">End Time</th>
-                                                                                                    <th className="border border-white/5 p-2 text-center">End Location</th>
+                                                                                                    <th className="min-w-[220px] max-w-[280px] border border-white/5 p-2 text-center">End Location</th>
                                                                                                     <th className="border border-white/5 p-2 text-center">End Odometer</th>
                                                                                                     <th className="border border-white/5 p-2 text-center">Driver</th>
                                                                                                     <th className="border border-white/5 p-2 text-center">Distance</th>
@@ -679,10 +744,10 @@ export function TravelSummaryPage({
                                                                                                 {dayGroup.trips.map((it: any, itIdx: number) => (
                                                                                                     <tr key={`${dayGroup.key}-${itIdx}`} className="border-b border-white/5 hover:bg-white/5">
                                                                                                         <td className="p-2 text-center font-bold text-white/90">{formatDateTime(it.startTime)}</td>
-                                                                                                        <td className="max-w-[160px] p-2 text-center" title={formatLocation(it.startLocation)}>{formatLocation(it.startLocation)}</td>
+                                                                                                        <td className="min-w-[220px] max-w-[280px] p-2 text-center whitespace-normal break-words" title={formatLocation(it.startLocation)}>{formatLocation(it.startLocation)}</td>
                                                                                                         <td className="p-2 text-center font-mono opacity-60">{Number(it.startOdometer || 0).toFixed(1)}</td>
                                                                                                         <td className="p-2 text-center font-bold text-white/90">{formatDateTime(it.endTime)}</td>
-                                                                                                        <td className="max-w-[160px] p-2 text-center" title={formatLocation(it.endLocation)}>{formatLocation(it.endLocation)}</td>
+                                                                                                        <td className="min-w-[220px] max-w-[280px] p-2 text-center whitespace-normal break-words" title={formatLocation(it.endLocation)}>{formatLocation(it.endLocation)}</td>
                                                                                                         <td className="p-2 text-center font-mono opacity-60">{Number(it.endOdometer || 0).toFixed(1)}</td>
                                                                                                         <td className="p-2 text-center text-white/45">{it.driverName}</td>
                                                                                                         <td className="p-2 text-center font-bold text-[#7bdd7f]">{Number(it.distance || 0).toFixed(2)}</td>
@@ -713,7 +778,7 @@ export function TravelSummaryPage({
                                                                                                 ))}
                                                                                             </tbody>
                                                                                         </table>
-                                                                                    </div>
+                                                                                    </DragScrollArea>
                                                                                 )}
                                                                             </div>
                                                                         )
@@ -724,29 +789,12 @@ export function TravelSummaryPage({
                                                     )}
                                                     {playbackVehicleId === row.vehicleId && (
                                                         <tr>
-                                                            <td colSpan={24} className="p-0 bg-white border-none">
-                                                                <TravelPlaybackInline
-                                                                    vehicleId={row.vehicleId}
-                                                                    vehicleNumber={row.vehicleNumber}
-                                                                    from={playbackRange?.from || filters.from}
-                                                                    to={playbackRange?.to || filters.to}
-                                                                    metadata={{
-                                                                        brand: row.make,
-                                                                        model: row.model,
-                                                                        driverName: row.driverName,
-                                                                        imei: row.imei,
-                                                                        organization: row.branchName,
-                                                                        totalDistance: Number(row.distance || 0),
-                                                                        avgSpeed: Number(row.avgSpeed || 0),
-                                                                        vehicleType: row.model
+                                                            <td colSpan={24} className="border-none bg-transparent p-0">
+                                                                <div
+                                                                    ref={(node) => {
+                                                                        playbackAnchorRefs.current[row.vehicleId] = node
                                                                     }}
-                                                                    onClose={() => {
-                                                                        setPlaybackVehicleId(null);
-                                                                        setPlaybackRange(null);
-                                                                        setPlaybackDate(null);
-                                                                    }}
-                                                                    initialDay={playbackDate || undefined}
-                                                                     isTripPlayback={!!playbackRange}
+                                                                    style={{ height: PLAYBACK_PANEL_HEIGHT }}
                                                                 />
                                                             </td>
                                                         </tr>
@@ -757,7 +805,39 @@ export function TravelSummaryPage({
                                     </tbody>
                                 </table>
                             )}
-                        </div>
+                        </DragScrollArea>
+                        {selectedPlaybackRow && playbackPanelTop !== null && (
+                            <div
+                                className="absolute left-0 right-0 z-20 overflow-hidden border-y border-slate-200 bg-white shadow-lg"
+                                style={{ top: playbackPanelTop }}
+                            >
+                                <TravelPlaybackInline
+                                    vehicleId={selectedPlaybackRow.vehicleId}
+                                    vehicleNumber={selectedPlaybackRow.vehicleNumber}
+                                    from={playbackRange?.from || filters.from}
+                                    to={playbackRange?.to || filters.to}
+                                    metadata={{
+                                        brand: selectedPlaybackRow.make,
+                                        model: selectedPlaybackRow.model,
+                                        driverName: selectedPlaybackRow.driverName,
+                                        imei: selectedPlaybackRow.imei,
+                                        organization: selectedPlaybackRow.branchName,
+                                        totalDistance: Number(selectedPlaybackRow.distance || 0),
+                                        avgSpeed: Number(selectedPlaybackRow.avgSpeed || 0),
+                                        vehicleType: selectedPlaybackRow.model,
+                                    }}
+                                    onClose={() => {
+                                        setPlaybackVehicleId(null)
+                                        setPlaybackRange(null)
+                                        setPlaybackDate(null)
+                                    }}
+                                    initialDay={playbackRange?.dayKey || playbackDate || undefined}
+                                    isTripPlayback={!!playbackRange}
+                                    initialTripRange={playbackRange}
+                                    tripDayGroups={tripGroupsByVehicle[selectedPlaybackRow.vehicleId] || []}
+                                />
+                            </div>
+                        )}
                     </div>
                 )}
             </div>

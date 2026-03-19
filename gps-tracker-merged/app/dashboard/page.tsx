@@ -253,10 +253,20 @@ const handleGpsUpdate = useCallback((update: LiveGpsItem) => {
     return
   }
 
-  setLiveByVehicleId((prev) => {
+setLiveByVehicleId((prev) => {
+    const existing = prev[key] || {}
+
+    // Null lat/lng ko ignore karo — purani valid position rakhho
+    const safeLatitude =
+      update.latitude != null ? update.latitude : existing.latitude
+    const safeLongitude =
+      update.longitude != null ? update.longitude : existing.longitude
+
     const nextValue = {
-      ...(prev[key] || {}),
+      ...existing,
       ...update,
+      latitude: safeLatitude,
+      longitude: safeLongitude,
     }
       const prevValue = prev[key]
       if (
@@ -294,9 +304,21 @@ const handleGpsUpdate = useCallback((update: LiveGpsItem) => {
       if (orgId) orgIds.add(orgId)
     })
 
-    orgIds.forEach((orgId) => socket.emit("join_organization", orgId))
+    const joinRooms = () => {
+      orgIds.forEach((orgId) => {
+        socket.emit("join_organization", orgId)
+      })
+    }
+
+    joinRooms()
+
+    // Reconnect pe dobara join karo
+    socket.on("connect", joinRooms)
+    socket.on("__reconnected__", joinRooms)
 
     return () => {
+      socket.off("connect", joinRooms)
+      socket.off("__reconnected__", joinRooms)
       orgIds.forEach((orgId) => socket.emit("leave_organization", orgId))
     }
   }, [liveVehicles, socket])

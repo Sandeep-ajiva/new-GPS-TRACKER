@@ -157,9 +157,9 @@ export function MapView({ selectedVehicleId, positions, vehicles }: MapViewProps
 
   const deviceId = selectedVehicle?.deviceId || selectedVehicle?.gpsDeviceId?._id || selectedVehicle?.gpsDeviceId;
 
-  const { data: liveDataRes } = useGetLiveVehicleByDeviceIdQuery(deviceId, {
+const { data: liveDataRes } = useGetLiveVehicleByDeviceIdQuery(deviceId, {
     skip: !deviceId,
-    pollingInterval: 5000,
+    pollingInterval: 2000,
   });
 
   const liveNode = liveDataRes?.data as LiveVehicleNode | undefined;
@@ -204,18 +204,13 @@ export function MapView({ selectedVehicleId, positions, vehicles }: MapViewProps
       animationCleanupRef.current = null;
     }
 
-    if (currentPos) {
+      if (currentPos) {
       const resetPos = { lat: currentPos.lat, lng: currentPos.lng };
       setAnimatedPos(resetPos);
       animatedPosRef.current = resetPos;
       prevPosRef.current = resetPos;
       lastTargetRef.current = resetPos;
       lastTimestampRef.current = currentPos.timestampMs;
-    } else {
-      setAnimatedPos(null);
-      animatedPosRef.current = null;
-      prevPosRef.current = null;
-      lastMovementVectorRef.current = null;
     }
   }, [selectedVehicle?.id, currentPos]);
 

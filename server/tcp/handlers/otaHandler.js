@@ -18,7 +18,8 @@ module.exports = async function otaHandler(socket, packet) {
     /* ------------------------------------------------------------ */
     /* 2️⃣ PARSE PACKET                                              */
     /* ------------------------------------------------------------ */
-    const clean = packet.replace("*", "").trim();
+    const starIdx = packet.lastIndexOf("*");
+    const clean = (starIdx !== -1 ? packet.slice(0, starIdx) : packet).trim();
     const parts = clean.split(",");
 
     /**
@@ -52,7 +53,7 @@ module.exports = async function otaHandler(socket, packet) {
     /* ------------------------------------------------------------ */
     /* 4️⃣ ACK                                                       */
     /* ------------------------------------------------------------ */
-    socket.write("OK\n");
+    socket.write("OK\r\n");
 
     console.log("📦 OTA UPDATE", {
       imei,

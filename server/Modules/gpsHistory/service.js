@@ -130,6 +130,15 @@ async function hydrateTripLocations(trips = []) {
   );
 }
 
+async function hydrateIgnitionEvent(event) {
+  if (!event) return event;
+
+  return {
+    ...event,
+    location: await hydrateLocation(event.location),
+  };
+}
+
 async function hydrateACEvents(events = []) {
   return Promise.all(
     events.map(async (event) => ({
@@ -324,6 +333,12 @@ async function getTravelSummary(vehicleId, orgScope, query = {}) {
     for (const dayEntry of dailySummaries) {
       const { trips, tripSummary } = buildTrips(dayEntry.points);
       const resolvedTrips = await hydrateTripLocations(trips);
+      const resolvedFirstIgnitionOn = await hydrateIgnitionEvent(
+        tripSummary.firstIgnitionOn,
+      );
+      const resolvedLastIgnitionOff = await hydrateIgnitionEvent(
+        tripSummary.lastIgnitionOff,
+      );
 
       const maxStop = Math.max(0, ...resolvedTrips.map(t => t.stopTime || 0), ...resolvedTrips.map(t => t.inactiveTime || 0));
       const idleCount = resolvedTrips.reduce((acc, t) => acc + (t.idleTime > 0 ? 1 : 0), 0);
@@ -343,8 +358,8 @@ async function getTravelSummary(vehicleId, orgScope, query = {}) {
         overSpeedCount: overSpeedCountDaily,
         avgSpeed: tripSummary.avgSpeed,
         maxSpeed: tripSummary.maxSpeed,
-        firstIgnitionOn: tripSummary.firstIgnitionOn,
-        lastIgnitionOff: tripSummary.lastIgnitionOff,
+        firstIgnitionOn: resolvedFirstIgnitionOn,
+        lastIgnitionOff: resolvedLastIgnitionOff,
         startLocation: resolvedTrips[0]?.startLocation,
         endLocation: resolvedTrips[resolvedTrips.length - 1]?.endLocation,
         startOdometer: resolvedTrips[0]?.startOdometer,
@@ -444,6 +459,12 @@ async function getTripSummary(vehicleId, orgScope, query = {}) {
 
     const { trips, tripSummary } = buildTrips(vPoints);
     const resolvedTrips = await hydrateTripLocations(trips);
+    const resolvedFirstIgnitionOn = await hydrateIgnitionEvent(
+      tripSummary.firstIgnitionOn,
+    );
+    const resolvedLastIgnitionOff = await hydrateIgnitionEvent(
+      tripSummary.lastIgnitionOff,
+    );
     const vehicle = vehiclesList.find(v => v._id.toString() === vId);
     const branchName = vehicle?.organizationId?.name || "Unknown Branch";
     const driver = driversList.find(d => d._id?.toString() === vehicle?.driverId?.toString());
@@ -467,8 +488,8 @@ async function getTripSummary(vehicleId, orgScope, query = {}) {
       stopTime: tripSummary.totalStop,
       inactiveTime: tripSummary.totalInactive,
       duration: tripSummary.totalDuration,
-      firstIgnitionOn: tripSummary.firstIgnitionOn,
-      lastIgnitionOff: tripSummary.lastIgnitionOff,
+      firstIgnitionOn: resolvedFirstIgnitionOn,
+      lastIgnitionOff: resolvedLastIgnitionOff,
       avgSpeed: tripSummary.avgSpeed,
       maxSpeed: tripSummary.maxSpeed,
       immobilize: vehicle?.isImmobilized ? "Y" : "N",

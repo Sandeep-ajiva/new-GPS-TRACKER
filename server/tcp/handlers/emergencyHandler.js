@@ -6,11 +6,14 @@
 const EmergencyEvent = require("../../Modules/emergencyEvents/model");
 const GpsDevice = require("../../Modules/gpsDevice/model");
 
-function parseNmeaCoordinate(value) {
+function parseNmeaCoordinate(value, direction) {
   const num = Number(value);
+  if (!Number.isFinite(num) || num === 0) return null;
   const degrees = Math.floor(num / 100);
   const minutes = num - degrees * 100;
-  return degrees + minutes / 60;
+  const decimal = degrees + minutes / 60;
+  const dir = String(direction || "").toUpperCase();
+  return (dir === "S" || dir === "W") ? -Math.abs(decimal) : Math.abs(decimal);
 }
 
 module.exports = async function emergencyHandler(socket, packet) {
@@ -26,7 +29,8 @@ module.exports = async function emergencyHandler(socket, packet) {
     /* ------------------------------------------------------------ */
     /* 2️⃣ PARSE PACKET                                              */
     /* ------------------------------------------------------------ */
-    const clean = packet.replace("*", "").trim();
+    const starIdx = packet.lastIndexOf("*");
+    const clean = (starIdx !== -1 ? packet.slice(0, starIdx) : packet).trim();
     const parts = clean.split(",");
 
     /**
@@ -39,11 +43,12 @@ module.exports = async function emergencyHandler(socket, packet) {
     const latDir = parts[4];
     const lngValue = parts[5];
     const lngDir = parts[6];
-    const speed = Number(parts[7]) || 0;
-    const heading = Number(parts[8]) || 0;
+    const safeNum = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
+    const speed = safeNum(parts[7]);
+    const heading = safeNum(parts[8]);
 
-    const latitude = parseNmeaCoordinate(latValue);
-    const longitude = parseNmeaCoordinate(lngValue);
+    const latitude = parseNmeaCoordinate(latValue, latDir);
+    const longitude = parseNmeaCoordinate(lngValue, lngDir);
     const eventType = state === "OFF" ? "emergency_off" : "emergency_on";
 
     /* ------------------------------------------------------------ */
@@ -112,7 +117,7 @@ module.exports = async function emergencyHandler(socket, packet) {
     /* ------------------------------------------------------------ */
     /* 6️⃣ ACK                                                       */
     /* ------------------------------------------------------------ */
-    socket.write("ACK\n");
+    socket.write("ACK\r\n");
 
     console.log("🆘 EMERGENCY EVENT", {
       imei,

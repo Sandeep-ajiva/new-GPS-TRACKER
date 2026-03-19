@@ -27,11 +27,14 @@ const ALERT_MAP = {
   tilt: { alertId: 22, alertName: "Tilt Alert", packetType: "TI" },
 };
 
-function parseNmeaCoordinate(value) {
+function parseNmeaCoordinate(value, direction) {
   const num = Number(value);
+  if (!Number.isFinite(num) || num === 0) return null;
   const degrees = Math.floor(num / 100);
   const minutes = num - degrees * 100;
-  return degrees + minutes / 60;
+  const decimal = degrees + minutes / 60;
+  const dir = String(direction || "").toUpperCase();
+  return (dir === "S" || dir === "W") ? -Math.abs(decimal) : Math.abs(decimal);
 }
 
 module.exports = async function alertHandler(socket, packet) {
@@ -47,7 +50,8 @@ module.exports = async function alertHandler(socket, packet) {
     /* ------------------------------------------------------------ */
     /* 2️⃣ PARSE PACKET                                              */
     /* ------------------------------------------------------------ */
-    const clean = packet.replace("*", "").trim();
+    const starIdx = packet.lastIndexOf("*");
+    const clean = (starIdx !== -1 ? packet.slice(0, starIdx) : packet).trim();
     const parts = clean.split(",");
 
     /**
@@ -60,8 +64,9 @@ module.exports = async function alertHandler(socket, packet) {
     const latDir = parts[4];
     const lngValue = parts[5];
     const lngDir = parts[6];
-    const speed = Number(parts[7]) || 0;
-    const heading = Number(parts[8]) || 0;
+    const safeNum = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
+    const speed = safeNum(parts[7]);
+    const heading = safeNum(parts[8]);
     const severity = parts[9] || "info";
     const message = parts[10] || "";
 
@@ -71,8 +76,8 @@ module.exports = async function alertHandler(socket, packet) {
       packetType: "NR",
     };
 
-    const latitude = parseNmeaCoordinate(latValue);
-    const longitude = parseNmeaCoordinate(lngValue);
+    const latitude = parseNmeaCoordinate(latValue, latDir);
+    const longitude = parseNmeaCoordinate(lngValue, lngDir);
 
     /* ------------------------------------------------------------ */
     /* 3️⃣ STORE ALERT                                               */
@@ -111,7 +116,7 @@ module.exports = async function alertHandler(socket, packet) {
     /* ------------------------------------------------------------ */
     if (alertIdentifier === "overspeed" && socket.vehicleId) {
       const today = new Date();
-      today.setHours(0, 0, 0, 0);
+      today.setUTCHours(0, 0, 0, 0);
 
       await VehicleDailyStats.updateOne(
         { vehicleId: socket.vehicleId, date: today },
@@ -144,7 +149,7 @@ module.exports = async function alertHandler(socket, packet) {
     /* ------------------------------------------------------------ */
     /* 6️⃣ ACK                                                       */
     /* ------------------------------------------------------------ */
-    socket.write("ACK\n");
+    socket.write("ACK\r\n");
 
     console.log("🚨 ALERT STORED", {
       imei,

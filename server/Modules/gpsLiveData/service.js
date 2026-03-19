@@ -45,18 +45,25 @@ const Service = {
       /* ------------------------------------------------------------------ */
       /* 2️⃣ DEVICE + MAPPING RESOLUTION (REDIS FIRST)                        */
       /* ------------------------------------------------------------------ */
-
       let gpsDeviceId;
 
       const cacheKey = `device_meta:${imei}`;
-      const cached = await redisClient.get(cacheKey);
+      let cacheHit = false;
 
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        gpsDeviceId = parsed._id;
-        organizationId = parsed.organizationId;
-        vehicleId = parsed.vehicleId;
-      } else {
+      try {
+        const cached = await redisClient.get(cacheKey);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          gpsDeviceId = parsed._id;
+          organizationId = parsed.organizationId;
+          vehicleId = parsed.vehicleId;
+          cacheHit = true;
+        }
+      } catch (redisErr) {
+        console.warn("Redis read failed, falling back to DB:", redisErr.message);
+      }
+
+      if (!cacheHit) {
         const device = await GpsDevice.findOne({ imei });
         if (!device) {
           return { success: false, message: "Device not found", status: 404 };
@@ -70,25 +77,21 @@ const Service = {
           unassignedAt: null,
         });
 
-        vehicleId = mapping ? mapping.vehicleId : null;
+        vehicleId = mapping?.vehicleId || null;
 
-        await redisClient.setex(
-          cacheKey,
-          3600,
-          JSON.stringify({
+        try {
+          await redisClient.setex(cacheKey, 60, JSON.stringify({
             _id: gpsDeviceId,
             organizationId,
             vehicleId,
-          }),
-        );
+          }));
+        } catch (redisErr) {
+          console.warn("Redis write failed:", redisErr.message);
+        }
       }
 
-      if (!organizationId || !vehicleId) {
-        return {
-          success: false,
-          message: "Device not assigned to any vehicle",
-          status: 400,
-        };
+      if (!organizationId) {
+        return { success: false, message: "No organizationId for device", status: 400 };
       }
 
       const timestamp = new Date();
@@ -219,8 +222,13 @@ const Service = {
       /* 6️⃣ GPS HISTORY (THROTTLED)                                           */
       /* ------------------------------------------------------------------ */
 
-      const historyKey = `gps_history:${imei}`;
-      const lastSavedRaw = await redisClient.get(historyKey);
+       const historyKey = `gps_history:${imei}`;
+      let lastSavedRaw = null;
+      try {
+        lastSavedRaw = await redisClient.get(historyKey);
+      } catch (redisErr) {
+        console.warn("Redis read (history) failed:", redisErr.message);
+      }
       const packetMs = packetTimestamp.getTime();
       const heading = data.heading ?? null;
 
@@ -342,239 +350,153 @@ const Service = {
       /* ------------------------------------------------------------------ */
 
       // 7a — Normalize date to UTC midnight
-      const statsDate = new Date(packetTimestamp);
-      statsDate.setUTCHours(0, 0, 0, 0);
+      if (vehicleId) {
+        // 7a — Normalize date to UTC midnight
+        const statsDate = new Date(packetTimestamp);
+        statsDate.setUTCHours(0, 0, 0, 0);
 
-      // 7b — Calculate distance from previous live position (haversine)
-      let distanceIncrement = 0;
-      if (prev && prev.latitude && prev.longitude) {
-        distanceIncrement = calculateDistance(
-          prev.latitude,
-          prev.longitude,
-          latitude,
-          longitude,
-        );
-        // Ignore unrealistic jumps (>5 km between two successive packets)
-        if (distanceIncrement > 5) {
-          distanceIncrement = 0;
-        }
-      }
-
-      // 7c — Elapsed seconds between GPS timestamps (NOT wall clock time).
-      // WHY: Simulator sends packets 200ms apart in real time but GPS timestamps
-      // are 5–30s apart. Using wall clock = 0.2s elapsed = wrong times.
-      // Using GPS timestamp delta = correct simulated elapsed time.
-      let elapsedSeconds = 0;
-      if (prev && prev.gpsTimestamp) {
-        const prevGpsMs = new Date(prev.gpsTimestamp).getTime();
-        const thisGpsMs = packetTimestamp.getTime();
-        const deltaMs   = thisGpsMs - prevGpsMs;
-        if (deltaMs > 0) {
-          elapsedSeconds = Math.min(300, Math.round(deltaMs / 1000));
-        }
-      }
-
-      // 7d — Build atomic update operators
-      const statsInc = {
-        totalDistance: distanceIncrement,
-        speedSampleCount: 1,
-      };
-
-      // Time increments (real elapsed seconds based on ignition + speed)
-      if (ignition && speed > 0) {
-        statsInc.runningTime = elapsedSeconds;
-      } else if (ignition && speed === 0) {
-        statsInc.idleTime = elapsedSeconds;
-      }
-
-      // Ignition transition: false → true  →  increment ignitionOnCount
-      const prevIgnition = prev ? !!prev.ignitionStatus : false;
-      if (!prevIgnition && ignition) {
-        statsInc.ignitionOnCount = 1;
-      }
-
-      const odometer = data.currentMileage ?? null;
-
-      const statsUpdate = {
-        $inc: statsInc,
-        $max: { maxSpeed: speed },
-        $setOnInsert: {
-          organizationId,
-          gpsDeviceId,
-          imei,
-          startOdometer: odometer,
-        },
-        $set: {
-          endOdometer: odometer,
-          lastCalculatedAt: timestamp,
-        },
-      };
-
-      // Ignition transition: true → false  →  set lastIgnitionOff
-      if (prevIgnition && !ignition) {
-        statsUpdate.$set.lastIgnitionOff = timestamp;
-      }
-
-      // 7e — Atomic findOneAndUpdate with upsert (respects compound unique index)
-      const updatedStats = await VehicleDailyStats.findOneAndUpdate(
-        { vehicleId, date: statsDate },
-        statsUpdate,
-        { upsert: true, new: true },
-      );
-
-      // 7f — Guard firstIgnitionOn: only set once (when still null), never overwrite
-      if (!prevIgnition && ignition && !updatedStats.firstIgnitionOn) {
-        await VehicleDailyStats.updateOne(
-          { _id: updatedStats._id, firstIgnitionOn: null },
-          { $set: { firstIgnitionOn: timestamp } },
-        );
-      }
-
-      // 7g — Compute avgSpeed from accumulated totals (distance-based, km/h)
-      if (updatedStats.runningTime > 60 && updatedStats.totalDistance > 0) {
-        // runningTime must be > 60 seconds to avoid division artifacts
-        const calculatedAvg = Number(
-          (
-            updatedStats.totalDistance /
-            (updatedStats.runningTime / 3600)
-          ).toFixed(2),
-        );
-        // Hard cap at 250 km/h — any value above is a calculation artifact
-        const avgSpeed = calculatedAvg > 250 ? 0 : calculatedAvg;
-        await VehicleDailyStats.updateOne(
-          { _id: updatedStats._id },
-          { $set: { avgSpeed } },
-        );
-      }
-
-      /* ------------------------------------------------------------------ */
-      /* 8️⃣ ALERTS (OVERSPEED / BATTERY / IGNITION) + ALERT COUNTS            */
-      /* ------------------------------------------------------------------ */
-
-      try {
-        const orgCacheKey = `org_settings:${organizationId}`;
-        let orgSettings = await redisClient.get(orgCacheKey);
-
-        if (!orgSettings) {
-          const org = await Organization.findById(organizationId)
-            .select("settings")
-            .lean();
-          orgSettings = org?.settings || {};
-          await redisClient.setex(orgCacheKey, 60, JSON.stringify(orgSettings));
-        } else {
-          orgSettings = JSON.parse(orgSettings);
-        }
-
-        const SPEED_LIMIT = orgSettings.speedLimit ?? 80;
-        const LOW_BATTERY = orgSettings.lowBatteryThreshold ?? 20;
-
-        // Helper function to create alert and increment count
-        const createAlertAndCount = async (
-          alertType,
-          message,
-          severity = "warning",
-        ) => {
-          const alertMapping = mapAlertType(alertType);
-
-          const alert = await Alert.create({
-            organizationId,
-            gpsDeviceId,
-            vehicleId,
-            imei,
-            alertId: alertMapping.alertId,
-            alertName: alertMapping.alertName,
-            packetType: alertMapping.packetType,
-            severity,
+        // 7b — Calculate distance from previous live position (haversine)
+        let distanceIncrement = 0;
+        if (prev && prev.latitude != null && prev.longitude != null) {
+          distanceIncrement = calculateDistance(
+            prev.latitude,
+            prev.longitude,
             latitude,
             longitude,
-            locationCoordinates: [longitude, latitude],
-            gpsTimestamp: packetTimestamp,
-            speed,
-            heading: data.heading ?? null,
-            ignitionStatus: ignition,
-            mainPowerStatus: data.mainPowerStatus ?? null,
-            mainInputVoltage: data.mainInputVoltage ?? null,
-            internalBatteryVoltage: data.internalBatteryVoltage ?? null,
-            gsmSignalStrength: data.gsmSignalStrength ?? null,
-            operatorName: data.operatorName ?? null,
-            odometer: data.currentMileage ?? null,
-          });
-          void createNotificationFromAlert(alert, { orgScope: "ALL" });
-
-          // Increment alert count in VehicleDailyStats
-          const countField = `alertCounts.${alertType}Count`;
-          await VehicleDailyStats.updateOne(
-            { vehicleId, date: statsDate },
-            { $inc: { [countField]: 1 } },
           );
+          // Ignore unrealistic jumps (>5 km between two successive packets)
+          if (distanceIncrement > 5) {
+            distanceIncrement = 0;
+          }
+        }
+
+        // 7c — Elapsed seconds between GPS timestamps (NOT wall clock time).
+        // WHY: Simulator sends packets 200ms apart in real time but GPS timestamps
+        // are 5–30s apart. Using wall clock = 0.2s elapsed = wrong times.
+        // Using GPS timestamp delta = correct simulated elapsed time.
+        let elapsedSeconds = 0;
+        if (prev && prev.gpsTimestamp) {
+          const prevGpsMs = new Date(prev.gpsTimestamp).getTime();
+          const thisGpsMs = packetTimestamp.getTime();
+          const deltaMs = thisGpsMs - prevGpsMs;
+          if (deltaMs > 0) {
+            elapsedSeconds = Math.min(300, Math.round(deltaMs / 1000));
+          }
+        }
+
+        // 7d — Build atomic update operators
+        const statsInc = {
+          totalDistance: distanceIncrement,
+          speedSampleCount: 1,
         };
 
-        // Overspeed Alert
-        if (speed > SPEED_LIMIT) {
-          await createAlertAndCount(
-            "overspeed",
-            `Speed ${speed} km/h exceeded ${SPEED_LIMIT}`,
-            "warning",
+        // Time increments (real elapsed seconds based on ignition + speed)
+        if (ignition && speed > 0) {
+          statsInc.runningTime = elapsedSeconds;
+        } else if (ignition && speed === 0) {
+          statsInc.idleTime = elapsedSeconds;
+        }
+
+        // Ignition transition: false → true  →  increment ignitionOnCount
+        const prevIgnition = prev ? !!prev.ignitionStatus : false;
+        if (!prevIgnition && ignition) {
+          statsInc.ignitionOnCount = 1;
+        }
+
+        const odometer = data.currentMileage ?? null;
+
+        const statsUpdate = {
+          $inc: statsInc,
+          $max: { maxSpeed: speed },
+          $setOnInsert: {
+            organizationId,
+            gpsDeviceId,
+            imei,
+            startOdometer: odometer,
+          },
+          $set: {
+            endOdometer: odometer,
+            lastCalculatedAt: timestamp,
+          },
+        };
+
+        // Ignition transition: true → false  →  set lastIgnitionOff
+        if (prevIgnition && !ignition) {
+          statsUpdate.$set.lastIgnitionOff = timestamp;
+        }
+
+        // 7e — Atomic findOneAndUpdate with upsert (respects compound unique index)
+        const updatedStats = await VehicleDailyStats.findOneAndUpdate(
+          { vehicleId, date: statsDate },
+          statsUpdate,
+          { upsert: true, new: true },
+        );
+
+        // 7f — Guard firstIgnitionOn: only set once (when still null), never overwrite
+        if (!prevIgnition && ignition && !updatedStats.firstIgnitionOn) {
+          await VehicleDailyStats.updateOne(
+            { _id: updatedStats._id, firstIgnitionOn: null },
+            { $set: { firstIgnitionOn: timestamp } },
           );
         }
 
-        // Low Battery Alert
-        if (
-          typeof data.batteryLevel === "number" &&
-          data.batteryLevel <= LOW_BATTERY
-        ) {
-          await createAlertAndCount(
-            "low_battery",
-            `Battery low: ${data.batteryLevel}%`,
-            "warning",
+        // 7g — Compute avgSpeed from accumulated totals (distance-based, km/h)
+        if (updatedStats.runningTime > 60 && updatedStats.totalDistance > 0) {
+          // runningTime must be > 60 seconds to avoid division artifacts
+          const calculatedAvg = Number(
+            (
+              updatedStats.totalDistance /
+              (updatedStats.runningTime / 3600)
+            ).toFixed(2),
+          );
+          // Hard cap at 250 km/h — any value above is a calculation artifact
+          const avgSpeed = calculatedAvg > 250 ? 0 : calculatedAvg;
+          await VehicleDailyStats.updateOne(
+            { _id: updatedStats._id },
+            { $set: { avgSpeed } },
           );
         }
 
-        // Ignition Alerts (based on transition)
-        if (ignition && !(prev && prev.ignitionStatus)) {
-          await createAlertAndCount(
-            "ignition_on",
-            "Vehicle Ignition Turned ON",
-            "info",
-          );
-        } else if (!ignition && prev && prev.ignitionStatus) {
-          await createAlertAndCount(
-            "ignition_off",
-            "Vehicle Ignition Turned OFF",
-            "info",
-          );
-        }
-      } catch (e) {
-        console.error("Alert error:", e);
-      }
+        /* ------------------------------------------------------------------ */
+        /* 8️⃣ ALERTS (OVERSPEED / BATTERY / IGNITION) + ALERT COUNTS            */
+        /* ------------------------------------------------------------------ */
 
-      /* ------------------------------------------------------------------ */
-      /* 9️⃣ EMERGENCY EVENTS (EA PACKETS)                                     */
-      /* ------------------------------------------------------------------ */
+        try {
+          const orgCacheKey = `org_settings:${organizationId}`;
+          let orgSettings = await redisClient.get(orgCacheKey);
 
-      try {
-        if (data.emergencyStatus === true || data.packetType === "EA") {
-          // Check if there's already an active emergency for this vehicle
-          const existingEmergency = await EmergencyEvent.findOne({
-            vehicleId,
-            status: "active",
-          }).sort({ gpsTimestamp: -1 });
+          if (!orgSettings) {
+            const org = await Organization.findById(organizationId)
+              .select("settings")
+              .lean();
+            orgSettings = org?.settings || {};
+            await redisClient.setex(orgCacheKey, 60, JSON.stringify(orgSettings));
+          } else {
+            orgSettings = JSON.parse(orgSettings);
+          }
 
-          if (!existingEmergency) {
-            // Create new emergency event
-            await EmergencyEvent.create({
+          const SPEED_LIMIT = orgSettings.speedLimit ?? 80;
+          const LOW_BATTERY = orgSettings.lowBatteryThreshold ?? 20;
+
+          // Helper function to create alert and increment count
+
+          const createAlertAndCount = async (alertType, message, severity = "warning") => {
+            const alertMapping = mapAlertType(alertType);
+            const alert = await Alert.create({
               organizationId,
-              vehicleId,
               gpsDeviceId,
+              vehicleId,
               imei,
-              eventType: "emergency_on",
+              alertId: alertMapping.alertId,
+              alertName: alertMapping.alertName,
+              packetType: alertMapping.packetType,
+              severity,
               latitude,
               longitude,
               locationCoordinates: [longitude, latitude],
               gpsTimestamp: packetTimestamp,
               speed,
               heading: data.heading ?? null,
-              altitude: data.altitude ?? null,
               ignitionStatus: ignition,
               mainPowerStatus: data.mainPowerStatus ?? null,
               mainInputVoltage: data.mainInputVoltage ?? null,
@@ -582,33 +504,112 @@ const Service = {
               gsmSignalStrength: data.gsmSignalStrength ?? null,
               operatorName: data.operatorName ?? null,
               odometer: data.currentMileage ?? null,
-              status: "active",
             });
+            void createNotificationFromAlert(alert, { orgScope: "ALL" });
 
-            // Increment emergency count in daily stats
+            const countField = `alertCounts.${alertType}Count`;
             await VehicleDailyStats.updateOne(
               { vehicleId, date: statsDate },
-              { $inc: { "alertCounts.emergencyCount": 1 } },
+              { $inc: { [countField]: 1 } },
             );
+          };
 
-            console.log(`🚨 Emergency event created for vehicle ${vehicleId}`);
+          // STEP 2: Overspeed — check speed FIRST, then cooldown
+          if (speed > SPEED_LIMIT) {
+            const overspeedKey = `alert_cooldown:overspeed:${vehicleId}`;
+            let alreadyAlerting = false;
+            try { alreadyAlerting = !!(await redisClient.get(overspeedKey)); } catch { }
+            if (!alreadyAlerting) {
+              try { await redisClient.setex(overspeedKey, 300, "1"); } catch { }
+              await createAlertAndCount("overspeed", `Speed ${speed} km/h exceeded ${SPEED_LIMIT}`, "warning");
+            }
           }
+
+          // STEP 3: Low battery — check level FIRST, then cooldown
+          if (typeof data.batteryLevel === "number" && data.batteryLevel <= LOW_BATTERY) {
+            const batteryKey = `alert_cooldown:battery:${vehicleId}`;
+            let batteryAlerted = false;
+            try { batteryAlerted = !!(await redisClient.get(batteryKey)); } catch { }
+            if (!batteryAlerted) {
+              try { await redisClient.setex(batteryKey, 600, "1"); } catch { }
+              await createAlertAndCount("low_battery", `Battery low: ${data.batteryLevel}%`, "warning");
+            }
+          }
+
+          // STEP 4: Ignition transitions — no cooldown needed, these are one-time events
+          if (ignition && !(prev && prev.ignitionStatus)) {
+            await createAlertAndCount("ignition_on", "Vehicle ignition turned ON", "info");
+          } else if (!ignition && prev && prev.ignitionStatus) {
+            await createAlertAndCount("ignition_off", "Vehicle ignition turned OFF", "info");
+          }
+        } catch (e) {
+          console.error("Alert error:", e);
         }
-      } catch (e) {
-        console.error("Emergency event error:", e);
+
+        /* ------------------------------------------------------------------ */
+        /* 9️⃣ EMERGENCY EVENTS (EA PACKETS)                                     */
+        /* ------------------------------------------------------------------ */
+
+        try {
+          if (data.emergencyStatus === true || data.packetType === "EA") {
+            // Check if there's already an active emergency for this vehicle
+            const existingEmergency = await EmergencyEvent.findOne({
+              vehicleId,
+              status: "active",
+            }).sort({ gpsTimestamp: -1 });
+
+            if (!existingEmergency) {
+              // Create new emergency event
+              await EmergencyEvent.create({
+                organizationId,
+                vehicleId,
+                gpsDeviceId,
+                imei,
+                eventType: "emergency_on",
+                latitude,
+                longitude,
+                locationCoordinates: [longitude, latitude],
+                gpsTimestamp: packetTimestamp,
+                speed,
+                heading: data.heading ?? null,
+                altitude: data.altitude ?? null,
+                ignitionStatus: ignition,
+                mainPowerStatus: data.mainPowerStatus ?? null,
+                mainInputVoltage: data.mainInputVoltage ?? null,
+                internalBatteryVoltage: data.internalBatteryVoltage ?? null,
+                gsmSignalStrength: data.gsmSignalStrength ?? null,
+                operatorName: data.operatorName ?? null,
+                odometer: data.currentMileage ?? null,
+                status: "active",
+              });
+
+              // Increment emergency count in daily stats
+              await VehicleDailyStats.updateOne(
+                { vehicleId, date: statsDate },
+                { $inc: { "alertCounts.emergencyCount": 1 } },
+              );
+
+              console.log(`🚨 Emergency event created for vehicle ${vehicleId}`);
+            }
+          }
+        } catch (e) {
+          console.error("Emergency event error:", e);
+        }
+        if (historyDoc?._id) {
+          console.log(`[ENRICH] vehicle=${vehicleId} lat=${latitude} lng=${longitude}`);
+          scheduleLocationEnrichment({
+            organizationId,
+            vehicleId,
+            gpsDeviceId,
+            imei,
+            latitude,
+            longitude,
+            packetTimestamp,
+            historyId: historyDoc._id,
+            syncVehicleLocation: true,
+          })
+        }
       }
-      console.log(`[ENRICH] Scheduling enrichment for vehicle=${vehicleId} lat=${latitude} lng=${longitude}`);
-      scheduleLocationEnrichment({
-        organizationId,
-        vehicleId,
-        gpsDeviceId,
-        imei,
-        latitude,
-        longitude,
-        packetTimestamp,
-        historyId: historyDoc?._id || null,
-        syncVehicleLocation: Boolean(historyDoc?._id),
-      });
 
       return { success: true, message: "GPS data processed", status: 200 };
     } catch (error) {

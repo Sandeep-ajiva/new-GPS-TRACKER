@@ -9,6 +9,8 @@ export const useSocket = <T>(event: string, callback: (data: T) => void) => {
   useEffect(() => {
     function onConnect() {
       setIsConnected(true);
+      // Reconnect pe event fire karo — dashboard rooms rejoin kar sake
+      socket.emit("__reconnected__");
     }
 
     function onDisconnect() {

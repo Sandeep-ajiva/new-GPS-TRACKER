@@ -19,6 +19,9 @@ const { initializeSocket } = require("./socket");
 const app = express();
 const server = http.createServer(app);
 const io = initializeSocket(server);
+const DEFAULT_HTTP_PORT = Number(process.env.PORT) || 5000;
+const MAX_PORT_FALLBACK_ATTEMPTS = Number(process.env.PORT_FALLBACK_ATTEMPTS) || 10;
+let tcpServerStarted = false;
 
 const modulesPath = path.join(__dirname, "Modules");
 
@@ -76,11 +79,48 @@ fs.readdirSync(modulesPath).forEach((folder) => {
   }
 });
 
-const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+function startTcpServerOnce() {
+  if (tcpServerStarted) return;
+  tcpServerStarted = true;
+  require("./tcp/server");
+}
 
-// Start TCP Server
-require("./tcp/server");
+function startHttpServer(port, attemptsRemaining = MAX_PORT_FALLBACK_ATTEMPTS) {
+  const handleListening = () => {
+    server.off("error", handleError);
+    console.log(`Server running on port ${port}`);
+    startTcpServerOnce();
+  };
+
+  const handleError = (err) => {
+    server.off("listening", handleListening);
+
+    if (err.code === "EADDRINUSE" && attemptsRemaining > 0) {
+      const nextPort = Number(port) + 1;
+      console.warn(
+        `⚠️ HTTP port ${port} is already in use. Retrying on ${nextPort}...`,
+      );
+      setTimeout(() => startHttpServer(nextPort, attemptsRemaining - 1), 250);
+      return;
+    }
+
+    if (err.code === "EADDRINUSE") {
+      console.error(
+        `❌ Unable to start HTTP server. Tried ports ${DEFAULT_HTTP_PORT}-${Number(port)}.`,
+      );
+    } else {
+      console.error("❌ HTTP Server startup error:", err);
+    }
+
+    process.exit(1);
+  };
+
+  server.once("listening", handleListening);
+  server.once("error", handleError);
+  server.listen(port);
+}
+
+startHttpServer(DEFAULT_HTTP_PORT);
 
 // 💀 GLOBAL ERROR HANDLERS (DEBUGGING)
 process.on("uncaughtException", (err) => {

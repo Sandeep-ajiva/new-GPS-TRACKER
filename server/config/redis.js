@@ -2,7 +2,7 @@ const redis = require("redis");
 require("dotenv").config({ quiet: true });
 
 const REDIS_URL =
-  process.env.REDIS_URL || process.env.REDIS_URI || "redis://127.0.0.1:6379";
+  (process.env.REDIS_URL || process.env.REDIS_URI || "redis://127.0.0.1:6379").trim();
 
 const client = redis.createClient({ url: REDIS_URL });
 

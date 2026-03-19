@@ -39,8 +39,7 @@ async function packetRouter(socket, packet) {
     const handler = PACKET_HANDLER_MAP[packetType];
 
     if (!handler) {
-      console.warn("⚠️ Unknown packet type:", JSON.stringify(packetType));
-      socket.write("DENY\n");
+      console.warn("⚠️ Unknown packet type:", JSON.stringify(packetType), "— ignored");
       return;
     }
 

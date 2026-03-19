@@ -123,16 +123,14 @@ class AIS140PacketParser {
   }
 
   static parseCoordinate(value, direction) {
-    if (!value) return 0;
+    if (!value || value === "0" || value === "") return null;
     const v = this.parseNumber(value, NaN);
-    if (!Number.isFinite(v)) return 0;
+    if (!Number.isFinite(v) || v === 0) return null;
     const deg = Math.floor(v / 100);
     const min = v - deg * 100;
     const signed = deg + min / 60;
-    if (direction === "S" || direction === "W") {
-      return -signed;
-    }
-    return signed;
+    if (!Number.isFinite(signed)) return null;
+    return (direction === "S" || direction === "W") ? -Math.abs(signed) : Math.abs(signed);
   }
 
   static parseNumber(value, fallback = 0) {
@@ -146,14 +144,20 @@ class AIS140PacketParser {
   }
 
   static parseGpsTimestamp(date, time) {
-    if (!date || !time) return new Date();
-    const d = parseInt(date.slice(0, 2));
-    const m = parseInt(date.slice(2, 4)) - 1;
-    const y = 2000 + parseInt(date.slice(4, 6));
-    const h = parseInt(time.slice(0, 2));
-    const mi = parseInt(time.slice(2, 4));
-    const s = parseInt(time.slice(4, 6));
-    return new Date(y, m, d, h, mi, s);
+    try {
+      if (!date || !time || date.length < 6 || time.length < 6) return new Date();
+      const d = parseInt(date.slice(0, 2), 10);
+      const mo = parseInt(date.slice(2, 4), 10) - 1;
+      const y = 2000 + parseInt(date.slice(4, 6), 10);
+      const h = parseInt(time.slice(0, 2), 10);
+      const mi = parseInt(time.slice(2, 4), 10);
+      const s = parseInt(time.slice(4, 6), 10);
+      if ([d, mo, y, h, mi, s].some(n => !Number.isFinite(n))) return new Date();
+      const ts = new Date(Date.UTC(y, mo, d, h, mi, s));
+      // Reject future timestamps (GPS clock drift / wrong format)
+      if (ts > Date.now() + 60_000) return new Date();
+      return ts;
+    } catch { return new Date(); }
   }
 
   static getMovement(speed, ignition) {
@@ -282,12 +286,18 @@ const GpsLiveDataController = {
     if (role && role !== "superadmin" && scope && scope !== "ALL") {
       filter.organizationId = { $in: scope };
     }
-    const data = await GpsLiveData.find(filter)
-      .populate("vehicleId")
-      .populate("gpsDeviceId");
-    res.json({ status: true, data });
+    try {
+      const data = await GpsLiveData.find(filter)
+        .populate("vehicleId", "registrationNumber vehicleType")
+        .populate("gpsDeviceId", "imei status")
+        .limit(500)
+        .lean();
+      res.json({ status: true, data });
+    } catch (e) {
+      console.error("getLiveData error:", e);
+      res.status(500).json({ status: false, message: e.message });
+    }
   },
-
   getByVehicle: async (req, res) => {
     const filter = { vehicleId: req.params.vehicleId };
     // 🔐 ORG SCOPE FIX
@@ -296,9 +306,13 @@ const GpsLiveDataController = {
     if (role && role !== "superadmin" && scope && scope !== "ALL") {
       filter.organizationId = { $in: scope };
     }
-    const data = await GpsLiveData.findOne(filter);
-    if (!data) return res.status(404).json({ status: false, message: "Details not found.." });
-    res.json({ status: true, data });
+    try {
+      const data = await GpsLiveData.findOne(filter);
+      if (!data) return res.status(404).json({ status: false, message: "Details not found." });
+      res.json({ status: true, data });
+    } catch (e) {
+      res.status(500).json({ status: false, message: e.message });
+    }
   },
 
   getByDevice: async (req, res) => {
@@ -309,9 +323,13 @@ const GpsLiveDataController = {
     if (role && role !== "superadmin" && scope && scope !== "ALL") {
       filter.organizationId = { $in: scope };
     }
-    const data = await GpsLiveData.findOne(filter);
-    if (!data) return res.status(404).json({ status: false });
-    res.json({ status: true, data });
+       try {
+      const data = await GpsLiveData.findOne(filter);
+      if (!data) return res.status(404).json({ status: false });
+      res.json({ status: true, data });
+    } catch (e) {
+      res.status(500).json({ status: false, message: e.message });
+    }
   },
 
   getByImei: async (req, res) => {
@@ -322,9 +340,13 @@ const GpsLiveDataController = {
     if (role && role !== "superadmin" && scope && scope !== "ALL") {
       filter.organizationId = { $in: scope };
     }
-    const data = await GpsLiveData.findOne(filter);
-    if (!data) return res.status(404).json({ status: false });
-    res.json({ status: true, data });
+    try {
+      const data = await GpsLiveData.findOne(filter);
+      if (!data) return res.status(404).json({ status: false });
+      res.json({ status: true, data });
+    } catch (e) {
+      res.status(500).json({ status: false, message: e.message });
+    }
   },
 };
 

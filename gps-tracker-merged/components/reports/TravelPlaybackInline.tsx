@@ -111,45 +111,92 @@ const snapHistoryPointsToRoads = async (rawPoints: HistoryPoint[]): Promise<Snap
 
     const allSnapped: HistoryPoint[] = [];
     const fullRoadPath: [number, number][] = [];
+    const appendChunkFallback = (chunkPoints: HistoryPoint[]) => {
+        allSnapped.push(...chunkPoints);
+        chunkPoints.forEach((point) => fullRoadPath.push([point.lat, point.lng]));
+    };
+    const appendChunkGeometryFallback = (chunkPoints: HistoryPoint[]) => {
+        chunkPoints.forEach((point) => fullRoadPath.push([point.lat, point.lng]));
+    };
 
     for (const chunk of chunks) {
         const coords = chunk.map((p) => `${p.lng},${p.lat}`).join(";");
         const url = `https://router.project-osrm.org/match/v1/driving/${coords}?overview=full&geometries=geojson&annotations=true`;
+        let data: any = null;
 
-        const response = await fetch(url);
-        if (!response.ok) {
-            allSnapped.push(...chunk);
-            chunk.forEach((p) => fullRoadPath.push([p.lat, p.lng]));
+        try {
+            const response = await fetch(url);
+            if (!response.ok) {
+                appendChunkFallback(chunk);
+                continue;
+            }
+
+            data = await response.json();
+        } catch {
+            appendChunkFallback(chunk);
             continue;
         }
 
-        const data = await response.json();
-
         if (data.code === "Ok") {
-            if (data.tracepoints) {
+            const chunkGeometryStart = fullRoadPath.length;
+            const chunkMatchings = Array.isArray(data.matchings) ? data.matchings : [];
+            const matchingOffsets: number[] = [];
+            const chunkRoadGeometry: [number, number][] = [];
+
+            chunkMatchings.forEach((matching: any) => {
+                matchingOffsets.push(chunkRoadGeometry.length);
+                const coordinates = Array.isArray(matching?.geometry?.coordinates)
+                    ? matching.geometry.coordinates
+                    : [];
+
+                coordinates.forEach((coordinate: [number, number]) => {
+                    const nextPoint: [number, number] = [coordinate[1], coordinate[0]];
+                    const prevPoint = chunkRoadGeometry[chunkRoadGeometry.length - 1];
+                    if (!prevPoint || prevPoint[0] !== nextPoint[0] || prevPoint[1] !== nextPoint[1]) {
+                        chunkRoadGeometry.push(nextPoint);
+                    }
+                });
+            });
+
+            if (Array.isArray(data.tracepoints) && data.tracepoints.length > 0) {
                 chunk.forEach((point, index) => {
                     const tracePoint = data.tracepoints[index];
                     if (tracePoint?.location) {
+                        let geometryIndex: number | undefined;
+
+                        if (
+                            typeof tracePoint.matchings_index === "number" &&
+                            typeof tracePoint.waypoint_index === "number"
+                        ) {
+                            const matchingOffset = matchingOffsets[tracePoint.matchings_index];
+                            if (typeof matchingOffset === "number") {
+                                geometryIndex = chunkGeometryStart + matchingOffset + tracePoint.waypoint_index;
+                            }
+                        } else if (typeof tracePoint.waypoint_index === "number") {
+                            geometryIndex = chunkGeometryStart + tracePoint.waypoint_index;
+                        }
+
                         allSnapped.push({
                             ...point,
                             lat: tracePoint.location[1],
                             lng: tracePoint.location[0],
-                            geometryIndex: typeof tracePoint.waypoint_index === "number" ? tracePoint.waypoint_index : undefined,
+                            geometryIndex,
                         });
                     } else {
                         allSnapped.push(point);
                     }
                 });
+            } else {
+                allSnapped.push(...chunk);
             }
 
-            if (data.matchings?.[0]?.geometry?.coordinates) {
-                data.matchings[0].geometry.coordinates.forEach((coordinate: [number, number]) => {
-                    fullRoadPath.push([coordinate[1], coordinate[0]]);
-                });
+            if (chunkRoadGeometry.length > 0) {
+                fullRoadPath.push(...chunkRoadGeometry);
+            } else {
+                appendChunkGeometryFallback(chunk);
             }
         } else {
-            allSnapped.push(...chunk);
-            chunk.forEach((p) => fullRoadPath.push([p.lat, p.lng]));
+            appendChunkFallback(chunk);
         }
     }
 
@@ -1279,10 +1326,10 @@ const TravelPlaybackInline: React.FC<TravelPlaybackInlineProps> = ({
                                     <div className="w-1 rounded-full bg-gradient-to-b from-[#4ade80] via-[#fbbf24] to-[#f87171] shadow-[0_0_10px_rgba(74,222,128,0.3)]"></div>
                                     <div className="flex-1 space-y-5">
                                         <div className="relative">
-                                            <p className="text-[9px] font-black uppercase text-white/40 tracking-widest mb-1.5 flex items-center gap-2">
-                                                <div className="w-1 h-1 rounded-full bg-white/20"></div>
-                                                Start Phase
-                                            </p>
+                                            <div className="mb-1.5 flex items-center gap-2 text-[9px] font-black uppercase tracking-widest text-white/40">
+                                                <span className="h-1 w-1 rounded-full bg-white/20"></span>
+                                                <span>Start Phase</span>
+                                            </div>
                                             <p className="text-xs font-bold text-white tracking-tight">
                                                 {activeDayPoints[0] ? new Date(activeDayPoints[0].timestamp).toLocaleString('en-IN', {
                                                     day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true
@@ -1296,10 +1343,10 @@ const TravelPlaybackInline: React.FC<TravelPlaybackInlineProps> = ({
                                         <div className="h-px w-full bg-gradient-to-r from-white/10 to-transparent"></div>
 
                                         <div className="relative">
-                                            <p className="text-[9px] font-black uppercase text-white/40 tracking-widest mb-1.5 flex items-center gap-2">
-                                                <div className="w-1 h-1 rounded-full bg-white/20"></div>
-                                                End Phase
-                                            </p>
+                                            <div className="mb-1.5 flex items-center gap-2 text-[9px] font-black uppercase tracking-widest text-white/40">
+                                                <span className="h-1 w-1 rounded-full bg-white/20"></span>
+                                                <span>End Phase</span>
+                                            </div>
                                             <p className="text-xs font-bold text-white tracking-tight">
                                                 {activeDayPoints[activeDayPoints.length - 1] ? new Date(activeDayPoints[activeDayPoints.length - 1].timestamp).toLocaleString('en-IN', {
                                                     day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true

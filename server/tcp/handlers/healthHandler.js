@@ -13,7 +13,7 @@ module.exports = async function healthHandler(socket, packet) {
     /* ------------------------------------------------------------ */
 
     // Device must be logged in
-    console.log("🔥 LOGIN HANDLER HIT");
+    console.log("🔥 HEALTH HANDLER HIT");
     if (!socket.imei || !socket.gpsDeviceId) {
       console.warn("⚠️ Health packet before login, ignored");
       return;
@@ -23,27 +23,28 @@ module.exports = async function healthHandler(socket, packet) {
     /* 2️⃣ CLEAN + SPLIT PACKET                                      */
     /* ------------------------------------------------------------ */
 
-    const cleanPacket = packet.replace("*", "");
+    const starIdx = packet.lastIndexOf("*");
+    const cleanPacket = (starIdx !== -1 ? packet.slice(0, starIdx) : packet).trim();
     const parts = cleanPacket.split(",");
 
-    /**
-     * Expected (example):
-     * $HLM,VENDOR,VERSION,IMEI,BATTERY,LOW_BAT, MEMORY,
-     *      RATE_ON,RATE_OFF,DIN,AIN
-     */
+    if (parts.length < 11) {
+      console.warn("⚠️ HLM packet too short:", parts.length, "fields — ignored");
+      return;
+    }
+
+    const safeNum = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
+
     const vendorId = parts[1];
     const softwareVersion = parts[2];
     const imei = parts[3];
 
-    const batteryPercentage = Number(parts[4]);
-    const lowBatteryThreshold = Number(parts[5]);
-    const memoryPercentage = Number(parts[6]);
-
-    const dataUpdateRateIgnitionOn = Number(parts[7]);
-    const dataUpdateRateIgnitionOff = Number(parts[8]);
-
-    const digitalInputStatus = parts[9];
-    const analogInputStatus = parts[10];
+    const batteryPercentage = safeNum(parts[4]);
+    const lowBatteryThreshold = safeNum(parts[5]);
+    const memoryPercentage = safeNum(parts[6]);
+    const dataUpdateRateIgnitionOn = safeNum(parts[7]);
+    const dataUpdateRateIgnitionOff = safeNum(parts[8]);
+    const digitalInputStatus = parts[9] || null;
+    const analogInputStatus = parts[10] || null;
 
     /* ------------------------------------------------------------ */
     /* 3️⃣ BUILD HEALTH DOCUMENT                                     */
@@ -103,7 +104,7 @@ module.exports = async function healthHandler(socket, packet) {
     /* 6️⃣ ACK DEVICE                                                */
     /* ------------------------------------------------------------ */
 
-    socket.write("OK\n");
+    socket.write("OK\r\n");
 
     console.log("❤️ HEALTH UPDATED", {
       imei,

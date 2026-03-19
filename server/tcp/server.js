@@ -1,8 +1,29 @@
 const net = require("net");
+const os = require("os");
 const packetRouter = require("./packetRouter");
 const GpsDevice = require("../Modules/gpsDevice/model");
 
 const TCP_PORT = process.env.TCP_PORT || 6000;
+const TCP_HOST = process.env.TCP_HOST || "0.0.0.0";
+
+function getTcpEndpoints(host, port) {
+  if (host && host !== "0.0.0.0" && host !== "::") {
+    return [`tcp://${host}:${port}`];
+  }
+
+  const endpoints = new Set([`tcp://127.0.0.1:${port}`, `tcp://localhost:${port}`]);
+  const interfaces = os.networkInterfaces();
+
+  Object.values(interfaces).forEach((entries) => {
+    (entries || []).forEach((entry) => {
+      if (entry.family === "IPv4" && !entry.internal) {
+        endpoints.add(`tcp://${entry.address}:${port}`);
+      }
+    });
+  });
+
+  return Array.from(endpoints);
+}
 
 // ─────────────────────────────────────────────
 // TCP SERVER
@@ -15,6 +36,7 @@ const server = net.createServer((socket) => {
 
   // 🔹 Every socket gets its own buffer
   socket.buffer = "";
+  const MAX_BUFFER_BYTES = 4096;
 
   // 🔹 Socket level configs (industry standard)
   socket.setKeepAlive(true, 60000); // keep alive every 60s
@@ -31,6 +53,13 @@ const server = net.createServer((socket) => {
 
       // Append to existing buffer
       socket.buffer += incoming;
+
+      if (socket.buffer.length > MAX_BUFFER_BYTES) {
+        console.warn(`⚠️ Buffer overflow from ${socket.remoteAddress}, closing`);
+        socket.buffer = "";
+        socket.end();
+        return;
+      }
 
       /**
        * AIS devices usually end packets with:
@@ -134,11 +163,29 @@ server.on("error", (err) => {
   console.error("❌ TCP Server error:", err.message);
 });
 
+function gracefulShutdown(signal) {
+  console.log(`🛑 ${signal} received. Closing TCP server...`);
+  server.close(() => {
+    console.log("✅ TCP server closed.");
+    process.exit(0);
+  });
+  setTimeout(() => {
+    console.warn("⚠️ Forcing exit after 10s");
+    process.exit(1);
+  }, 10_000);
+}
+
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+
 // ─────────────────────────────────────────────
 // START SERVER
 // ─────────────────────────────────────────────
-server.listen(TCP_PORT, () => {
-  console.log(`🚀 TCP AIS Server running on port ${TCP_PORT}`);
+server.listen(TCP_PORT, TCP_HOST, () => {
+  console.log(`🚀 TCP AIS Server running on ${TCP_HOST}:${TCP_PORT}`);
+  getTcpEndpoints(TCP_HOST, TCP_PORT).forEach((endpoint) => {
+    console.log(`🔗 TCP Endpoint: ${endpoint}`);
+  });
 });
 
 module.exports = server;

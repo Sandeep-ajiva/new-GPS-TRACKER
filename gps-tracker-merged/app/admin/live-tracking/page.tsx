@@ -20,8 +20,8 @@ const LiveMap = dynamic(() => import("@/components/admin/Map/LeafletLiveMap"), {
 interface Vehicle {
   id: string;
   vehicleNumber: string;
-  lat: number;
-  lng: number;
+  lat: number | null;
+  lng: number | null;
   speed: number;
   heading?: number;
   status: string;
@@ -126,8 +126,8 @@ export default function LiveTrackingPage() {
           : {
             id: normalizedVehicleId,
             vehicleNumber: update.vehicleNumber || update.imei || "Unknown",
-            lat: lat ?? 0,
-            lng: lng ?? 0,
+            lat: lat ?? null,
+            lng: lng ?? null,
             speed,
             heading: update.heading ?? 0,
             status,
@@ -165,12 +165,18 @@ export default function LiveTrackingPage() {
         orgIds.add(orgId);
       }
 
-      orgIds.forEach((id) => {
-        socket.emit("join_organization", id);
-        console.log(`📡 Joined socket room: org_${id}`);
-      });
+
+const joinRooms = () => {
+        orgIds.forEach((id) => {
+          socket.emit("join_organization", id);
+        });
+      };
+
+      joinRooms();
+      socket.on("connect", joinRooms);
 
       return () => {
+        socket.off("connect", joinRooms);
         orgIds.forEach((id) => {
           socket.emit("leave_organization", id);
         });
@@ -204,8 +210,8 @@ export default function LiveTrackingPage() {
               existing?.vehicleNumber ||
               item.imei ||
               "Unknown",
-            lat: item.latitude ?? existing?.lat ?? 0,
-            lng: item.longitude ?? existing?.lng ?? 0,
+            lat: item.latitude ?? existing?.lat ?? null,
+            lng: item.longitude ?? existing?.lng ?? null,
             speed: item.currentSpeed ?? existing?.speed ?? 0,
             heading: item.heading ?? existing?.heading ?? 0,
             status: item.movementStatus ?? existing?.status ?? "offline",
@@ -266,7 +272,7 @@ export default function LiveTrackingPage() {
           bodyClassName="p-2"
         >
           <div className="relative h-[calc(100vh-320px)] min-h-[360px] overflow-hidden rounded-[22px] border border-slate-200 bg-slate-50 sm:min-h-[420px] lg:min-h-[460px]">
-            <LiveMap vehicles={vehicles} />
+            <LiveMap vehicles={vehicles.filter((v): v is Vehicle & { lat: number; lng: number } => v.lat != null && v.lng != null)} />
           </div>
         </AdminSectionCard>
       </AdminPageShell>

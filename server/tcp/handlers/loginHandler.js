@@ -9,7 +9,8 @@ module.exports = async function loginHandler(socket, packet) {
     // ─────────────────────────────────────────────
     // 1️⃣ CLEAN & PARSE PACKET
     // ─────────────────────────────────────────────
-    const clean = packet.replace("*", "").trim();
+    const starIdx = packet.lastIndexOf("*");
+    const clean = (starIdx !== -1 ? packet.slice(0, starIdx) : packet).trim();
     const parts = clean.split(",");
 
     /**
@@ -33,7 +34,7 @@ module.exports = async function loginHandler(socket, packet) {
     // ─────────────────────────────────────────────
     // 2️⃣ BASIC VALIDATION
     // ─────────────────────────────────────────────
-    if (!imei || imei.length !== 15) {
+    if (!imei || !/^\d{15}$/.test(imei)) {
       console.log("❌ Invalid IMEI:", imei);
       socket.write("DENY\r\n");
       return socket.end();

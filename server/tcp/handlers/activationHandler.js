@@ -18,7 +18,8 @@ module.exports = async function activationHandler(socket, packet) {
     /* ------------------------------------------------------------ */
     /* 2️⃣ PARSE PACKET                                              */
     /* ------------------------------------------------------------ */
-    const clean = packet.replace("*", "").trim();
+    const starIdx = packet.lastIndexOf("*");
+    const clean = (starIdx !== -1 ? packet.slice(0, starIdx) : packet).trim();
     const parts = clean.split(",");
 
     /**
@@ -47,7 +48,7 @@ module.exports = async function activationHandler(socket, packet) {
     /* ------------------------------------------------------------ */
     /* 4️⃣ ACK                                                       */
     /* ------------------------------------------------------------ */
-    socket.write("ON\n");
+    socket.write("ON\r\n");
 
     console.log("✅ ACTIVATION", {
       imei,

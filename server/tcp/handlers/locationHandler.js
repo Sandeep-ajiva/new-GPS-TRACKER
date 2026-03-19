@@ -22,9 +22,12 @@ module.exports = async function locationHandler(socket, packet) {
     /* 2️⃣ PARSE PACKET                                      */
     /* ---------------------------------------------------- */
 
+    const starIdx = packet.lastIndexOf("*");
+    const cleanPacket = (starIdx !== -1 ? packet.slice(0, starIdx) : packet).trim();
+
     let parsed;
     try {
-      parsed = AIS140PacketParser.parsePacket(packet);
+      parsed = AIS140PacketParser.parsePacket(cleanPacket);
     } catch (e) {
       console.error("❌ NRM parse failed:", e.message);
       return;
@@ -60,7 +63,7 @@ module.exports = async function locationHandler(socket, packet) {
     );
 
     if (result?.success) {
-      socket.write("ACK\n");
+      socket.write("ACK\r\n");
     }
   } catch (err) {
     console.error("❌ Location handler error:", err.message);
