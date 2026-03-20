@@ -1,0 +1,680 @@
+{
+  "info": {
+    "name": "GPS Tracker Complete API - Enhanced Token Management",
+    "description": "Comprehensive GPS Tracker API collection with automated token management and all endpoints",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "exec": [
+          "// Enhanced Auth with better token handling",
+          "if (pm.request.url.path.includes('login')) {",
+          "    const response = pm.response.json();",
+          "    const token = response.token || (response.data && response.data.token);",
+          "    if (token) {",
+          "        pm.collectionVariables.set('accessToken', token);",
+          "        console.log('✅ Access Token auto-set in Collection Variables');",
+          "        console.log('Token length: ' + token.length + ' chars');",
+          "    } else {",
+          "        console.log('❌ No token found in login response');",
+          "    }",
+          "}"
+        ],
+        "type": "text/javascript"
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "exec": [
+          "// Auto extract IDs from create/get responses to power subsequent requests",
+          "if (pm.response.code >= 200 && pm.response.code < 300) {",
+          "    const response = pm.response.json();",
+          "    const path = pm.request.url.path.join('/');",
+          "    const data = response.data || response;",
+          "    ",
+          "    if (data && data._id) {",
+          "        const id = data._id;",
+          "        if (path.includes('organizations')) pm.collectionVariables.set('orgId', id);",
+          "        if (path.includes('users')) pm.collectionVariables.set('userId', id);",
+          "        if (path.includes('drivers')) pm.collectionVariables.set('driverId', id);",
+          "        if (path.includes('vehicle') && !path.includes('daily')) pm.collectionVariables.set('vehicleId', id);",
+          "        if (path.includes('gpsdevice')) pm.collectionVariables.set('deviceId', id);",
+          "        if (path.includes('devicemapping') || path.includes('mapping')) pm.collectionVariables.set('mappingId', id);",
+          "        if (path.includes('alerts')) pm.collectionVariables.set('alertId', id);",
+          "        if (path.includes('geofence')) pm.collectionVariables.set('geofenceId', id);",
+          "        if (path.includes('poi')) pm.collectionVariables.set('poiId', id);",
+          "        if (path.includes('notifications')) pm.collectionVariables.set('notificationId', id);",
+          "        if (path.includes('permissions')) pm.collectionVariables.set('permissionId', id);",
+          "        console.log('📝 Auto-extracted ID: ' + id + ' from path: ' + path);",
+          "    }",
+          "}"
+        ],
+        "type": "text/javascript"
+      }
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "🔐 1. Authentication & Token Management",
+      "item": [
+        {
+          "name": "Login & Set Token",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "login"]
+            }
+          }
+        },
+        {
+          "name": "Manual Token Setter",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": ""
+            },
+            "url": {
+              "raw": "https://postman-echo.com/token",
+              "host": ["postman-echo.com"],
+              "path": ["token"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// 🔄 Manually set token from copied value",
+                  "const newToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'; // Replace with actual token",
+                  "pm.collectionVariables.set('accessToken', newToken);",
+                  "console.log('✅ Access token set manually: ' + newToken.substring(0, 20) + '...');",
+                  "console.log('🔑 Token ready for API calls!');"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Me",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/users/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "me"]
+            }
+          }
+        },
+        {
+          "name": "User",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Test\",\n  \"lastName\": \"User\",\n  \"email\": \"test@example.com\",\n  \"mobile\": \"9876543210\",\n  \"password\": \"password123\",\n  \"role\": \"admin\",\n  \"organizationId\": \"{{orgId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", ""]
+            }
+          }
+        },
+        {
+          "name": "Users",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/users?page=1&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "10" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "User",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Updated\",\n  \"lastName\": \"Name\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/{{userId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "{{userId}}"]
+            }
+          }
+        },
+        {
+          "name": "User",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/api/users/{{userId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "{{userId}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🏢 2. Organizations",
+      "item": [
+        {
+          "name": "Organization",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Main Org\",\n  \"address\": \"123 Tech Park\",\n  \"phone\": \"0123456789\",\n  \"email\": \"main@org.com\",\n  \"admin\": {\n    \"name\": \"Main Admin\",\n    \"email\": \"admin@org.com\",\n    \"password\": \"Admin123!\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/organizations/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "organizations", ""]
+            }
+          }
+        },
+        {
+          "name": "Sub Organization",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Sub Division A\",\n  \"parentOrganizationId\": \"{{orgId}}\",\n  \"admin\": {\n    \"name\": \"Sub Admin\",\n    \"email\": \"sub@org.com\",\n    \"password\": \"SubAdmin123!\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/organizations/sub",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "organizations", "sub"]
+            }
+          }
+        },
+        {
+          "name": "Organizations",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/organizations",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "organizations"]
+            }
+          }
+        },
+        {
+          "name": "Sub Organizations",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/organizations/sub",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "organizations", "sub"]
+            }
+          }
+        },
+        {
+          "name": "Organization",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Updated Org Name\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/organizations/{{orgId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "organizations", "{{orgId}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🚗 3. Vehicles & Drivers",
+      "item": [
+        {
+          "name": "Vehicle",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"vehicleNumber\": \"DL-1CA-1234\",\n  \"vehicleType\": \"Truck\",\n  \"model\": \"Eicher Pro\",\n  \"organizationId\": \"{{orgId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/vehicle/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "vehicle", ""]
+            }
+          }
+        },
+        {
+          "name": "Vehicles",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/vehicle",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "vehicle"]
+            }
+          }
+        },
+        {
+          "name": "Driver",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"John Smith\",\n  \"phone\": \"9999999999\",\n  \"licenseNumber\": \"DL-ABC-2024\",\n  \"organizationId\": \"{{orgId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/drivers/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "drivers", ""]
+            }
+          }
+        },
+        {
+          "name": "Driver Mapping",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"vehicleId\": \"{{vehicleId}}\",\n  \"driverId\": \"{{driverId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/vehicledrivermapping/assign",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "vehicledrivermapping", "assign"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "📡 4. GPS Devices & Mappings",
+      "item": [
+        {
+          "name": "GPS Device",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"imei\": \"{{imei}}\",\n  \"simNumber\": \"9876543210\",\n  \"model\": \"TK103\",\n  \"organizationId\": \"{{orgId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/gpsdevice/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "gpsdevice", ""]
+            }
+          }
+        },
+        {
+          "name": "Available Devices",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/gpsdevice/available",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "gpsdevice", "available"]
+            }
+          }
+        },
+        {
+          "name": "Device Mapping",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"gpsDeviceId\": \"{{deviceId}}\",\n  \"vehicleId\": \"{{vehicleId}}\",\n  \"organizationId\": \"{{orgId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/devicemapping/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "devicemapping", ""]
+            }
+          }
+        },
+        {
+          "name": "Device Mapping",
+          "request": {
+            "method": "PATCH",
+            "url": {
+              "raw": "{{baseUrl}}/api/devicemapping/{{mappingId}}/unassign",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "devicemapping", "{{mappingId}}", "unassign"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "📍 5. Tracking & History",
+      "item": [
+        {
+          "name": "Live Data",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/gpslivedata",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "gpslivedata"]
+            }
+          }
+        },
+        {
+          "name": "Vehicle Live Data",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/gpslivedata/vehicle/{{vehicleId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "gpslivedata", "vehicle", "{{vehicleId}}"]
+            }
+          }
+        },
+        {
+          "name": "Playback",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/gpshistory/playback/{{vehicleId}}?from=2024-03-01&to=2024-03-20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "gpshistory", "playback", "{{vehicleId}}"],
+              "query": [
+                { "key": "from", "value": "2024-03-01" },
+                { "key": "to", "value": "2024-03-20" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Trip Summary",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/gpshistory/trip-summary/{{vehicleId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "gpshistory", "trip-summary", "{{vehicleId}}"]
+            }
+          }
+        },
+        {
+          "name": "Daywise Distance",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/gpshistory/daywise-distance/{{vehicleId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "gpshistory", "daywise-distance", "{{vehicleId}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🗺️ 6. Geofences & POIs",
+      "item": [
+        {
+          "name": "Geofence",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Tech Park Zone\",\n  \"type\": \"Circle\",\n  \"circleCenterCoordinates\": [76.7794, 30.7333],\n  \"circleRadius\": 500,\n  \"alertOnEnter\": true,\n  \"alertOnExit\": true,\n  \"organizationId\": \"{{orgId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/geofence/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "geofence", ""]
+            }
+          }
+        },
+        {
+          "name": "Geofences",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/geofence",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "geofence"]
+            }
+          }
+        },
+        {
+          "name": "POI",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Warehouse A\",\n  \"type\": \"Logistics\",\n  \"locationCoordinates\": [76.7794, 30.7333],\n  \"radius\": 100,\n  \"organizationId\": \"{{orgId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/poi/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "poi", ""]
+            }
+          }
+        },
+        {
+          "name": "Bulk POIs",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"organizationId\": \"{{orgId}}\",\n  \"pois\": [\n    {\n      \"name\": \"Station 1\",\n      \"type\": \"Fuel\",\n      \"locationCoordinates\": [76.77, 30.73]\n    },\n    {\n      \"name\": \"Station 2\",\n      \"type\": \"Fuel\",\n      \"locationCoordinates\": [76.78, 30.74]\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/poi/bulk",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "poi", "bulk"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🔔 7. Alerts & Notifications",
+      "item": [
+        {
+          "name": "Alerts",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/alerts",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "alerts"]
+            }
+          }
+        },
+        {
+          "name": "Alert",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/api/alerts/{{alertId}}/ack",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "alerts", "{{alertId}}", "ack"]
+            }
+          }
+        },
+        {
+          "name": "Alerts",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/api/alerts/ack-all",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "alerts", "ack-all"]
+            }
+          }
+        },
+        {
+          "name": "Notifications",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/notifications",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "notifications"]
+            }
+          }
+        },
+        {
+          "name": "Notification",
+          "request": {
+            "method": "PATCH",
+            "url": {
+              "raw": "{{baseUrl}}/api/notifications/{{notificationId}}/read",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "notifications", "{{notificationId}}", "read"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "📤 8. Import & Export",
+      "item": [
+        {
+          "name": "Export",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/importexport/export/vehicles?format=excel",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "importexport", "export", "vehicles"],
+              "query": [{ "key": "format", "value": "excel" }]
+            }
+          }
+        },
+        {
+          "name": "Import",
+          "request": {
+            "method": "POST",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "file", "type": "file", "src": "/path/to/file.csv" },
+                { "key": "organizationId", "value": "{{orgId}}", "type": "text" }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/importexport/import/vehicles",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "importexport", "import", "vehicles"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "⚙️ 9. System & Health",
+      "item": [
+        {
+          "name": "Health Status",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/healthmonitoring",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "healthmonitoring"]
+            }
+          }
+        },
+        {
+          "name": "Device Health",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/healthmonitoring/latest",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "healthmonitoring", "latest"]
+            }
+          }
+        },
+        {
+          "name": "Vehicle Daily Stats",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/vehicledailystats/vehicle/{{vehicleId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "vehicledailystats", "vehicle", "{{vehicleId}}"]
+            }
+          }
+        },
+        {
+          "name": "Permissions",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/permissions",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "permissions"]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:5000", "type": "string" },
+    { "key": "accessToken", "value": "", "type": "string" },
+    { "key": "adminEmail", "value": "admin@gpstracker.com", "type": "string" },
+    { "key": "adminPassword", "value": "Admin123!", "type": "string" },
+    { "key": "imei", "value": "123456789012345", "type": "string" },
+    { "key": "orgId", "value": "", "type": "string" },
+    { "key": "userId", "value": "", "type": "string" },
+    { "key": "driverId", "value": "", "type": "string" },
+    { "key": "vehicleId", "value": "", "type": "string" },
+    { "key": "deviceId", "value": "", "type": "string" },
+    { "key": "mappingId", "value": "", "type": "string" },
+    { "key": "alertId", "value": "", "type": "string" },
+    { "key": "geofenceId", "value": "", "type": "string" },
+    { "key": "poiId", "value": "", "type": "string" },
+    { "key": "notificationId", "value": "", "type": "string" },
+    { "key": "permissionId", "value": "", "type": "string" }
+  ]
+}

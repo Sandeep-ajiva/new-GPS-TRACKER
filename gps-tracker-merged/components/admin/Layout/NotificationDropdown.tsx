@@ -14,6 +14,7 @@ import {
   useDeleteAdminNotificationMutation,
   useGetAdminNotificationCountsQuery,
   useGetAdminNotificationsQuery,
+  useLazyGetAdminNotificationsQuery,
   useMarkAdminNotificationAsAcknowledgedMutation,
   useMarkAdminNotificationAsReadMutation,
   useMarkAdminNotificationAsResolvedMutation,
@@ -29,6 +30,7 @@ export function NotificationDropdown({ isOpen, onClose }: NotificationDropdownPr
   const router = useRouter();
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [isBulkPending, setIsBulkPending] = useState(false);
+  const [fetchNotifications] = useLazyGetAdminNotificationsQuery();
 
   const {
     data: notificationsData,
@@ -130,6 +132,40 @@ export function NotificationDropdown({ isOpen, onClose }: NotificationDropdownPr
     }
   };
 
+  const handleClearAll = async () => {
+    if (!window.confirm("Clear all notifications?")) {
+      return;
+    }
+
+    setIsBulkPending(true);
+
+    try {
+      let deletedCount = 0;
+
+      while (true) {
+        const response = await fetchNotifications({ page: 0, limit: 100 }, true).unwrap();
+        const batch = response.data || [];
+
+        if (batch.length === 0) {
+          break;
+        }
+
+        for (const notification of batch) {
+          await deleteNotification(notification._id).unwrap();
+          deletedCount += 1;
+        }
+      }
+
+      toast.success(
+        deletedCount > 0 ? "All notifications cleared" : "No notifications to clear",
+      );
+    } catch (actionError) {
+      toast.error(getApiErrorMessage(actionError, "Unable to clear notifications right now"));
+    } finally {
+      setIsBulkPending(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-[99999] flex items-start justify-center px-2 pt-24 sm:absolute sm:inset-auto sm:right-0 sm:top-full sm:block sm:p-0">
       <div className="w-[min(24rem,calc(100vw-1rem))] max-w-[calc(100vw-1rem)] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_20px_45px_rgba(15,23,42,0.16)] sm:mt-2 sm:w-[24rem] sm:max-w-[24rem]">
@@ -143,6 +179,18 @@ export function NotificationDropdown({ isOpen, onClose }: NotificationDropdownPr
         </div>
 
         <div className="flex items-center gap-1">
+          {notifications.length > 0 && (
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              disabled={isBulkPending}
+              onClick={handleClearAll}
+              className="text-xs font-semibold text-slate-800 hover:text-slate-950"
+            >
+              Clear all
+            </Button>
+          )}
           {unreadCount > 0 && (
             <Button
               type="button"

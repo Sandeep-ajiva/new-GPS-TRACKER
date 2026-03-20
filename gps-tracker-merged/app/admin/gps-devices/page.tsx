@@ -6,7 +6,7 @@ import Link from "next/link";
 import Table from "@/components/ui/Table";
 import Pagination from "@/components/ui/Pagination";
 import ApiErrorBoundary from "@/components/admin/ErrorBoundary/ApiErrorBoundary";
-import { Plus, Edit, Trash2, Filter, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, Edit, Trash2, Filter, Loader2, ChevronLeft, ChevronRight, Eye } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
 
@@ -16,7 +16,6 @@ import {
   useUpdateGpsDeviceMutation,
   useDeleteGpsDeviceMutation,
 } from "@/redux/api/gpsDeviceApi";
-
 import {
   useGetVehiclesQuery,
 } from "@/redux/api/vehicleApi";
@@ -37,6 +36,7 @@ import { InventoryStatusBadge } from "@/components/gps-devices/InventoryStatusBa
 import type { GpsDeviceRecord } from "@/components/gps-devices/inventoryTypes";
 import { DEVICE_IMPORT_FIELDS } from "@/utils/importExport/contracts";
 import { getApiErrorMessage } from "@/utils/apiError";
+import DeviceDetailsModal from "@/components/admin/Modals/DeviceDetailsModal";
 
 import { Building2 } from "lucide-react";
 
@@ -116,15 +116,12 @@ const formatRelativeTime = (value?: string | Date | null) => {
   return `${diffDays}d ago`;
 };
 
-const getDeviceLastSeen = (device: GpsDeviceRecord) => {
+const getDeviceTimestamp = (
+  device: GpsDeviceRecord,
+  fieldName: "lastSeen" | "lastLoginTime",
+) => {
   const record = device as unknown as Record<string, unknown>;
-  const candidate =
-    record.lastSeen ||
-    record.lastPacketTime ||
-    record.lastPacketAt ||
-    record.lastLoginTime ||
-    record.updatedAt ||
-    null;
+  const candidate = record[fieldName];
 
   if (typeof candidate === "string" || candidate instanceof Date) {
     return candidate;
@@ -132,6 +129,31 @@ const getDeviceLastSeen = (device: GpsDeviceRecord) => {
 
   return null;
 };
+
+const getConnectionLabel = (device: GpsDeviceRecord) => {
+  const lastSeen = getDeviceTimestamp(device, "lastSeen");
+  const lastLoginTime = getDeviceTimestamp(device, "lastLoginTime");
+
+  if (!lastSeen && !lastLoginTime) {
+    return "Never Connected";
+  }
+
+  if (device.connectionStatus === "online" || device.isOnline === true) {
+    return "Online";
+  }
+
+  if (device.connectionStatus === "offline" || device.isOnline === false) {
+    return "Offline";
+  }
+
+  return "Unknown";
+};
+
+const getLastSeenLabel = (device: GpsDeviceRecord) =>
+  formatRelativeTime(getDeviceTimestamp(device, "lastSeen")) || EMPTY_VALUE;
+
+const getLastLoginLabel = (device: GpsDeviceRecord) =>
+  formatRelativeTime(getDeviceTimestamp(device, "lastLoginTime")) || EMPTY_VALUE;
 
 const getAssignedVehicleLabel = (
   device: GpsDeviceRecord,
@@ -162,18 +184,6 @@ const getAssignedVehicleLabel = (
     toDisplayText(vehicle?.vehicleNumber) ||
     ""
   );
-};
-
-const getConnectionState = (device: GpsDeviceRecord) => {
-  if (device.connectionStatus === "online" || device.isOnline) {
-    return "Online";
-  }
-
-  if (device.connectionStatus === "offline" || device.isOnline === false) {
-    return "Offline";
-  }
-
-  return "";
 };
 
 const formatWarrantyDetails = (value?: string | null) => {
@@ -647,6 +657,8 @@ export default function GpsDevicesPage() {
 
   /* ================= MODALS ================= */
 
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null);
+
   const openCreateModal = () => {
     setEditingDevice(null);
     openPopup("deviceModal");
@@ -659,6 +671,16 @@ export default function GpsDevicesPage() {
     });
 
     openPopup("deviceModal");
+  };
+
+  const openDetailsModal = (deviceId: string) => {
+    setSelectedDeviceId(deviceId);
+    openPopup("deviceDetailsModal");
+  };
+
+  const closeDetailsModal = () => {
+    setSelectedDeviceId(null);
+    closePopup("deviceDetailsModal");
   };
 
   const closeModal = () => {
@@ -741,6 +763,90 @@ export default function GpsDevicesPage() {
       ),
     },
     {
+      header: "Organization",
+      headerClassName: "min-w-[150px]",
+      cellClassName: "min-w-[150px]",
+      accessor: (row: GpsDeviceRecord) => {
+        const org =
+          typeof row.organizationId === "object" ? row.organizationId : null;
+        return (
+          <span className="block max-w-[150px] truncate text-sm text-slate-700">
+            {toDisplayText(org?.name) || EMPTY_VALUE}
+          </span>
+        );
+      },
+    },
+    {
+      header: "Assigned Vehicle",
+      headerClassName: "min-w-[150px]",
+      cellClassName: "min-w-[150px]",
+      accessor: (row: GpsDeviceRecord) => (
+        <span className="block max-w-[150px] truncate text-sm font-semibold text-slate-800">
+          {getAssignedVehicleLabel(row, vehiclesData) || "Unassigned"}
+        </span>
+      ),
+    },
+    {
+      header: "Connection",
+      headerClassName: "min-w-[120px]",
+      cellClassName: "min-w-[120px]",
+      accessor: (row: GpsDeviceRecord) => {
+        const connectionState = getConnectionLabel(row);
+
+        return (
+          <span
+            className={`block text-sm font-semibold ${
+              connectionState === "Online"
+                ? "text-emerald-600"
+                : connectionState === "Offline"
+                  ? "text-rose-600"
+                  : "text-slate-500"
+            }`}
+          >
+            {connectionState}
+          </span>
+        );
+      },
+    },
+    {
+      header: "Last Seen",
+      headerClassName: "min-w-[140px]",
+      cellClassName: "min-w-[140px]",
+      accessor: (row: GpsDeviceRecord) => {
+        const lastSeen = getLastSeenLabel(row);
+
+        if (lastSeen === EMPTY_VALUE) {
+          return <span className="text-sm text-slate-500">{EMPTY_VALUE}</span>;
+        }
+
+        return (
+          <div className="space-y-1">
+            <span className="block text-sm text-slate-700">{lastSeen}</span>
+            <span className="block text-xs text-slate-500">Last seen {lastSeen}</span>
+          </div>
+        );
+      },
+    },
+    {
+      header: "Last Login",
+      headerClassName: "min-w-[140px]",
+      cellClassName: "min-w-[140px]",
+      accessor: (row: GpsDeviceRecord) => {
+        const lastLogin = getLastLoginLabel(row);
+
+        if (lastLogin === EMPTY_VALUE) {
+          return <span className="text-sm text-slate-500">{EMPTY_VALUE}</span>;
+        }
+
+        return (
+          <div className="space-y-1">
+            <span className="block text-sm text-slate-700">{lastLogin}</span>
+            <span className="block text-xs text-slate-500">Last login {lastLogin}</span>
+          </div>
+        );
+      },
+    },
+    {
       header: "Inventory",
       headerClassName: "min-w-[130px]",
       cellClassName: "min-w-[130px]",
@@ -766,87 +872,6 @@ export default function GpsDevicesPage() {
       },
     },
     {
-      header: "Organization",
-      headerClassName: "min-w-[150px]",
-      cellClassName: "min-w-[150px]",
-      accessor: (row: GpsDeviceRecord) => {
-        const org =
-          typeof row.organizationId === "object" ? row.organizationId : null;
-        return (
-          <span className="block max-w-[150px] truncate text-sm text-slate-700">
-            {toDisplayText(org?.name) || EMPTY_VALUE}
-          </span>
-        );
-      },
-    },
-    {
-      header: "Assigned Vehicle",
-      headerClassName: "min-w-[150px]",
-      cellClassName: "min-w-[150px]",
-      accessor: (row: GpsDeviceRecord) => (
-        <span className="block max-w-[150px] truncate text-sm font-semibold text-slate-800">
-          {getAssignedVehicleLabel(row, vehiclesData) || "Unassigned"}
-        </span>
-      ),
-    },
-    {
-      header: "Connection / Last Seen",
-      headerClassName: "min-w-[170px]",
-      cellClassName: "min-w-[170px]",
-      accessor: (row: GpsDeviceRecord) => {
-        const connectionState = getConnectionState(row);
-        const lastSeen = formatRelativeTime(getDeviceLastSeen(row));
-
-        if (!connectionState && !lastSeen) {
-          return <span className="text-sm text-slate-500">Unknown</span>;
-        }
-
-        return (
-          <div className="space-y-1">
-            <span
-              className={`block text-sm font-semibold ${
-                connectionState === "Online"
-                  ? "text-emerald-600"
-                  : connectionState === "Offline"
-                    ? "text-rose-600"
-                    : "text-slate-700"
-              }`}
-            >
-              {connectionState || "Unknown"}
-            </span>
-            <span className="block text-xs text-slate-500">
-              {lastSeen ? `Last seen ${lastSeen}` : "Last seen —"}
-            </span>
-          </div>
-        );
-      },
-    },
-    {
-      header: "Warranty",
-      headerClassName: "min-w-[150px]",
-      cellClassName: "min-w-[150px]",
-      accessor: (row: GpsDeviceRecord) => {
-        const warranty = formatWarrantyDetails(row.warrantyExpiry);
-
-        if (!warranty) {
-          return <span className="text-sm text-slate-500">{EMPTY_VALUE}</span>;
-        }
-
-        return (
-          <div className="space-y-1">
-            <span className="block text-sm font-semibold text-slate-800">
-              {warranty.date}
-            </span>
-            {warranty.detail ? (
-              <span className={`block text-xs font-medium ${warranty.tone}`}>
-                {warranty.detail}
-              </span>
-            ) : null}
-          </div>
-        );
-      },
-    },
-    {
       header: "Status",
       headerClassName: "min-w-[110px]",
       cellClassName: "min-w-[110px]",
@@ -860,10 +885,15 @@ export default function GpsDevicesPage() {
     },
     {
       header: "Actions",
-      headerClassName: "min-w-[80px]",
-      cellClassName: "min-w-[80px] whitespace-nowrap",
+      headerClassName: "min-w-[120px]",
+      cellClassName: "min-w-[120px] whitespace-nowrap",
       accessor: (row: GpsDeviceRecord) => (
         <div className="flex gap-2">
+          <Eye 
+            onClick={() => openDetailsModal(row._id)} 
+            size={16} 
+            className="cursor-pointer hover:text-blue-600 transition-colors" 
+          />
           {canEditDevice && <Edit onClick={() => openEditModal(row)} size={16} />}
           {canDeleteDevice && <Trash2 onClick={() => handleDelete(row._id)} size={16} />}
         </div>
@@ -1271,6 +1301,12 @@ export default function GpsDevicesPage() {
           onSubmit={handleSubmit}
         />
       )}
+      {/* Device Details Modal */}
+      <DeviceDetailsModal
+        isOpen={isPopupOpen("deviceDetailsModal")}
+        onClose={closeDetailsModal}
+        deviceId={selectedDeviceId || ""}
+      />
     </ApiErrorBoundary>
   );
 }

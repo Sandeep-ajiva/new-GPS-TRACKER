@@ -36,6 +36,7 @@ import {
   useDeleteAdminNotificationMutation,
   useGetAdminNotificationCountsQuery,
   useGetAdminNotificationsQuery,
+  useLazyGetAdminNotificationsQuery,
   useMarkAdminNotificationAsAcknowledgedMutation,
   useMarkAdminNotificationAsReadMutation,
   useMarkAdminNotificationAsResolvedMutation,
@@ -89,7 +90,7 @@ export default function NotificationsPage() {
   const deferredSearch = useDeferredValue(searchQuery);
   const [page, setPage] = useState(0);
   const [pendingId, setPendingId] = useState<string | null>(null);
-  const [bulkPending, setBulkPending] = useState<"read" | "acknowledge" | null>(null);
+  const [bulkPending, setBulkPending] = useState<"read" | "acknowledge" | "clear" | null>(null);
 
   const listParams = useMemo(
     () =>
@@ -143,6 +144,7 @@ export default function NotificationsPage() {
   const [bulkMarkRead] = useBulkMarkAdminNotificationsAsReadMutation();
   const [bulkMarkAcknowledged] = useBulkMarkAdminNotificationsAsAcknowledgedMutation();
   const [deleteNotification] = useDeleteAdminNotificationMutation();
+  const [fetchNotifications] = useLazyGetAdminNotificationsQuery();
 
   const notifications = notificationsData?.data || [];
   const pagination = notificationsData?.pagination;
@@ -224,6 +226,54 @@ export default function NotificationsPage() {
     await runAction(notification, (id) => deleteNotification(id).unwrap(), "Notification deleted");
   };
 
+  const handleClearAll = async () => {
+    if (!window.confirm(hasFilters ? "Clear all notifications matching the current filters?" : "Clear all notifications?")) {
+      return;
+    }
+
+    setBulkPending("clear");
+
+    try {
+      let deletedCount = 0;
+
+      while (true) {
+        const response = await fetchNotifications(
+          {
+            ...bulkParams,
+            page: 0,
+            limit: 100,
+          },
+          true,
+        ).unwrap();
+
+        const batch = response.data || [];
+
+        if (batch.length === 0) {
+          break;
+        }
+
+        for (const notification of batch) {
+          await deleteNotification(notification._id).unwrap();
+          deletedCount += 1;
+        }
+      }
+
+      toast.success(
+        deletedCount > 0
+          ? hasFilters
+            ? "Filtered notifications cleared"
+            : "All notifications cleared"
+          : "No notifications to clear",
+      );
+
+      setPage(0);
+    } catch (actionError) {
+      toast.error(getApiErrorMessage(actionError, "Unable to clear notifications right now"));
+    } finally {
+      setBulkPending(null);
+    }
+  };
+
   return (
     <AdminPageShell contentClassName="space-y-6">
       <AdminPageHeader
@@ -263,6 +313,16 @@ export default function NotificationsPage() {
               >
                 <CheckCheck className="mr-2 h-4 w-4" />
                 Bulk acknowledge
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={handleClearAll}
+                disabled={(counts?.total || 0) === 0 || bulkPending !== null}
+                className="font-semibold text-slate-800 hover:text-slate-950"
+              >
+                Clear all
               </Button>
               <Button
                 type="button"

@@ -14,6 +14,10 @@ export const usersApi = baseApi.injectEndpoints({
       query: () => "/users/me",
       providesTags: ["User"],
     }),
+    getUser: builder.query({
+      query: (id: string) => `/users/${id}`,
+      providesTags: ["User"],
+    }),
     getManagerByOrganization: builder.query({
       query: (params) => ({
         url: "/users/by-organization",
@@ -50,6 +54,7 @@ export const usersApi = baseApi.injectEndpoints({
 export const {
   useGetUsersQuery,
   useGetMeQuery,
+  useGetUserQuery,
   useGetManagerByOrganizationQuery,
   //   useGetUsersByOrganizationQuery,
   useCreateUserMutation,

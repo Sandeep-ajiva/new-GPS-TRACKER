@@ -1,5 +1,24 @@
 import { baseApi } from "./baseApi";
 
+type VehicleApiRecord = {
+  _id: string;
+  organizationId?: string;
+  vehicleType?: string;
+  vehicleNumber?: string;
+  model?: string;
+  year?: string | number;
+  color?: string;
+  status?: string;
+  deviceId?: string | null;
+  driverId?: string | null;
+};
+
+type VehicleMutationResponse = {
+  status: boolean;
+  message: string;
+  data?: VehicleApiRecord;
+};
+
 type VehicleListParams = {
   page?: number;
   limit?: number;
@@ -31,7 +50,7 @@ export const vehicleApi = baseApi.injectEndpoints({
       query: (id: string) => `/vehicle/${id}`,
       providesTags: ["Vehicle"],
     }),
-    createVehicle: builder.mutation({
+    createVehicle: builder.mutation<VehicleMutationResponse, Record<string, unknown>>({
       query: (body) => ({
         url: "/vehicle",
         method: "POST",
@@ -39,7 +58,7 @@ export const vehicleApi = baseApi.injectEndpoints({
       }),
       invalidatesTags: ["Vehicle"],
     }),
-    updateVehicle: builder.mutation({
+    updateVehicle: builder.mutation<VehicleMutationResponse, { id: string;[key: string]: unknown }>({
       query: (payload: { id: string;[key: string]: unknown }) => {
         const { id, ...rest } = payload;
         return {
@@ -50,7 +69,7 @@ export const vehicleApi = baseApi.injectEndpoints({
       },
       invalidatesTags: ["Vehicle"],
     }),
-    deleteVehicle: builder.mutation({
+    deleteVehicle: builder.mutation<{ status: boolean; message: string }, string>({
       query: (id: string) => ({
         url: `/vehicle/${id}`,
         method: "DELETE",

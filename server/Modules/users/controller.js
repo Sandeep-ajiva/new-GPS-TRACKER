@@ -316,6 +316,56 @@ exports.getManagerByOrganization = async (req, res) => {
   }
 };
 
+exports.getById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.isValidObjectId(id)) {
+      return res.status(400).json({
+        status: false,
+        message: "Invalid user ID",
+      });
+    }
+
+    const query = { _id: id };
+
+    if (req.user.role !== "superadmin" && req.orgScope !== "ALL") {
+      query.organizationId = { $in: req.orgScope };
+    }
+
+    const user = await User.findOne(query)
+      .select("-passwordHash")
+      .populate({
+        path: "organizationId",
+        select: "name path parentOrganizationId",
+        populate: {
+          path: "parentOrganizationId",
+          select: "name path",
+        },
+      })
+      .populate("assignedVehicleId", "vehicleNumber vehicleType model status runningStatus")
+      .populate("driverId", "firstName lastName phone email licenseNumber status");
+
+    if (!user) {
+      return res.status(404).json({
+        status: false,
+        message: "User not found or access denied",
+      });
+    }
+
+    return res.status(200).json({
+      status: true,
+      data: user,
+    });
+  } catch (error) {
+    console.error("Get User By ID Error:", error);
+    return res.status(500).json({
+      status: false,
+      message: error.message || "Server error",
+    });
+  }
+};
+
 /* ======================================================
    CREATE USER (ADMIN / SUPERADMIN)
 ====================================================== */

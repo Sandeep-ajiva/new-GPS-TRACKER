@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import Table from "@/components/ui/Table";
 import Pagination from "@/components/ui/Pagination";
 import ApiErrorBoundary from "@/components/admin/ErrorBoundary/ApiErrorBoundary";
-import { Plus, Edit, Trash2, Filter } from "lucide-react";
+import { Plus, Edit, Trash2, Filter, Eye } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
 import {
@@ -39,6 +39,9 @@ import { useOrgContext } from "@/hooks/useOrgContext";
 
 import ImportExportButton from "@/components/admin/import-export/ImportExportButton";
 import { getApiErrorMessage } from "@/utils/apiError";
+import SearchableEntitySelect from "@/components/admin/UI/SearchableEntitySelect";
+import SimpleModal from "@/components/admin/Modals/SimpleModal";
+import VehicleDetailsModal from "@/components/admin/Modals/VehicleDetailsModal";
 import {
   Building2,
   Car,
@@ -84,6 +87,23 @@ const buildVehicleDriverMeta = (driver: {
   status?: string;
 }) => [driver.phone, driver.status].filter(Boolean).join(" | ");
 
+const normalizeVehicleYear = (value: unknown) => {
+  if (value === undefined || value === null || value === "") {
+    return undefined;
+  }
+
+  return String(value).trim();
+};
+
+const normalizeOptionalId = (value: unknown) => {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const normalized = value.trim();
+  return normalized || undefined;
+};
+
 export default function VehiclesPage() {
   const { openPopup, closePopup, isPopupOpen } = usePopups();
   const searchParams = useSearchParams();
@@ -101,6 +121,7 @@ export default function VehiclesPage() {
   const [showFilters, setShowFilters] = useState(!!searchQueryParam);
   const [selectedVehicleForAssignment, setSelectedVehicleForAssignment] =
     useState<Vehicle | null>(null);
+  const [selectedAssignmentDeviceId, setSelectedAssignmentDeviceId] = useState("");
   // Organization selection inside DynamicModal (for superadmin/root admin)
   const [selectedOrgIdForForm, setSelectedOrgIdForForm] = useState<string>("");
   // Track device selected in form — used to gate the driver dropdown
@@ -198,12 +219,21 @@ export default function VehiclesPage() {
   const canDeleteVehicle = isSuperAdmin || isRootOrgAdmin;
 
   const [editingVehicle, setEditingVehicle] = useState<Vehicle | null>(null);
+  const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
 
   const getRefId = (value: any): string | null => {
     if (!value) return null;
     if (typeof value === "string") return value;
     if (typeof value === "object") return value._id || null;
     return null;
+  };
+
+  const getVehicleOrganizationId = (vehicle?: Vehicle | null) => {
+    if (!vehicle) return "";
+
+    return typeof vehicle.organizationId === "object"
+      ? vehicle.organizationId._id
+      : vehicle.organizationId || "";
   };
 
   // 🔐 Effective organization for driver/device assignment in DynamicModal
@@ -254,6 +284,8 @@ export default function VehiclesPage() {
   const availableDriversForForm = useMemo(() => {
     if (!effectiveOrgIdForForm) return [];
 
+    const editingDriverId = editingVehicle ? getRefId((editingVehicle as any).driverId) : null;
+
     // Drivers already assigned to some vehicle (excluding current editing vehicle)
     const assignedDriverIds = new Set(
       allVehicles
@@ -272,9 +304,12 @@ export default function VehiclesPage() {
         return false;
       }
 
+      if (driver.status !== "active" && editingDriverId !== driver._id) {
+        return false;
+      }
+
       // Allow unassigned drivers OR the one already linked to the editing vehicle
       if (!assignedDriverIds.has(driver._id)) return true;
-      const editingDriverId = editingVehicle ? getRefId((editingVehicle as any).driverId) : null;
       if (editingVehicle && editingDriverId === driver._id) return true;
 
       return false;
@@ -286,6 +321,10 @@ export default function VehiclesPage() {
     if (!effectiveOrgIdForForm) return [];
 
     const baseDevices = getAvailableDevices(currentVehicleId);
+    const currentAssignedDeviceId =
+      currentVehicleId && editingVehicle && editingVehicle._id === currentVehicleId
+        ? getRefId((editingVehicle as any).deviceId)
+        : null;
 
     return baseDevices.filter((device) => {
       const deviceOrgId =
@@ -295,9 +334,64 @@ export default function VehiclesPage() {
       if (!deviceOrgId || deviceOrgId !== effectiveOrgIdForForm) {
         return false;
       }
+
+      if (device.status !== "active" && currentAssignedDeviceId !== device._id) {
+        return false;
+      }
       return true;
     });
   };
+
+  const availableDevicesForAssignment = useMemo(() => {
+    if (!selectedVehicleForAssignment) return [];
+
+    const selectedVehicleOrgId = getVehicleOrganizationId(selectedVehicleForAssignment);
+    if (!selectedVehicleOrgId) return [];
+
+    const assignedDeviceIds = new Set(
+      allVehicles
+        .filter((vehicle) => vehicle._id !== selectedVehicleForAssignment._id)
+        .map((vehicle) => getRefId((vehicle as any).deviceId))
+        .filter(Boolean) as string[],
+    );
+
+    return devices.filter((device) => {
+      const deviceOrgId =
+        typeof (device as any).organizationId === "object"
+          ? (device as any).organizationId._id
+          : (device as any).organizationId;
+
+      if (!deviceOrgId || deviceOrgId !== selectedVehicleOrgId) {
+        return false;
+      }
+
+      if (assignedDeviceIds.has(device._id)) {
+        return false;
+      }
+
+      return device.status === "active";
+    });
+  }, [allVehicles, devices, selectedVehicleForAssignment]);
+
+  const assignmentDeviceOptions = useMemo(
+    () =>
+      availableDevicesForAssignment.map((device) => ({
+        label: device.imei,
+        value: device._id,
+        description: device.deviceModel || "GPS Device",
+        meta: buildVehicleDeviceMeta(device),
+        keywords: [
+          device.imei,
+          device.deviceModel || "",
+          device.simNumber || "",
+          device.connectionStatus || "",
+        ],
+        badge: device.connectionStatus
+          ? capitalizeFirstLetter(device.connectionStatus)
+          : undefined,
+      })),
+    [availableDevicesForAssignment],
+  );
 
 
   const handleSubmit = async (
@@ -330,8 +424,20 @@ export default function VehiclesPage() {
         body.vehicleNumber = String(body.vehicleNumber).toUpperCase().trim();
       }
 
+      if (!body.vehicleType) {
+        throw new Error("Vehicle type is required");
+      }
+
+      if (!body.vehicleNumber) {
+        throw new Error("Vehicle number is required");
+      }
+
       if (!editingVehicle && resolvedOrganizationId) {
         body.organizationId = resolvedOrganizationId;
+      }
+
+      if (!editingVehicle && !body.organizationId) {
+        throw new Error("Organization is required");
       }
 
       if (editingVehicle) {
@@ -410,6 +516,7 @@ export default function VehiclesPage() {
           }
         }
 
+        await refetchVehicles();
         toast.success("Vehicle updated successfully");
       } else {
         // ─────────────────────────────────────────
@@ -418,6 +525,8 @@ export default function VehiclesPage() {
 
         // Step 1 — Create vehicle (no deviceId/driverId in payload)
         const { deviceId: initialDeviceId, driverId: initialDriverId, ...createData } = body;
+        createData.status = "active";
+
         const result = await createVehicle(createData).unwrap();
         const newVehicleId = result?.data?._id || result?._id;
 
@@ -425,23 +534,43 @@ export default function VehiclesPage() {
           throw new Error("Vehicle created but no vehicle id was returned.");
         }
 
+        let assignmentMessage = "";
+
         // Step 2 — Assign device via Device Mapping API
         if (initialDeviceId) {
-          await assignDevice({
-            vehicleId: newVehicleId,
-            gpsDeviceId: initialDeviceId as string,
-          }).unwrap();
+          try {
+            await assignDevice({
+              vehicleId: newVehicleId,
+              gpsDeviceId: initialDeviceId as string,
+            }).unwrap();
+          } catch (assignmentError) {
+            assignmentMessage = `Vehicle created, but GPS device assignment failed: ${getApiErrorMessage(
+              assignmentError,
+              "GPS device assignment failed",
+            )}`;
+          }
         }
 
         // Step 3 — Assign driver via Driver Mapping API (only if device was also assigned)
-        if (initialDeviceId && initialDriverId) {
-          await assignDriver({
-            vehicleId: newVehicleId,
-            driverId: initialDriverId as string,
-          }).unwrap();
+        if (!assignmentMessage && initialDeviceId && initialDriverId) {
+          try {
+            await assignDriver({
+              vehicleId: newVehicleId,
+              driverId: initialDriverId as string,
+            }).unwrap();
+          } catch (assignmentError) {
+            assignmentMessage = `Vehicle created, but driver assignment failed: ${getApiErrorMessage(
+              assignmentError,
+              "Driver assignment failed",
+            )}`;
+          }
         }
 
+        await refetchVehicles();
         toast.success("Vehicle created successfully");
+        if (assignmentMessage) {
+          toast.error(assignmentMessage);
+        }
       }
     } catch (err: unknown) {
       toast.error(getApiErrorMessage(err, "Operation failed"));
@@ -710,16 +839,31 @@ export default function VehiclesPage() {
 
   const vehicleSchema = useMemo(() => {
     const base = z.object({
-      organizationId: z.string().optional(),
-      vehicleType: z.enum(["car", "truck", "bus", "bike", "other"]),
-      vehicleNumber: z.string().min(1, "Vehicle number is required"),
+      organizationId: z.preprocess(normalizeOptionalId, z.string().optional()),
+      vehicleType: z
+        .string()
+        .trim()
+        .min(1, "Vehicle type is required")
+        .refine((value) => ["car", "truck", "bus", "bike", "other"].includes(value), {
+          message: "Vehicle type is invalid",
+        }),
+      vehicleNumber: z.string().trim().min(1, "Vehicle number is required"),
       make: z.string().optional(),
       model: z.string().optional(),
-      year: z.string().optional(),
+      year: z.preprocess(
+        normalizeVehicleYear,
+        z
+          .string()
+          .regex(/^\d{4}$/, "Year must be 4 digits")
+          .optional(),
+      ),
       color: z.string().optional(),
-      status: z.enum(["active", "inactive"]).optional(),
-      deviceId: z.string().optional(),
-      driverId: z.string().optional(),
+      status: z.preprocess(
+        normalizeOptionalId,
+        z.enum(["active", "inactive"]).optional(),
+      ),
+      deviceId: z.preprocess(normalizeOptionalId, z.string().optional()),
+      driverId: z.preprocess(normalizeOptionalId, z.string().optional()),
     });
 
     return base.superRefine((val, ctx) => {
@@ -729,8 +873,12 @@ export default function VehiclesPage() {
       if (editingVehicle && !val.status) {
         ctx.addIssue({ code: "custom", path: ["status"], message: "Status is required" });
       }
-      if (val.year && !/^\d{4}$/.test(String(val.year))) {
-        ctx.addIssue({ code: "custom", path: ["year"], message: "Year must be 4 digits" });
+      if (val.driverId && !val.deviceId) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["driverId"],
+          message: "Assign a GPS device before assigning a driver",
+        });
       }
     });
   }, [canSelectOrg, contextOrgId, editingVehicle, orgId]);
@@ -745,7 +893,7 @@ export default function VehiclesPage() {
             model: editingVehicle.model || "",
             year: editingVehicle.year ? String(editingVehicle.year) : "",
             color: editingVehicle.color || "",
-            status: editingVehicle.status,
+            status: editingVehicle.status || "active",
             driverId: getRefId((editingVehicle as any).driverId) || "",
             deviceId: getRefId((editingVehicle as any).deviceId) || "",
           }
@@ -756,7 +904,7 @@ export default function VehiclesPage() {
             model: "",
             year: "",
             color: "",
-            status: "",
+            status: "active",
             deviceId: "",
             driverId: "",
           },
@@ -774,6 +922,7 @@ export default function VehiclesPage() {
       toast.success("Device assigned successfully");
       closePopup("assignDeviceModal");
       setSelectedVehicleForAssignment(null);
+      setSelectedAssignmentDeviceId("");
     } catch (err: any) {
       toast.error(getApiErrorMessage(err, "Assignment failed"));
     }
@@ -808,6 +957,14 @@ export default function VehiclesPage() {
     setFormDeviceId("");
   };
 
+  const openDetailsModal = (id: string) => {
+    setSelectedVehicleId(id);
+  };
+
+  const closeDetailsModal = () => {
+    setSelectedVehicleId(null);
+  };
+
   const handleDelete = async (id: string) => {
     if (confirm("Are you sure you want to delete this vehicle?")) {
       try {
@@ -833,6 +990,7 @@ export default function VehiclesPage() {
 
   const openAssignDeviceModal = (vehicle: Vehicle) => {
     setSelectedVehicleForAssignment(vehicle);
+    setSelectedAssignmentDeviceId("");
     openPopup("assignDeviceModal");
   };
 
@@ -905,6 +1063,12 @@ export default function VehiclesPage() {
       header: "Actions",
       accessor: (row: Vehicle) => (
         <div className="flex gap-2">
+          <button
+            onClick={() => openDetailsModal(row._id)}
+            className="text-slate-700 hover:text-slate-950"
+          >
+            <Eye size={16} />
+          </button>
           {canEditVehicle && (
             <button
               onClick={() => openEditModal(row)}
@@ -1181,9 +1345,88 @@ export default function VehiclesPage() {
             submitLabel={editingVehicle ? "Update Vehicle" : "Create Vehicle"}
           />
         )}
+        <VehicleDetailsModal
+          isOpen={!!selectedVehicleId}
+          onClose={closeDetailsModal}
+          vehicleId={selectedVehicleId || ""}
+          organizationLookup={organizations}
+          deviceLookup={devices}
+        />
       </AdminPageShell>
 
-      {isPopupOpen("assignDeviceModal") && (
+      <SimpleModal
+        isOpen={isPopupOpen("assignDeviceModal")}
+        onClose={() => {
+          closePopup("assignDeviceModal");
+          setSelectedVehicleForAssignment(null);
+          setSelectedAssignmentDeviceId("");
+        }}
+        title="Assign GPS Device"
+        size="small"
+      >
+        <div className="space-y-5 p-4 sm:p-6">
+          <div className="space-y-1">
+            <p className="text-sm text-slate-600">
+              Assign a GPS device to{" "}
+              <strong>{selectedVehicleForAssignment?.vehicleNumber || "selected vehicle"}</strong>
+            </p>
+            <p className="text-xs text-slate-500">
+              Only active unassigned devices from the same organization are shown here.
+            </p>
+          </div>
+
+          {assignmentDeviceOptions.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center">
+              <p className="text-sm font-semibold text-slate-700">
+                No available device for this organization
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                There are no active unassigned GPS devices in this vehicle&apos;s organization.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <label className="block text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
+                Select Device
+              </label>
+              <SearchableEntitySelect
+                value={selectedAssignmentDeviceId}
+                onChange={setSelectedAssignmentDeviceId}
+                options={assignmentDeviceOptions}
+                placeholder="Search device by IMEI or model"
+                searchPlaceholder="Search IMEI, model, or SIM"
+                emptyMessage="No matching devices found for this organization."
+                clearable
+                clearLabel="Clear device"
+              />
+            </div>
+          )}
+
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                closePopup("assignDeviceModal");
+                setSelectedVehicleForAssignment(null);
+                setSelectedAssignmentDeviceId("");
+              }}
+              className="flex-1 rounded-xl bg-slate-100 py-2.5 text-xs font-black uppercase tracking-widest text-slate-700 hover:bg-slate-200"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => handleAssignDevice(selectedAssignmentDeviceId)}
+              disabled={!selectedAssignmentDeviceId}
+              className="flex-1 rounded-xl bg-slate-950 py-2.5 text-xs font-black uppercase tracking-widest text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+            >
+              Assign Device
+            </button>
+          </div>
+        </div>
+      </SimpleModal>
+
+      {false && isPopupOpen("assignDeviceModal") && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/50 p-2 backdrop-blur-sm sm:items-center sm:p-4">
           <div className="max-h-[min(100dvh-1rem,90vh)] w-full max-w-md overflow-y-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl sm:p-6">
             <h2 className="text-xl text-slate-900 font-bold mb-4">Assign GPS Device</h2>

@@ -43,6 +43,13 @@ router.get(
   Controller.getManagerByOrganization
 );
 
+router.get(
+  "/:id",
+  verifyToken,
+  checkAuthorization(["admin", "superadmin"], "users", "read"),
+  Controller.getById
+);
+
 // CREATE USER
 router.post(
   "/",

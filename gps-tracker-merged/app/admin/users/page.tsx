@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import Table from "@/components/ui/Table";
 import Pagination from "@/components/ui/Pagination";
 import ApiErrorBoundary from "@/components/admin/ErrorBoundary/ApiErrorBoundary";
-import { Plus, Edit, Trash2, Filter } from "lucide-react";
+import { Plus, Edit, Trash2, Filter, Eye } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
 import {
@@ -28,6 +28,7 @@ import AdminLoadingState from "@/components/admin/UI/AdminLoadingState";
 import AdminPageHeader from "@/components/admin/UI/AdminPageHeader";
 import AdminPageShell from "@/components/admin/UI/AdminPageShell";
 import AdminSectionCard from "@/components/admin/UI/AdminSectionCard";
+import UserDetailsModal from "@/components/admin/Modals/UserDetailsModal";
 
 import ImportExportButton from "@/components/admin/import-export/ImportExportButton";
 import {
@@ -88,6 +89,7 @@ export default function UsersPage() {
   });
 
   const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
 
   // API Hooks - Conditionally fetch users
   // If organizationId filter is set, use the dedicated endpoint
@@ -390,6 +392,14 @@ export default function UsersPage() {
     setEditingUser(null);
   };
 
+  const openDetailsModal = (id: string) => {
+    setSelectedUserId(id);
+  };
+
+  const closeDetailsModal = () => {
+    setSelectedUserId(null);
+  };
+
   const handleDelete = async (id: string) => {
     const user = users.find((u) => u._id === id);
     if (user?.role === "superadmin") {
@@ -460,6 +470,12 @@ export default function UsersPage() {
       header: "Actions",
       accessor: (row: any) => (
         <div className="flex gap-2">
+          <button
+            onClick={() => openDetailsModal(row._id)}
+            className="text-slate-700 hover:text-slate-950"
+          >
+            <Eye size={16} />
+          </button>
           {canEditUser && (
             <button
               onClick={() => openEditModal(row)}
@@ -802,6 +818,11 @@ export default function UsersPage() {
             submitLabel={editingUser ? "Update User" : "Create User"}
           />
         )}
+        <UserDetailsModal
+          isOpen={!!selectedUserId}
+          onClose={closeDetailsModal}
+          userId={selectedUserId || ""}
+        />
       </AdminPageShell>
     </ApiErrorBoundary>
   );

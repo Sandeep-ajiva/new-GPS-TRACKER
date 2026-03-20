@@ -123,6 +123,7 @@ export const adminNotificationsApi = baseApi.injectEndpoints({
 
 export const {
   useGetAdminNotificationsQuery,
+  useLazyGetAdminNotificationsQuery,
   useGetAdminNotificationCountsQuery,
   useMarkAdminNotificationAsReadMutation,
   useMarkAdminNotificationAsAcknowledgedMutation,

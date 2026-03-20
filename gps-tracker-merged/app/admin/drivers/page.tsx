@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import Table from "@/components/ui/Table";
 import Pagination from "@/components/ui/Pagination";
 import ApiErrorBoundary from "@/components/admin/ErrorBoundary/ApiErrorBoundary";
-import { Plus, Edit, Trash2, Filter, User, Phone, Mail, IdCard, Calendar, CheckCircle } from "lucide-react";
+import { Plus, Edit, Trash2, Filter, User, Phone, Mail, IdCard, Calendar, CheckCircle, Eye } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
 import {
@@ -29,6 +29,7 @@ import AdminSectionCard from "@/components/admin/UI/AdminSectionCard";
 // 🔐 ORG CONTEXT UPDATE
 import { useOrgContext } from "@/hooks/useOrgContext";
 import ImportExportButton from "@/components/admin/import-export/ImportExportButton";
+import DriverDetailsModal from "@/components/admin/Modals/DriverDetailsModal";
 
 export default function DriversPage() {
     const { openPopup, closePopup, isPopupOpen } = usePopups();
@@ -61,6 +62,7 @@ export default function DriversPage() {
     });
 
     const [editingDriver, setEditingDriver] = useState<any>(null);
+    const [selectedDriverId, setSelectedDriverId] = useState<string | null>(null);
 
     const driverQueryParams = useMemo(() => ({
         page: page - 1,
@@ -303,6 +305,14 @@ export default function DriversPage() {
         setEditingDriver(null);
     };
 
+    const openDetailsModal = (id: string) => {
+        setSelectedDriverId(id);
+    };
+
+    const closeDetailsModal = () => {
+        setSelectedDriverId(null);
+    };
+
     const handleDelete = async (id: string) => {
         if (confirm("Are you sure you want to delete this driver?")) {
             try {
@@ -391,6 +401,12 @@ export default function DriversPage() {
             header: "Actions",
             accessor: (row: any) => (
                 <div className="flex gap-2">
+                    <button
+                        onClick={() => openDetailsModal(row._id)}
+                        className="text-slate-700 hover:text-slate-950 p-1"
+                    >
+                        <Eye size={16} />
+                    </button>
                     {canEditDriver && (
                         <button
                             onClick={() => openEditModal(row)}
@@ -665,6 +681,11 @@ export default function DriversPage() {
                         submitLabel={editingDriver ? "Update Driver" : "Create Driver"}
                     />
                 )}
+                <DriverDetailsModal
+                    isOpen={!!selectedDriverId}
+                    onClose={closeDetailsModal}
+                    driverId={selectedDriverId || ""}
+                />
             </AdminPageShell>
         </ApiErrorBoundary>
     );

@@ -134,10 +134,18 @@ export function DynamicModal({
         const result = validateWithZod(schema, formData);
         if (!result.success) {
           setFieldErrors(result.errors);
+          setApiError("Please fix the highlighted fields and try again.");
           setIsSaving(false);
           return;
         }
+
+        await onSubmit(
+          result.data as unknown as Record<string, string | number | boolean | File>,
+        );
+        onClose();
+        return;
       }
+
       await onSubmit(formData);
       onClose();
     } catch (err: unknown) {
@@ -505,7 +513,7 @@ export function DynamicModal({
         </div>
 
         {/* Body */}
-        <form onSubmit={handleSubmit} className="overflow-y-auto p-3 pb-4 sm:p-3.5 sm:pb-4 space-y-3.5">
+        <form noValidate onSubmit={handleSubmit} className="overflow-y-auto p-3 pb-4 sm:p-3.5 sm:pb-4 space-y-3.5">
           {/* ── Inline API error ── */}
           {apiError && (
             <div className={cn(

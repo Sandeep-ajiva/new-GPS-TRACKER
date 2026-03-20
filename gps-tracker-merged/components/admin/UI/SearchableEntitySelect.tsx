@@ -172,7 +172,7 @@ export default function SearchableEntitySelect({
         <div
           ref={panelRef}
           className={cn(
-            "fixed z-[180] overflow-hidden rounded-2xl border shadow-[0_22px_50px_rgba(15,23,42,0.18)]",
+            "fixed z-[240] overflow-hidden rounded-2xl border shadow-[0_22px_50px_rgba(15,23,42,0.18)]",
             isDark
               ? "border-slate-800 bg-slate-900 text-slate-100"
               : "border-slate-200 bg-white text-slate-900",

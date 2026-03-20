@@ -1,7 +1,7 @@
 "use client";
 
 import { ReactNode, useEffect, useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import Table from "@/components/ui/Table";
 import Pagination from "@/components/ui/Pagination";
 import ApiErrorBoundary from "@/components/admin/ErrorBoundary/ApiErrorBoundary";
@@ -26,6 +26,7 @@ import AdminLoadingState from "@/components/admin/UI/AdminLoadingState";
 import AdminPageHeader from "@/components/admin/UI/AdminPageHeader";
 import AdminPageShell from "@/components/admin/UI/AdminPageShell";
 import AdminSectionCard from "@/components/admin/UI/AdminSectionCard";
+import OrganizationDetailsModal from "@/components/admin/Modals/OrganizationDetailsModal";
 
 /* ================= TYPES ================= */
 
@@ -56,7 +57,6 @@ type OrganizationTableColumn = {
 /* ================= PAGE ================= */
 
 export default function OrganizationsPage() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const searchQueryParam = searchParams.get("search");
 
@@ -88,6 +88,7 @@ export default function OrganizationsPage() {
   ---------------------------------------- */
   const [editingOrg, setEditingOrg] = useState<Organization | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedOrganizationId, setSelectedOrganizationId] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(!!searchQueryParam);
   const [filters, setFilters] = useState({
     name: searchQueryParam || "",
@@ -173,6 +174,14 @@ export default function OrganizationsPage() {
   const closeModal = () => {
     setEditingOrg(null);
     setIsModalOpen(false);
+  };
+
+  const openDetailsModal = (id: string) => {
+    setSelectedOrganizationId(id);
+  };
+
+  const closeDetailsModal = () => {
+    setSelectedOrganizationId(null);
   };
 
   /* ---------------------------------------
@@ -273,7 +282,8 @@ export default function OrganizationsPage() {
       accessor: (row: Organization) => (
         <div className="flex gap-2">
           <button
-            onClick={() => router.push(`/admin?organizationId=${row._id}`)}
+            onClick={() => openDetailsModal(row._id)}
+            className="text-slate-700 hover:text-slate-950"
           >
             <Eye size={16} />
           </button>
@@ -467,6 +477,12 @@ export default function OrganizationsPage() {
         }
         onSubmit={handleSubmit}
         submitLabel={editingOrg ? "Update" : "Create"}
+      />
+      <OrganizationDetailsModal
+        isOpen={!!selectedOrganizationId}
+        onClose={closeDetailsModal}
+        organizationId={selectedOrganizationId || ""}
+        organizationLookup={allOrganizations}
       />
       </AdminPageShell>
     </ApiErrorBoundary >
