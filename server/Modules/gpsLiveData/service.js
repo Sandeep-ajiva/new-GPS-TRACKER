@@ -222,7 +222,7 @@ const Service = {
       /* 6️⃣ GPS HISTORY (THROTTLED)                                           */
       /* ------------------------------------------------------------------ */
 
-       const historyKey = `gps_history:${imei}`;
+      const historyKey = `gps_history:${imei}`;
       let lastSavedRaw = null;
       try {
         lastSavedRaw = await redisClient.get(historyKey);
@@ -327,18 +327,18 @@ const Service = {
           });
 
           // Store last-saved packet metadata in Redis for override comparisons
-          await redisClient.setex(
-            historyKey,
-            3600,
-            JSON.stringify({
+          try {
+            await redisClient.setex(historyKey, 3600, JSON.stringify({
               t: packetMs,
               speed,
               heading,
               ignition,
               lat: latitude,
               lng: longitude,
-            }),
-          );
+            }));
+          } catch (redisErr) {
+            console.warn("Redis write (history) failed:", redisErr.message);
+          }
         } catch (histErr) {
           // Silently skip duplicate-key errors (E11000) from unique index
           if (histErr.code !== 11000) throw histErr;
@@ -463,14 +463,21 @@ const Service = {
 
         try {
           const orgCacheKey = `org_settings:${organizationId}`;
-          let orgSettings = await redisClient.get(orgCacheKey);
+          let orgSettings = null;
+          try {
+            orgSettings = await redisClient.get(orgCacheKey);
+          } catch (redisErr) {
+            console.warn("Redis read (org settings) failed:", redisErr.message);
+          }
 
           if (!orgSettings) {
             const org = await Organization.findById(organizationId)
               .select("settings")
               .lean();
             orgSettings = org?.settings || {};
-            await redisClient.setex(orgCacheKey, 60, JSON.stringify(orgSettings));
+            try {
+              await redisClient.setex(orgCacheKey, 60, JSON.stringify(orgSettings));
+            } catch { }
           } else {
             orgSettings = JSON.parse(orgSettings);
           }

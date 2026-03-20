@@ -39,6 +39,8 @@ import { DaywiseDistancePage } from "@/components/dashboard/modules/analytics/Da
 import { ACSummaryPage } from "@/components/dashboard/modules/analytics/ACSummaryPage"
 import { X } from "lucide-react"
 import { ReportsModal } from "@/components/dashboard/modules/ReportsModal"
+import { HealthMonitoringPage } from "@/components/dashboard/modules/analytics/HealthMonitoringPage"
+
 
 type LiveGpsItem = {
   vehicleId?: string | { _id?: string }
@@ -993,6 +995,14 @@ setLiveByVehicleId((prev) => {
                 {activeTab === "Vehicle Status" && <VehicleStatusPage organizations={organizations} vehicles={uiVehicles} userRole={userRole} userOrgId={userOrgId} />}
                 {activeTab === "Alert Summary" && <AlertSummaryPage organizations={organizations} vehicles={allVehicles} userRole={userRole} userOrgId={userOrgId} />}
                 {activeTab === "AC Summary" && <ACSummaryPage organizations={organizations} vehicles={allVehicles} userRole={userRole} userOrgId={userOrgId} />}
+                {activeTab === "Health Monitoring" && (
+                    <HealthMonitoringPage
+                      organizations={organizations}
+                      vehicles={allVehicles}
+                      userRole={userRole}
+                      userOrgId={userOrgId}
+                    />
+                  )}
                 {["Tour", "App Config", "Sys Config", "User Rights"].includes(activeTab) && (
                   <div className="flex h-64 flex-col items-center justify-center italic text-slate-500">
                     <LayoutDashboard className="mb-4 h-12 w-12 opacity-20" />

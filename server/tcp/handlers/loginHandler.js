@@ -46,7 +46,7 @@ module.exports = async function loginHandler(socket, packet) {
     const device = await GpsDevice.findOne({ imei });
 
     console.log(
-      "🧪 DEVICE FOUND:",
+      "🧪 DEVICE FOUND:", 
       device
         ? {
           imei: device.imei,

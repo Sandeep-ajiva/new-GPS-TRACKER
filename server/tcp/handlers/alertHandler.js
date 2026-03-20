@@ -58,17 +58,28 @@ module.exports = async function alertHandler(socket, packet) {
      * Expected:
      * $ALT,IMEI,alertIdentifier,latValue,latDir,lngValue,lngDir,speed,heading,severity,message
      */
-    const imei = parts[1];
-    const alertIdentifier = (parts[2] || "").toLowerCase();
-    const latValue = parts[3];
-    const latDir = parts[4];
-    const lngValue = parts[5];
-    const lngDir = parts[6];
+  // AIS-140 $ALT field order (same as $NRM):
+    // parts[1]=VendorID, parts[2]=SoftwareVersion, parts[3]=PacketType
+    // parts[4]=AlertID, parts[5]=PacketStatus, parts[6]=IMEI
+    // parts[7]=VehicleReg, parts[8]=GPSFix, parts[9]=Date, parts[10]=Time
+    // parts[11]=Lat, parts[12]=LatDir, parts[13]=Lng, parts[14]=LngDir
+    // parts[15]=Speed, parts[16]=Heading
+
     const safeNum = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
-    const speed = safeNum(parts[7]);
-    const heading = safeNum(parts[8]);
-    const severity = parts[9] || "info";
-    const message = parts[10] || "";
+
+    const packetType     = parts[3] || "";
+    const alertIdentifier = packetType.toLowerCase();
+    const imei           = parts[6];
+    const gpsFix         = parts[8];
+    const gpsValid       = gpsFix === "1";
+    const latValue       = parts[11];
+    const latDir         = parts[12];
+    const lngValue       = parts[13];
+    const lngDir         = parts[14];
+    const speed          = safeNum(parts[15]);
+    const heading        = safeNum(parts[16]);
+    const severity       = "warning";
+    const message        = "";
 
     const alertInfo = ALERT_MAP[alertIdentifier] || {
       alertId: 1,

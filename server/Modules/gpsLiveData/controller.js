@@ -15,7 +15,6 @@ class AIS140PacketParser {
     }
 
     rawPacket = rawPacket.trim();
-    const packetType = rawPacket.substring(1, 3);
     const parts = rawPacket.split(",");
 
     let checksum = null;
@@ -24,6 +23,10 @@ class AIS140PacketParser {
       parts[parts.length - 1] = last;
       checksum = cs;
     }
+
+    // AIS-140: packetType is at parts[3] (NR/EA/TA/HP/IN/IF)
+    // Header is always $NRM for location packets
+    const packetType = (parts[3] || "").trim().toUpperCase();
 
     switch (packetType) {
       case "NR":
@@ -43,82 +46,109 @@ class AIS140PacketParser {
       case "HP":
         return { ...this.parseNR(parts, checksum), packetType: "HP" };
       case "IN":
+        return { ...this.parseNR(parts, checksum), packetType: "IN", ignitionStatus: true };
       case "IF":
-        return this.parseIgnition(parts, checksum, packetType);
+        return { ...this.parseNR(parts, checksum), packetType: "IF", ignitionStatus: false };
       default:
-        return { ...this.parseNR(parts, checksum), packetType };
+        return { ...this.parseNR(parts, checksum), packetType: packetType || "NR" };
     }
   }
 
-  static parseNR(parts, checksum) {
-    const speed = this.parseNumber(parts[8], 0);
-    const statusField = typeof parts[16] === "string" ? parts[16] : "";
-    const ignitionStatus = statusField.charAt(3) === "1";
-    const acStatus = statusField.charAt(4) === "1";
-    const mainPowerBit = statusField.charAt(5);
+ static parseNR(parts, checksum) {
+    // ─── AIS-140 OFFICIAL FIELD INDICES ───
+    // parts[0]  = $NRM
+    // parts[1]  = VendorID
+    // parts[2]  = SoftwareVersion
+    // parts[3]  = PacketType (NR/EA/TA/HP/IN/IF)
+    // parts[4]  = AlertID
+    // parts[5]  = PacketStatus (L/H)
+    // parts[6]  = IMEI
+    // parts[7]  = VehicleRegNo
+    // parts[8]  = GPSFix (1=valid, 0=invalid)
+    // parts[9]  = Date (DDMMYYYY)
+    // parts[10] = Time (HHMMSS)
+    // parts[11] = Latitude
+    // parts[12] = LatDir (N/S)
+    // parts[13] = Longitude
+    // parts[14] = LngDir (E/W)
+    // parts[15] = Speed
+    // parts[16] = Heading
+    // parts[17] = NumSatellites
+    // parts[18] = Altitude
+    // parts[19] = PDOP
+    // parts[20] = HDOP
+    // parts[21] = OperatorName
+    // parts[22] = Ignition (1/0)
+    // parts[23] = MainPowerStatus (1/0)
+    // parts[24] = MainInputVoltage
+    // parts[25] = InternalBatteryVoltage
+    // parts[26] = EmergencyStatus (0/1)
+    // parts[27] = TamperAlert (O/C)
+    // parts[28] = GSMStrength
+    // parts[29] = MCC
+    // parts[30] = MNC
 
-    const mainInputVoltage = this.parseOptionalNumber(parts[18]);
-    const internalBatteryVoltage = this.parseOptionalNumber(parts[19]);
-    const batteryLevel = this.parseOptionalNumber(parts[20]);
-    const gsmSignalStrength = this.parseOptionalNumber(parts[21]);
-    const fuelPercentage = this.parseOptionalNumber(parts[22]);
-    const temperature =
-      typeof parts[23] === "string" && parts[23].trim()
-        ? parts[23].trim()
+    const gpsFix = parts[8];
+    const gpsValid = gpsFix === "1";
+
+    const speed = this.parseNumber(parts[15], 0);
+    const ignitionStatus = parts[22] === "1";
+    const mainPowerStatus = parts[23] === "1"
+      ? true
+      : parts[23] === "0"
+        ? false
         : null;
 
-    const mainPowerStatus =
-      mainPowerBit === "1"
-        ? true
-        : mainInputVoltage === null
-          ? null
-          : mainInputVoltage > 10.5;
+    const mainInputVoltage        = this.parseOptionalNumber(parts[24]);
+    const internalBatteryVoltage  = this.parseOptionalNumber(parts[25]);
+    const batteryLevel            = this.parseOptionalNumber(parts[35]);
+    const gsmSignalStrength       = this.parseOptionalNumber(parts[28]);
+    const fuelPercentage          = this.parseOptionalNumber(parts[36]);
+    const temperature             = typeof parts[37] === "string" && parts[37].trim()
+      ? parts[37].trim()
+      : null;
+
+    // Only parse coordinates if GPS fix is valid
+    const latitude  = gpsValid ? this.parseCoordinate(parts[11], parts[12]) : null;
+    const longitude = gpsValid ? this.parseCoordinate(parts[13], parts[14]) : null;
 
     return {
-      packetType: "NR",
-      imei: parts[1],
-      gpsDate: parts[2],
-      gpsTime: parts[3],
-      latitude: this.parseCoordinate(parts[4], parts[5]),
-      latitudeDirection: parts[5] || null,
-      longitude: this.parseCoordinate(parts[6], parts[7]),
-      longitudeDirection: parts[7] || null,
-      currentSpeed: speed,
-      heading: this.parseNumber(parts[9], 0),
-      numberOfSatellites: this.parseNumber(parts[10], 0),
-      altitude: this.parseOptionalNumber(parts[11]),
-      pdop: this.parseOptionalNumber(parts[12]),
-      hdop: this.parseOptionalNumber(parts[13]),
-      operatorName:
-        typeof parts[14] === "string" && parts[14].trim()
-          ? parts[14].trim()
-          : null,
-      mcc:
-        typeof parts[15] === "string" && parts[15].trim()
-          ? parts[15].trim()
-          : null,
+      packetType:            parts[3] || "NR",
+      alertId:               this.parseOptionalNumber(parts[4]),
+      packetStatus:          parts[5] || "L",
+      imei:                  parts[6],
+      vehicleRegNo:          parts[7] || null,
+      gpsFix:                gpsValid,
+      gpsDate:               parts[9],
+      gpsTime:               parts[10],
+      latitude,
+      latitudeDirection:     parts[12] || null,
+      longitude,
+      longitudeDirection:    parts[14] || null,
+      currentSpeed:          speed,
+      heading:               this.parseNumber(parts[16], 0),
+      numberOfSatellites:    this.parseNumber(parts[17], 0),
+      altitude:              this.parseOptionalNumber(parts[18]),
+      pdop:                  this.parseOptionalNumber(parts[19]),
+      hdop:                  this.parseOptionalNumber(parts[20]),
+      operatorName:          typeof parts[21] === "string" && parts[21].trim() ? parts[21].trim() : null,
       ignitionStatus,
-      acStatus,
       mainPowerStatus,
-      digitalInputStatus: statusField || null,
-      currentMileage: this.parseNumber(parts[17], 0),
       mainInputVoltage,
       internalBatteryVoltage,
-      batteryLevel,
+      emergencyStatus:       parts[26] === "1",
+      tamperAlert:           parts[27] || "C",
       gsmSignalStrength,
+      mcc:                   typeof parts[29] === "string" && parts[29].trim() ? parts[29].trim() : null,
+      batteryLevel,
+      gsmStrength:           gsmSignalStrength,
       fuelPercentage,
       temperature,
-      gpsTimestamp: this.parseGpsTimestamp(parts[2], parts[3]),
-      movementStatus: this.getMovement(speed, ignitionStatus),
+      digitalInputStatus:    parts[33] || null,
+      currentMileage:        this.parseNumber(parts[39], 0),
+      gpsTimestamp:          this.parseGpsTimestamp(parts[9], parts[10]),
+      movementStatus:        this.getMovement(speed, ignitionStatus),
       checksum,
-    };
-  }
-
-  static parseIgnition(parts, checksum, type) {
-    return {
-      ...this.parseNR(parts, checksum),
-      packetType: type,
-      ignitionStatus: type === "IN",
     };
   }
 
@@ -146,9 +176,12 @@ class AIS140PacketParser {
   static parseGpsTimestamp(date, time) {
     try {
       if (!date || !time || date.length < 6 || time.length < 6) return new Date();
-      const d = parseInt(date.slice(0, 2), 10);
+      const d  = parseInt(date.slice(0, 2), 10);
       const mo = parseInt(date.slice(2, 4), 10) - 1;
-      const y = 2000 + parseInt(date.slice(4, 6), 10);
+      // AIS-140 spec: DDMMYYYY (8 digits) — last 4 digits are full year
+      const y  = date.length >= 8
+        ? parseInt(date.slice(4, 8), 10)
+        : 2000 + parseInt(date.slice(4, 6), 10);
       const h = parseInt(time.slice(0, 2), 10);
       const mi = parseInt(time.slice(2, 4), 10);
       const s = parseInt(time.slice(4, 6), 10);
