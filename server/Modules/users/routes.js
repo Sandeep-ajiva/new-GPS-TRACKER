@@ -47,6 +47,7 @@ router.get(
   "/:id",
   verifyToken,
   checkAuthorization(["admin", "superadmin"], "users", "read"),
+  checkOrganization,
   Controller.getById
 );
 

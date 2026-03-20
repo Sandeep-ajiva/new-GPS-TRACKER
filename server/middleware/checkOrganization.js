@@ -1,4 +1,6 @@
+const { default: mongoose } = require("mongoose");
 const Organization = require("../Modules/organizations/model");
+
 
 module.exports = async function checkOrganization(req, res, next) {
   try {
@@ -42,7 +44,7 @@ module.exports = async function checkOrganization(req, res, next) {
       path: { $regex: regex },
     }).select("_id");
 
-    req.orgScope = orgs.map((o) => o._id.toString());
+   req.orgScope = orgs.map(o => new mongoose.Types.ObjectId(o._id));
 
     next();
   } catch (error) {
