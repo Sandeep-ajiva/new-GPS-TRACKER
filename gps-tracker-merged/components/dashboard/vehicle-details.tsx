@@ -1,9 +1,10 @@
 "use client";
 
 import { useMemo } from "react";
-import { CheckCircle2, Gauge, Navigation, User } from "lucide-react";
+import { Activity, AlertTriangle, Battery, CheckCircle2, Cpu, Gauge, Navigation, User } from "lucide-react";
 import type { Vehicle } from "@/lib/vehicles";
 import type { VehiclePositions } from "@/lib/use-vehicle-positions";
+import { useGetVehicleLatestHealthQuery } from "@/redux/api/healthMonitoringApi";
 
 type DailyStats = {
     totalDistance?: number
@@ -85,6 +86,12 @@ export function VehicleDetails({
         () => selectedVehicleObj || vehicles.find((item) => item.id === vehicleId) || null,
         [selectedVehicleObj, vehicles, vehicleId]
     );
+    const { data: healthRes } = useGetVehicleLatestHealthQuery(vehicleId || "", {
+        skip: !vehicleId,
+        pollingInterval: 60000,
+        refetchOnMountOrArgChange: true,
+    });
+    const health = healthRes?.data || null;
 
     const orderedAlerts = useMemo(
         () =>
@@ -286,6 +293,153 @@ export function VehicleDetails({
                     <MetricBox label="POI" value={vehicle.poi || "-"} />
                 </div>
             </div>
+            {/* ── Device Health (from $HLM packets) ── */}
+            {health && (
+                <div className="rounded-[22px] border border-[#dbe7d4] bg-white p-4 shadow-sm">
+                    <div className="mb-4 flex items-center justify-between">
+                        <SectionPill color="#7c3aed" title="Device Health" />
+                        <span className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
+                            {health.timestamp
+                                ? `Last: ${new Date(health.timestamp).toLocaleTimeString("en-GB")}`
+                                : "Live"}
+                        </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
+                        {/* Battery % */}
+                        <div className="rounded-xl border border-[#dbe7d4] bg-[#f8fcf7] p-3">
+                            <div className="flex items-center gap-1.5 mb-2">
+                                <Battery size={12} className={
+                                    (health.batteryPercentage ?? 100) <= (health.lowBatteryThreshold ?? 20)
+                                        ? "text-red-500"
+                                        : "text-[#2f8d35]"
+                                } />
+                                <p className="text-[9px] font-black uppercase tracking-[0.18em] text-slate-400">
+                                    HLM Battery
+                                </p>
+                            </div>
+                            {health.batteryPercentage !== undefined ? (
+                                <>
+                                    <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden mb-1">
+                                        <div
+                                            className={`h-full rounded-full ${
+                                                health.batteryPercentage <= (health.lowBatteryThreshold ?? 20)
+                                                    ? "bg-red-500"
+                                                    : health.batteryPercentage <= 40
+                                                        ? "bg-amber-500"
+                                                        : "bg-[#38a63c]"
+                                            }`}
+                                            style={{ width: `${health.batteryPercentage}%` }}
+                                        />
+                                    </div>
+                                    <p className={`text-base font-black ${
+                                        health.batteryPercentage <= (health.lowBatteryThreshold ?? 20)
+                                            ? "text-red-600"
+                                            : "text-slate-900"
+                                    }`}>
+                                        {health.batteryPercentage}%
+                                        {health.batteryPercentage <= (health.lowBatteryThreshold ?? 20) && (
+                                            <AlertTriangle size={11} className="inline ml-1 text-red-500" />
+                                        )}
+                                    </p>
+                                </>
+                            ) : (
+                                <p className="text-sm font-bold text-slate-400">N/A</p>
+                            )}
+                        </div>
+
+                        {/* Memory % */}
+                        <div className="rounded-xl border border-[#dbe7d4] bg-[#f8fcf7] p-3">
+                            <div className="flex items-center gap-1.5 mb-2">
+                                <Cpu size={12} className={
+                                    (health.memoryPercentage ?? 0) >= 80 ? "text-amber-500" : "text-[#2f8d35]"
+                                } />
+                                <p className="text-[9px] font-black uppercase tracking-[0.18em] text-slate-400">
+                                    Memory
+                                </p>
+                            </div>
+                            {health.memoryPercentage !== undefined ? (
+                                <>
+                                    <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden mb-1">
+                                        <div
+                                            className={`h-full rounded-full ${
+                                                health.memoryPercentage >= 90
+                                                    ? "bg-red-500"
+                                                    : health.memoryPercentage >= 70
+                                                        ? "bg-amber-500"
+                                                        : "bg-blue-500"
+                                            }`}
+                                            style={{ width: `${health.memoryPercentage}%` }}
+                                        />
+                                    </div>
+                                    <p className={`text-base font-black ${
+                                        health.memoryPercentage >= 80 ? "text-amber-600" : "text-slate-900"
+                                    }`}>
+                                        {health.memoryPercentage}%
+                                    </p>
+                                </>
+                            ) : (
+                                <p className="text-sm font-bold text-slate-400">N/A</p>
+                            )}
+                        </div>
+
+                        {/* Firmware */}
+                        <div className="rounded-xl border border-[#dbe7d4] bg-[#f8fcf7] p-3">
+                            <div className="flex items-center gap-1.5 mb-2">
+                                <Activity size={12} className="text-[#2f8d35]" />
+                                <p className="text-[9px] font-black uppercase tracking-[0.18em] text-slate-400">
+                                    Firmware
+                                </p>
+                            </div>
+                            <p className="text-sm font-black font-mono text-slate-900">
+                                {health.softwareVersion || "N/A"}
+                            </p>
+                            {health.vendorId && (
+                                <p className="text-[10px] text-slate-400 mt-0.5">{health.vendorId}</p>
+                            )}
+                        </div>
+
+                        {/* Update Rate IGN ON */}
+                        <div className="rounded-xl border border-[#dbe7d4] bg-[#f8fcf7] p-3">
+                            <p className="text-[9px] font-black uppercase tracking-[0.18em] text-slate-400 mb-2">
+                                Rate (IGN ON)
+                            </p>
+                            <p className="text-base font-black text-slate-900">
+                                {health.dataUpdateRateIgnitionOn !== undefined
+                                    ? `${health.dataUpdateRateIgnitionOn}s`
+                                    : "N/A"}
+                            </p>
+                        </div>
+
+                        {/* Update Rate IGN OFF */}
+                        <div className="rounded-xl border border-[#dbe7d4] bg-[#f8fcf7] p-3">
+                            <p className="text-[9px] font-black uppercase tracking-[0.18em] text-slate-400 mb-2">
+                                Rate (IGN OFF)
+                            </p>
+                            <p className="text-base font-black text-slate-900">
+                                {health.dataUpdateRateIgnitionOff !== undefined
+                                    ? `${health.dataUpdateRateIgnitionOff}s`
+                                    : "N/A"}
+                            </p>
+                        </div>
+
+                        {/* Digital I/O */}
+                        <div className="rounded-xl border border-[#dbe7d4] bg-[#f8fcf7] p-3">
+                            <p className="text-[9px] font-black uppercase tracking-[0.18em] text-slate-400 mb-2">
+                                Digital I/O
+                            </p>
+                            <p className="text-sm font-black font-mono text-slate-900">
+                                {health.digitalInputStatus || "0000"}
+                            </p>
+                            {health.analogInputStatus && (
+                                <p className="text-[10px] text-slate-400 font-mono mt-0.5">
+                                    A: {health.analogInputStatus}
+                                </p>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

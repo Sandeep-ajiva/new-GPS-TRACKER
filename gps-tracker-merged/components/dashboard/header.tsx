@@ -201,6 +201,7 @@ export function Header({
                 { label: "Vehicle Status", tabName: "Vehicle Status", icon: LayoutDashboard },
                 { label: "Alert Summary", tabName: "Alert Summary", icon: LayoutDashboard },
                 { label: "Daywise Distance", tabName: "Daywise Distance", icon: LayoutDashboard },
+                { label: "DHealth Monitoring", tabName: "Health Monitoring", icon: LayoutDashboard },
             ],
         })
 

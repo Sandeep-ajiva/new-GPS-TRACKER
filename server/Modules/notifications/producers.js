@@ -38,8 +38,18 @@ const normalizeId = (value) => {
     const stringValue = String(value).trim();
     return stringValue || null;
   }
-  if (typeof value === "object" && value._id) {
-    return normalizeId(value._id);
+  if (typeof value === "object") {
+    // Mongoose ObjectId — directly convert to string
+    if (typeof value.toHexString === "function") {
+      return value.toHexString();
+    }
+    // Plain object with _id — but avoid infinite loop
+    if (value._id && typeof value._id !== "object") {
+      return String(value._id).trim() || null;
+    }
+    if (value._id && typeof value._id.toHexString === "function") {
+      return value._id.toHexString();
+    }
   }
   return null;
 };
@@ -397,7 +407,7 @@ const createNotificationFromAlert = async (alert, contextInput = {}) => {
     },
   );
 
-  if (result.status === "created") {
+  if (result.status === "created" && alertId) {
     await Alert.updateOne(
       { _id: alertId },
       {

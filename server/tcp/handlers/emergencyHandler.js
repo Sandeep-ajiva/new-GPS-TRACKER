@@ -37,15 +37,29 @@ module.exports = async function emergencyHandler(socket, packet) {
      * Expected:
      * $EPB,IMEI,STATE(ON/OFF),latValue,latDir,lngValue,lngDir,speed,heading
      */
-    const imei = parts[1];
-    const state = (parts[2] || "ON").toUpperCase();
-    const latValue = parts[3];
-    const latDir = parts[4];
-    const lngValue = parts[5];
-    const lngDir = parts[6];
+  //  AIS-140 $EPB field order:
+  //   parts[0]=$EPB, parts[1]=PacketType(EMR/SEM)
+  //   parts[2]=IMEI, parts[3]=PacketStatus(NM/SP)
+  //   parts[4]=Date(DDMMYYYY), parts[5]=Time(HHMMSS)
+  //   parts[6]=GPSFix(A=valid/V=invalid)
+  //   parts[7]=Latitude, parts[8]=LatDir
+  //   parts[9]=Longitude, parts[10]=LngDir
+  //   parts[11]=Altitude, parts[12]=Speed
+
     const safeNum = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
-    const speed = safeNum(parts[7]);
-    const heading = safeNum(parts[8]);
+
+    const packetSubType = (parts[1] || "EMR").toUpperCase();
+    const imei          = parts[2];
+    const packetStatus  = parts[3] || "NM";
+    const gpsFix        = parts[6];
+    const gpsValid      = gpsFix === "A";
+    const latValue      = parts[7];
+    const latDir        = parts[8];
+    const lngValue      = parts[9];
+    const lngDir        = parts[10];
+    const speed         = safeNum(parts[12]);
+    const heading       = 0;
+    const state         = packetSubType === "SEM" ? "OFF" : "ON";
 
     const latitude = parseNmeaCoordinate(latValue, latDir);
     const longitude = parseNmeaCoordinate(lngValue, lngDir);
