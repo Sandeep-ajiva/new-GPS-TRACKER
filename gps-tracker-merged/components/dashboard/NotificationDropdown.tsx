@@ -356,7 +356,7 @@ export function NotificationDropdown({ isOpen, onClose }: NotificationDropdownPr
             className="w-full font-semibold text-slate-800 hover:text-slate-950"
             onClick={() => {
               onClose();
-              router.push("/dashboard/alerts");
+              router.push("/dashboard/notifications");
             }}
           >
             View all notifications

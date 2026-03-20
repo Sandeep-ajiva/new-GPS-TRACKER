@@ -37,8 +37,11 @@ import { VehicleStatusPage } from "@/components/dashboard/modules/analytics/Vehi
 import { AlertSummaryPage } from "@/components/dashboard/modules/analytics/AlertSummaryPage"
 import { DaywiseDistancePage } from "@/components/dashboard/modules/analytics/DaywiseDistancePage"
 import { ACSummaryPage } from "@/components/dashboard/modules/analytics/ACSummaryPage"
+import { AnalyticsHub } from "@/components/dashboard/modules/analytics/AnalyticsHub"
 import { X } from "lucide-react"
 import { ReportsModal } from "@/components/dashboard/modules/ReportsModal"
+import { AppConfigView } from "@/components/dashboard/modules/AppConfigView"
+import { SysConfigView } from "@/components/dashboard/modules/SysConfigView"
 
 type LiveGpsItem = {
   vehicleId?: string | { _id?: string }
@@ -986,14 +989,18 @@ setLiveByVehicleId((prev) => {
                 {activeTab === "Alerts" && <AlertView />}
                 {activeTab === "Fuel" && <FuelView />}
                 {activeTab === "Temperature" && <TemperatureView />}
+                {activeTab === "Intelligence Hub" && <AnalyticsHub />}
+                {activeTab === "Analytics" && <StatisticsView />}
                 {activeTab === "Statistics" && <StatisticsView />}
+                {activeTab === "App Config" && <AppConfigView />}
+                {activeTab === "Sys Config" && <SysConfigView />}
                 {activeTab === "Daywise Distance" && <DaywiseDistancePage organizations={organizations} vehicles={allVehicles} userRole={userRole} userOrgId={userOrgId} />}
                 {activeTab === "Travel Summary" && <TravelSummaryPage organizations={organizations} vehicles={allVehicles} userRole={userRole} userOrgId={userOrgId} />}
                 {activeTab === "Trip Summary" && <TripSummaryPage organizations={organizations} vehicles={allVehicles} userRole={userRole} userOrgId={userOrgId} />}
                 {activeTab === "Vehicle Status" && <VehicleStatusPage organizations={organizations} vehicles={uiVehicles} userRole={userRole} userOrgId={userOrgId} />}
                 {activeTab === "Alert Summary" && <AlertSummaryPage organizations={organizations} vehicles={allVehicles} userRole={userRole} userOrgId={userOrgId} />}
                 {activeTab === "AC Summary" && <ACSummaryPage organizations={organizations} vehicles={allVehicles} userRole={userRole} userOrgId={userOrgId} />}
-                {["Tour", "App Config", "Sys Config", "User Rights"].includes(activeTab) && (
+                {["Tour", "User Rights"].includes(activeTab) && (
                   <div className="flex h-64 flex-col items-center justify-center italic text-slate-500">
                     <LayoutDashboard className="mb-4 h-12 w-12 opacity-20" />
                     {activeTab} module is coming soon...

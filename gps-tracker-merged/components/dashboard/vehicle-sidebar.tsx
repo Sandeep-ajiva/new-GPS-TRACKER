@@ -1,6 +1,6 @@
 import { Filter, Fan, Power, Search, Signal, Zap } from "lucide-react"
 import type { Vehicle } from "@/lib/vehicles"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useAppDispatch } from "@/redux/hooks"
 import { setSelectedVehicle as setReduxSelectedVehicle } from "@/redux/features/vehicleSlice"
 import { useDashboardContext } from "./DashboardContext"
@@ -30,7 +30,13 @@ export function VehicleSidebar({
     const { selectedVehicle, setSelectedVehicle } = useDashboardContext()
     const [searchTerm, setSearchTerm] = useState("")
     const [localStatusFilter, setLocalStatusFilter] = useState<typeof statusFilter>("total")
+    const [currentPage, setCurrentPage] = useState(1)
     const [showFilters, setShowFilters] = useState(false)
+
+    // Reset pagination when external status filter changes
+    useEffect(() => {
+        setCurrentPage(1)
+    }, [statusFilter])
 
     const filteredVehicles = vehicles.filter((vehicle) => {
         const matchesGlobalStatus = (() => {
@@ -60,13 +66,38 @@ export function VehicleSidebar({
         return matchesGlobalStatus && matchesLocalStatus && matchesSearch
     })
 
-    const [currentPage, setCurrentPage] = useState(1)
-    const itemsPerPage = 20
-    const totalPages = Math.ceil(filteredVehicles.length / itemsPerPage)
-    const paginatedVehicles = filteredVehicles.slice(
+    const statusPriority: Record<string, number> = {
+        running: 1,
+        idle: 2,
+        inactive: 3,
+        nodata: 3,
+        stopped: 4,
+    }
+
+    const sortedVehicles = [...filteredVehicles].sort((a, b) => {
+        const priorityA = statusPriority[a.status] || 5
+        const priorityB = statusPriority[b.status] || 5
+
+        if (priorityA !== priorityB) {
+            return priorityA - priorityB
+        }
+
+        // Secondary sort by vehicle number or ID for stability
+        const nameA = (a.vehicleNumber || a.id || "").toLowerCase()
+        const nameB = (b.vehicleNumber || b.id || "").toLowerCase()
+        return nameA.localeCompare(nameB)
+    })
+
+
+    const itemsPerPage = 10
+    const totalPages = Math.ceil(sortedVehicles.length / itemsPerPage)
+    const paginatedVehicles = sortedVehicles.slice(
         (currentPage - 1) * itemsPerPage,
         currentPage * itemsPerPage
     )
+
+    const startItem = (currentPage - 1) * itemsPerPage + 1
+    const endItem = Math.min(currentPage * itemsPerPage, sortedVehicles.length)
 
     return (
         <div className={`flex h-full w-full flex-col bg-white ${isFullWidth ? "" : "rounded-[24px]"} text-slate-800`}>
@@ -182,29 +213,36 @@ export function VehicleSidebar({
                 })}
             </div>
 
-            {totalPages > 1 && (
-                <div className="flex items-center justify-between border-t border-[#dbe7d4] bg-[#f7fbf5] px-4 py-3">
+            <div className="border-t border-[#dbe7d4] bg-[#f7fbf5] px-4 py-3">
+                <div className="flex items-center justify-between">
                     <button
                         type="button"
                         disabled={currentPage === 1}
                         onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
-                        className="rounded-lg border border-[#d6e3d0] bg-white px-3 py-1.5 text-xs font-bold text-slate-600 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="rounded-xl border border-[#d6e3d0] bg-white px-4 py-2 text-xs font-bold text-slate-700 shadow-sm transition-all hover:border-[#38a63c]/30 hover:bg-[#ecf8ea] hover:text-[#2f8d35] disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-[#d6e3d0] disabled:hover:bg-white disabled:hover:text-slate-400"
                     >
                         Prev
                     </button>
-                    <div className="text-xs font-semibold text-slate-500">
-                        Page {currentPage} of {totalPages}
+                    
+                    <div className="flex flex-col items-center">
+                        <div className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                             Page {currentPage} of {totalPages || 1}
+                        </div>
+                        <div className="mt-0.5 text-[11px] font-bold text-slate-600">
+                            Showing {sortedVehicles.length > 0 ? `${startItem}-${endItem}` : "0"} of {sortedVehicles.length}
+                        </div>
                     </div>
+
                     <button
                         type="button"
-                        disabled={currentPage === totalPages}
+                        disabled={currentPage === totalPages || totalPages === 0}
                         onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
-                        className="rounded-lg border border-[#d6e3d0] bg-white px-3 py-1.5 text-xs font-bold text-slate-600 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="rounded-xl border border-[#d6e3d0] bg-white px-4 py-2 text-xs font-bold text-slate-700 shadow-sm transition-all hover:border-[#38a63c]/30 hover:bg-[#ecf8ea] hover:text-[#2f8d35] disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-[#d6e3d0] disabled:hover:bg-white disabled:hover:text-slate-400"
                     >
                         Next
                     </button>
                 </div>
-            )}
+            </div>
         </div>
     )
 }

@@ -93,6 +93,46 @@ function ProfileDropdown({
     )
 }
 
+function LogoutConfirmModal({
+    isOpen,
+    onConfirm,
+    onCancel,
+}: {
+    isOpen: boolean
+    onConfirm: () => void
+    onCancel: () => void
+}) {
+    if (!isOpen) return null
+
+    return (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm transition-all duration-300">
+            <div className="w-full max-w-sm rounded-[32px] border border-[#dbe7d4] bg-white p-8 shadow-2xl animate-in zoom-in duration-200">
+                <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-red-50 text-red-600">
+                    <AlertTriangle className="h-8 w-8" />
+                </div>
+                <div className="mt-6 text-center">
+                    <h3 className="text-xl font-black text-slate-900 tracking-tight">Are you sure?</h3>
+                    <p className="mt-2 text-sm text-slate-500 font-medium">You are about to sign out and end your active session.</p>
+                </div>
+                <div className="mt-8 flex flex-col gap-3">
+                    <button
+                        onClick={onConfirm}
+                        className="w-full rounded-2xl bg-[#ea4335] py-4 text-sm font-bold text-white transition hover:bg-[#d93025] hover:shadow-lg active:scale-95 shadow-md shadow-red-500/10"
+                    >
+                        Sign Out
+                    </button>
+                    <button
+                        onClick={onCancel}
+                        className="w-full rounded-2xl border border-[#dbe7d4] bg-[#f7fbf5] py-4 text-sm font-bold text-slate-600 transition hover:bg-[#ecf8ea] hover:text-[#2f8d35] active:scale-95"
+                    >
+                        Keep me logged in
+                    </button>
+                </div>
+            </div>
+        </div>
+    )
+}
+
 export function Header({
     vehicleSummary,
 }: {
@@ -101,6 +141,7 @@ export function Header({
     const [showProfileDropdown, setShowProfileDropdown] = useState(false)
     const [showStaticsDropdown, setShowStaticsDropdown] = useState(false)
     const [showNotifications, setShowNotifications] = useState(false)
+    const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
     const [activeMenuSection, setActiveMenuSection] = useState("statistics")
     const [now, setNow] = useState(() => new Date())
     const [userRole, setUserRole] = useState<string | null>(null)
@@ -246,6 +287,7 @@ export function Header({
                 sessionStorage.clear()
                 dispatch(baseApi.util.resetApiState())
             }
+            setShowLogoutConfirm(false)
             router.replace("/")
         }
     }
@@ -278,18 +320,6 @@ export function Header({
 
                     {canOpenStatics && (
                         <div className="flex items-center gap-4 ml-4">
-                            {/* <div className="relative cursor-pointer transition-transform hover:scale-110">
-                                <MessageSquare className="h-6 w-6 text-white" />
-                                <span className="absolute -right-2 -top-2 flex h-4 w-4 items-center justify-center rounded-full bg-[#ea4335] text-[10px] font-bold text-white shadow-sm">15</span>
-                            </div>
-                            <div className="relative cursor-pointer transition-transform hover:scale-110">
-                                <ShieldAlert className="h-6 w-6 text-white" />
-                                <span className="absolute -right-2 -top-2 flex h-4 w-4 items-center justify-center rounded-full bg-[#ea4335] text-[10px] font-bold text-white shadow-sm">3</span>
-                            </div>
-                            <div className="cursor-pointer transition-transform hover:scale-110">
-                                <Wrench className="h-6 w-6 text-white" />
-                            </div> */}
-
                             <div ref={staticsRef} className="relative">
                                 <button
                                     type="button"
@@ -299,7 +329,6 @@ export function Header({
                                 >
                                     <Menu className="h-5 w-5" />
                                 </button>
-                                {/* ... dropdown logic remains same ... */}
                                 {showStaticsDropdown && (
                                     <div className="absolute left-0 top-full z-50 mt-3 flex overflow-hidden rounded-md border border-[#d9d9d9] bg-white shadow-2xl">
                                         <div className="w-[156px] border-r border-[#d9d9d9] bg-[#f7f7f7] py-1">
@@ -371,7 +400,6 @@ export function Header({
                 </div>
 
                 <div className="flex items-center gap-3">
-                    {/* Notification Bell */}
                     <div className="relative" ref={notifRef}>
                         <button
                             onClick={() => setShowNotifications(!showNotifications)}
@@ -379,7 +407,6 @@ export function Header({
                             title="Notifications"
                         >
                             <Bell size={20} />
-                            {/* Unread count badge */}
                             {unreadCount > 0 && (
                                 <Badge 
                                     variant="default" 
@@ -390,15 +417,20 @@ export function Header({
                             )}
                         </button>
 
-                        {/* Notification Dropdown */}
                         <NotificationDropdown 
                             isOpen={showNotifications} 
                             onClose={() => setShowNotifications(false)} 
                         />
                     </div>
 
-                    <div ref={profileRef} className="relative flex items-center gap-2">
-                        <div className="flex items-center gap-2 rounded-full border border-white/25 bg-white/10 px-2 py-1 transition hover:bg-white/15">
+                    <div ref={profileRef} className="relative">
+                        <button
+                            onClick={() => setShowProfileDropdown(!showProfileDropdown)}
+                            className={`flex items-center gap-2 rounded-full border px-2 py-1 transition-all ${showProfileDropdown 
+                                ? 'border-white bg-white/20' 
+                                : 'border-white/25 bg-white/10 hover:bg-white/15'
+                            }`}
+                        >
                             <div className="h-9 w-9 rounded-full bg-[#0076bb] border-2 border-white shadow-sm overflow-hidden flex items-center justify-center">
                                 {user?.organizationId?.logo ? (
                                     <img
@@ -410,44 +442,43 @@ export function Header({
                                     <span className="font-bold text-white uppercase">{displayName.charAt(0)}</span>
                                 )}
                             </div>
-                            <div className="hidden lg:block text-left text-xs">
-                                <span className="font-bold">Hi, {displayName}</span>
-                                <ChevronDown className="inline-block h-4 w-4 ml-1" />
+                            <div className="hidden lg:flex items-center text-left text-xs text-white">
+                                <div className="flex flex-col">
+                                    <span className="font-black text-[10px] uppercase tracking-wider opacity-70 leading-none mb-0.5">Account</span>
+                                    <span className="font-bold leading-none">{displayName}</span>
+                                </div>
+                                <ChevronDown className={`ml-2 h-4 w-4 transition-transform ${showProfileDropdown ? 'rotate-180' : ''}`} />
                             </div>
-                        </div>
-
-                        <button className="flex items-center gap-1.5 rounded-lg border border-white/25 bg-white/10 px-3 py-1.5 text-[10px] font-bold transition hover:bg-white/15">
-                            <Settings className="h-3.5 w-3.5" />
-                            Setting
                         </button>
 
-                        <button
-                            onClick={handleLogout}
-                            className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/25 bg-white/10 transition hover:bg-[#ea4335]"
-                        >
-                            <LogOut className="h-5 w-5" />
-                        </button>
+                        <ProfileDropdown
+                            isOpen={showProfileDropdown}
+                            displayName={displayName}
+                            email={email}
+                            role={role}
+                            user={user}
+                            onProfile={() => {
+                                router.push("/dashboard/profile")
+                                setShowProfileDropdown(false)
+                            }}
+                            onSettings={() => {
+                                router.push("/dashboard/settings")
+                                setShowProfileDropdown(false)
+                            }}
+                            onLogout={() => {
+                                setShowLogoutConfirm(true)
+                                setShowProfileDropdown(false)
+                            }}
+                        />
                     </div>
-
-
-                    <ProfileDropdown
-                        isOpen={showProfileDropdown}
-                        displayName={displayName}
-                        email={email}
-                        role={role}
-                        user={user}
-                        onProfile={() => {
-                            router.push("/dashboard/profile")
-                            setShowProfileDropdown(false)
-                        }}
-                        onSettings={() => {
-                            router.push("/dashboard/settings")
-                            setShowProfileDropdown(false)
-                        }}
-                        onLogout={handleLogout}
-                    />
                 </div>
             </div>
+
+            <LogoutConfirmModal
+                isOpen={showLogoutConfirm}
+                onConfirm={handleLogout}
+                onCancel={() => setShowLogoutConfirm(false)}
+            />
         </header>
     )
 }

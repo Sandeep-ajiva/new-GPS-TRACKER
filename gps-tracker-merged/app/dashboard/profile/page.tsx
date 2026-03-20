@@ -12,6 +12,7 @@ import {
     Save,
     Loader2,
     ShieldCheck,
+    AlertTriangle,
 } from "lucide-react"
 import { toast } from "sonner"
 import { useGetMeQuery, useUpdateUserMutation } from "@/redux/api/usersApi"
@@ -67,19 +68,21 @@ function Field({
 }) {
     return (
         <div className="space-y-1.5">
-            <label className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                <Icon className="h-3.5 w-3.5" />
+            <label className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                <Icon className="h-3.5 w-3.5 text-[#38a63c]" />
                 {label}
             </label>
             {type === "tel" ? (
-                <PhoneInputField
-                    value={value}
-                    onChange={onChange}
-                    disabled={disabled}
-                    placeholder="Enter phone number"
-                    required
-                    variant="dark"
-                />
+                <div className="light-phone-input">
+                    <PhoneInputField
+                        value={value}
+                        onChange={onChange}
+                        disabled={disabled}
+                        placeholder="Enter phone number"
+                        required
+                        variant="light"
+                    />
+                </div>
             ) : (
                 <input
                     type={type}
@@ -87,17 +90,16 @@ function Field({
                     onChange={(e) => onChange(e.target.value)}
                     onBlur={onBlur}
                     disabled={disabled}
-                    className={`w-full rounded-xl px-4 py-3 text-sm font-medium transition-all outline-none
-          bg-slate-800/60 border focus:ring-2
+                    className={`w-full rounded-2xl px-4 py-3.5 text-sm font-semibold transition-all outline-none border
           ${error
-                            ? "border-red-500/50 focus:ring-red-500/20 text-red-100"
-                            : "border-white/10 focus:ring-emerald-500/20 focus:border-emerald-500/40 text-slate-100"
+                            ? "border-red-300 bg-red-50 text-red-900 focus:ring-4 focus:ring-red-500/10 focus:border-red-500"
+                            : "border-[#dbe7d4] bg-white text-slate-900 focus:ring-4 focus:ring-[#38a63c]/10 focus:border-[#38a63c]/40"
                         }
-          ${disabled ? "opacity-50 cursor-not-allowed" : ""}
-          placeholder-slate-600`}
+          ${disabled ? "bg-slate-50 opacity-60 cursor-not-allowed" : ""}
+          placeholder-slate-300 shadow-sm`}
                 />
             )}
-            {error && <p className="text-xs text-red-400">{error}</p>}
+            {error && <p className="text-[11px] font-bold text-red-500 pl-1">{error}</p>}
         </div>
     )
 }
@@ -186,7 +188,7 @@ export default function DashboardProfilePage() {
     }
 
     if (!isAuthed) return (
-        <div className="flex min-h-screen items-center justify-center bg-slate-950 text-slate-400">
+        <div className="flex min-h-screen items-center justify-center bg-white text-slate-400">
             Checking session…
         </div>
     )
@@ -202,92 +204,96 @@ export default function DashboardProfilePage() {
         : null
 
     return (
-        <div className="flex min-h-screen flex-col bg-slate-950 text-slate-100">
+        <div className="flex min-h-screen flex-col bg-white text-slate-800">
             <Header vehicleSummary={{ label: "Profile", speed: 0 }} />
 
             <div className="flex-1 overflow-y-auto px-4 py-8 md:px-8">
-                <div className="mx-auto max-w-4xl">
+                <div className="mx-auto max-w-5xl">
                     {/* Breadcrumb */}
                     <div className="mb-6 flex items-center gap-2">
                         <button
                             onClick={() => router.push("/dashboard")}
-                            className="flex items-center gap-1.5 text-sm text-slate-400 hover:text-emerald-400 transition-colors"
+                            className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-400 hover:text-[#38a63c] transition-colors"
                         >
                             <ArrowLeft className="h-4 w-4" />
                             Dashboard
                         </button>
-                        <span className="text-slate-600">/</span>
-                        <span className="text-sm font-semibold text-slate-200">My Profile</span>
+                        <span className="text-slate-200">/</span>
+                        <span className="text-xs font-bold uppercase tracking-wider text-slate-900">My Profile</span>
                     </div>
 
                     {/* Title */}
                     <div className="mb-8">
-                        <h1 className="text-2xl font-black text-white tracking-tight">My Profile</h1>
-                        <p className="mt-1 text-sm text-slate-400">Manage your personal information and account details</p>
+                        <h1 className="text-3xl font-black text-[#1f3b1f] tracking-tight">Profile Settings</h1>
+                        <p className="mt-1 text-sm font-medium text-slate-500">View and update your personal account information.</p>
                     </div>
 
                     {isLoading ? (
                         <div className="flex items-center justify-center py-24">
-                            <Loader2 className="h-8 w-8 animate-spin text-emerald-400" />
+                            <Loader2 className="h-10 w-10 animate-spin text-[#38a63c]" />
                         </div>
                     ) : isError ? (
-                        <div className="rounded-2xl border border-red-500/20 bg-red-500/10 p-8 text-center text-red-300">
-                            <p className="font-semibold">Failed to load profile</p>
-                            <button onClick={() => refetch()} className="mt-4 rounded-lg bg-red-500/20 px-4 py-2 text-sm hover:bg-red-500/30 transition-colors">
-                                Try Again
+                        <div className="rounded-[24px] border border-red-100 bg-red-50/50 p-12 text-center text-red-600">
+                            <AlertTriangle className="mx-auto h-12 w-12 text-red-400 mb-4" />
+                            <p className="text-lg font-black tracking-tight">Failed to load profile</p>
+                            <p className="text-sm text-red-500/70 mb-6">There was an issue retrieving your account details.</p>
+                            <button onClick={() => refetch()} className="rounded-xl bg-red-600 px-6 py-3 text-sm font-bold text-white hover:bg-red-700 transition-colors shadow-lg shadow-red-600/10">
+                                Try Reconnecting
                             </button>
                         </div>
                     ) : (
-                        <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+                        <div className="grid grid-cols-1 gap-8 md:grid-cols-3">
                             {/* ── Left: Identity Card ── */}
-                            <div className="space-y-4 md:col-span-1">
+                            <div className="space-y-6 md:col-span-1">
                                 {/* Avatar card */}
-                                <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-6 text-center">
-                                    <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br from-emerald-400 to-cyan-400 text-3xl font-black text-slate-900 shadow-lg ring-4 ring-emerald-400/20">
+                                <div className="rounded-[24px] border border-[#dbe7d4] bg-white p-8 text-center shadow-sm">
+                                    <div className="mx-auto mb-5 flex h-24 w-24 items-center justify-center rounded-full bg-[#f7fbf5] border-4 border-[#38a63c]/10 text-4xl font-black text-[#2f8d35] shadow-inner">
                                         {displayName.charAt(0).toUpperCase()}
                                     </div>
-                                    <h2 className="text-lg font-bold text-white">{displayName}</h2>
-                                    <p className="mt-1 text-xs text-slate-400">{form.email}</p>
-                                    <div className="mt-3 flex justify-center gap-2">
-                                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-300">
-                                            <BadgeCheck className="h-3 w-3" />
-                                            {(user?.role as unknown as string) || "user"}
+                                    <h2 className="text-xl font-black text-[#1f3b1f] tracking-tight">{displayName}</h2>
+                                    <p className="mt-1 text-sm font-medium text-slate-500">{form.email}</p>
+                                    
+                                    <div className="mt-5 flex flex-wrap justify-center gap-2">
+                                        <span className="inline-flex items-center gap-1.5 rounded-full bg-[#ecf8ea] border border-[#38a63c]/15 px-4 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-[#2f8d35]">
+                                            <BadgeCheck className="h-3.5 w-3.5" />
+                                            {(user?.role as unknown as string) || "User"}
                                         </span>
-                                        <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider border
-                      ${(user?.status as unknown as string) === "active"
-                                                ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-300"
-                                                : "bg-slate-600/20 border-slate-600/30 text-slate-400"
+                                        <span className={`inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] border
+                                            ${(user?.status as unknown as string) === "active"
+                                                ? "bg-[#ecf8ea] border-[#38a63c]/15 text-[#2f8d35]"
+                                                : "bg-slate-50 border-slate-200 text-slate-400"
                                             }`}>
-                                            {(user?.status as unknown as string) || "active"}
+                                            {(user?.status as unknown as string) || "Active"}
                                         </span>
                                     </div>
                                 </div>
 
                                 {/* Account info */}
-                                <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-5 space-y-3">
-                                    <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-400">
-                                        <ShieldCheck className="h-3.5 w-3.5" />
-                                        Account Info
+                                <div className="rounded-[24px] border border-[#dbe7d4] bg-[#f7fbf5] p-6 space-y-4 shadow-sm">
+                                    <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-[#2f8d35]">
+                                        <ShieldCheck className="h-4 w-4" />
+                                        Identity Details
                                     </div>
-                                    <div className="space-y-2 text-xs">
-                                        <div className="flex items-start justify-between gap-2">
-                                            <span className="text-slate-500">User ID</span>
-                                            <span className="font-mono text-[10px] text-slate-300 break-all text-right max-w-[140px]">
+                                    <div className="space-y-4">
+                                        <div className="flex flex-col">
+                                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">Account ID</span>
+                                            <span className="font-mono text-xs font-semibold text-slate-600 break-all bg-white rounded-lg p-2 border border-[#dbe7d4]/50">
                                                 {(user?._id as unknown as string) || "—"}
                                             </span>
                                         </div>
                                         {orgName && (
-                                            <div className="flex items-start justify-between gap-2 pt-2 border-t border-white/5">
-                                                <span className="text-slate-500 flex items-center gap-1">
-                                                    <Building2 className="h-3 w-3" />Org
-                                                </span>
-                                                <span className="text-slate-200 font-semibold text-right">{orgName}</span>
+                                            <div className="flex items-center justify-between pt-3 border-t border-[#dbe7d4]">
+                                                <div className="flex flex-col">
+                                                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">Organization</span>
+                                                    <span className="text-sm font-black text-slate-800">{orgName}</span>
+                                                </div>
+                                                <Building2 className="h-6 w-6 text-[#38a63c]/20" />
                                             </div>
                                         )}
                                         {orgEmail && (
-                                            <div className="flex items-start justify-between gap-2">
-                                                <span className="text-slate-500">Org Email</span>
-                                                <span className="text-slate-400 text-right text-[10px]">{orgEmail}</span>
+                                            <div className="flex flex-col pt-3 border-t border-[#dbe7d4]">
+                                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">Org Contact</span>
+                                                <span className="text-sm font-semibold text-slate-600">{orgEmail}</span>
                                             </div>
                                         )}
                                     </div>
@@ -298,16 +304,17 @@ export default function DashboardProfilePage() {
                             <div className="md:col-span-2">
                                 <form
                                     onSubmit={handleSubmit}
-                                    className="rounded-2xl border border-white/10 bg-slate-900/60 p-6 space-y-5"
+                                    className="rounded-[24px] border border-[#dbe7d4] bg-white p-8 space-y-8 shadow-sm"
                                 >
-                                    <div className="flex items-center gap-2 mb-2">
-                                        <User className="h-4 w-4 text-emerald-400" />
-                                        <h3 className="text-sm font-bold text-slate-100 uppercase tracking-wider">
-                                            Basic Details
+                                    <div>
+                                        <h3 className="text-lg font-black text-[#1f3b1f] tracking-tight flex items-center gap-2">
+                                            <User className="h-5 w-5 text-[#38a63c]" />
+                                            Basic Information
                                         </h3>
+                                        <p className="mt-1 text-sm font-medium text-slate-500">Update your primary contact and profile names.</p>
                                     </div>
 
-                                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                    <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
                                         <Field
                                             label="First Name"
                                             icon={User}
@@ -326,43 +333,45 @@ export default function DashboardProfilePage() {
                                         />
                                     </div>
 
-                                    <Field
-                                        label="Email Address"
-                                        icon={Mail}
-                                        type="email"
-                                        value={form.email}
-                                        onChange={handleChange("email")}
-                                        onBlur={handleBlur("email")}
-                                        error={errors.email}
-                                    />
+                                    <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+                                        <Field
+                                            label="Email Address"
+                                            icon={Mail}
+                                            type="email"
+                                            value={form.email}
+                                            onChange={handleChange("email")}
+                                            onBlur={handleBlur("email")}
+                                            error={errors.email}
+                                        />
 
-                                    <Field
-                                        label="Mobile Number"
-                                        icon={Phone}
-                                        type="tel"
-                                        value={form.mobile}
-                                        onChange={handleChange("mobile")}
-                                        onBlur={handleBlur("mobile")}
-                                        error={errors.mobile}
-                                    />
+                                        <Field
+                                            label="Mobile Number"
+                                            icon={Phone}
+                                            type="tel"
+                                            value={form.mobile}
+                                            onChange={handleChange("mobile")}
+                                            onBlur={handleBlur("mobile")}
+                                            error={errors.mobile}
+                                        />
+                                    </div>
 
-                                    <div className="flex items-center justify-between gap-4 pt-2 border-t border-white/10">
+                                    <div className="flex items-center justify-between gap-4 pt-8 border-t border-[#dbe7d4]">
                                         <button
                                             type="button"
                                             onClick={() => router.push("/dashboard")}
-                                            className="rounded-xl border border-white/10 bg-white/5 px-5 py-2.5 text-sm font-semibold text-slate-300 hover:bg-white/10 transition-colors"
+                                            className="rounded-2xl border border-[#dbe7d4] bg-[#f7fbf5] px-6 py-3.5 text-sm font-bold text-slate-600 hover:bg-[#ecf8ea] hover:text-[#2f8d35] transition-all active:scale-95"
                                         >
-                                            Cancel
+                                            Discard Changes
                                         </button>
                                         <button
                                             type="submit"
                                             disabled={isUpdating || !dirty}
-                                            className="flex items-center gap-2 rounded-xl bg-emerald-500 px-6 py-2.5 text-sm font-bold text-slate-900 hover:bg-emerald-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                            className="flex items-center gap-2 rounded-2xl bg-[#38a63c] px-8 py-3.5 text-sm font-black text-white hover:bg-[#2f8d35] transition-all shadow-lg shadow-[#38a63c]/20 active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed disabled:active:scale-100"
                                         >
                                             {isUpdating ? (
-                                                <><Loader2 className="h-4 w-4 animate-spin" />Saving…</>
+                                                <><Loader2 className="h-4 w-4 animate-spin" />Saving Info…</>
                                             ) : (
-                                                <><Save className="h-4 w-4" />Save Changes</>
+                                                <><Save className="h-5 w-5" />Update Account</>
                                             )}
                                         </button>
                                     </div>
