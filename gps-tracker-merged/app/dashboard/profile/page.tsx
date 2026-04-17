@@ -131,7 +131,9 @@ export default function DashboardProfilePage() {
         const role = getSecureItem("userRole")
         if (!token) { router.replace("/"); return }
         if (role && ["admin", "manager", "driver"].includes(role)) {
-            setIsAuthed(true)
+            queueMicrotask(() => {
+                setIsAuthed(true)
+            })
         } else {
             router.replace("/")
         }
@@ -140,14 +142,16 @@ export default function DashboardProfilePage() {
     // Pre-fill form
     useEffect(() => {
         if (user) {
-            setForm({
-                firstName: (user.firstName as unknown as string) || "",
-                lastName: (user.lastName as unknown as string) || "",
-                email: (user.email as unknown as string) || "",
-                mobile: (user.mobile as unknown as string) || "",
+            queueMicrotask(() => {
+                setForm({
+                    firstName: (user.firstName as unknown as string) || "",
+                    lastName: (user.lastName as unknown as string) || "",
+                    email: (user.email as unknown as string) || "",
+                    mobile: (user.mobile as unknown as string) || "",
+                })
+                setDirty(false)
+                setErrors({})
             })
-            setDirty(false)
-            setErrors({})
         }
     }, [user])
 

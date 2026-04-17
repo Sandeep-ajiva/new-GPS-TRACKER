@@ -30,7 +30,6 @@ export default function SettingsPage() {
         }
     }, [isSuperAdmin, router]);
 
-    if (!isSuperAdmin) return null;
     const [appName, setAppName] = useState("GPS Tracker");
     const [supportEmail, setSupportEmail] = useState("admin@gps-tracker.com");
     const [maintenanceMessage, setMaintenanceMessage] = useState(
@@ -73,6 +72,8 @@ export default function SettingsPage() {
         setErrors({});
         toast.success("Settings saved successfully (Validated)");
     };
+
+    if (!isSuperAdmin) return null;
 
     return (
         <AdminPageShell className="max-w-6xl" contentClassName="space-y-8 font-bold">

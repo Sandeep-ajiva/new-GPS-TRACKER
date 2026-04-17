@@ -112,7 +112,7 @@ export const showEnhancedNotificationToast = (notification: any) => {
               {config.pulse ? '🔴 CRITICAL' : alertTitle}
             </h4>
             <button
-              onClick={() => toast.dismiss()}
+              onClick={() => toast.dismiss(id)}
               className="text-gray-400 hover:text-gray-600 transition-colors"
             >
               <X size={14} />
@@ -158,7 +158,7 @@ export const showEnhancedNotificationToast = (notification: any) => {
               <button
                 onClick={() => {
                   window.location.href = `/dashboard?vehicle=${notification.vehicleId}`;
-                  toast.dismiss();
+                  toast.dismiss(id);
                 }}
                 className="flex-1 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 px-2 py-1.5 rounded transition-colors flex items-center justify-center gap-1"
               >
@@ -171,7 +171,7 @@ export const showEnhancedNotificationToast = (notification: any) => {
               <button
                 onClick={() => {
                   window.open(`tel:${notification.driverPhone}`);
-                  toast.dismiss();
+                  toast.dismiss(id);
                 }}
                 className="flex-1 text-xs font-semibold text-green-600 bg-green-50 hover:bg-green-100 px-2 py-1.5 rounded transition-colors flex items-center justify-center gap-1"
               >
@@ -181,7 +181,7 @@ export const showEnhancedNotificationToast = (notification: any) => {
             )}
             
             <button
-              onClick={() => toast.dismiss()}
+              onClick={() => toast.dismiss(id)}
               className="text-xs font-semibold text-gray-600 bg-gray-50 hover:bg-gray-100 px-2 py-1.5 rounded transition-colors"
             >
               Dismiss

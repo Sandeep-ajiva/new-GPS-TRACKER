@@ -22,7 +22,9 @@ export function AlertSummaryPage({
     const [alertSearch, setAlertSearch] = useState("")
 
     useEffect(() => {
-        setAlertPage(0)
+        queueMicrotask(() => {
+            setAlertPage(0)
+        })
     }, [filters, alertType, alertSearch])
 
     const isValidSelection = filters.vehicleId !== ""

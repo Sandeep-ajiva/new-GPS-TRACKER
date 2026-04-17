@@ -130,12 +130,14 @@ function normalizeRecord(raw: Record<string, unknown>): VehicleRecord {
 }
 
 // ─── Skeleton Row ─────────────────────────────────────────────────────────────
+const SKELETON_WIDTHS = ["68%", "82%", "74%", "88%", "71%", "79%", "65%"] as const
+
 function SkeletonRow() {
     return (
         <tr className="border-b border-white/5 animate-pulse">
             {Array.from({ length: 7 }).map((_, i) => (
                 <td key={i} className="px-4 py-3">
-                    <div className="h-4 rounded bg-slate-700/60" style={{ width: `${60 + Math.random() * 30}%` }} />
+                    <div className="h-4 rounded bg-slate-700/60" style={{ width: SKELETON_WIDTHS[i % SKELETON_WIDTHS.length] }} />
                 </td>
             ))}
         </tr>

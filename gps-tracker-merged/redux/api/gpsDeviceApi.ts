@@ -82,10 +82,12 @@ export const extractGpsDeviceDetails = (
 
     if ("data" in payload) {
         const nested = payload.data;
-        return nested && typeof nested === "object" ? nested : null;
+        return nested && typeof nested === "object" && "_id" in nested
+            ? (nested as GpsDeviceDetails)
+            : null;
     }
 
-    return payload;
+    return "_id" in payload ? (payload as GpsDeviceDetails) : null;
 };
 
 export const gpsDeviceApi = baseApi.injectEndpoints({

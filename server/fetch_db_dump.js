@@ -1,11 +1,16 @@
 const mongoose = require("mongoose");
+require("dotenv").config();
 const GpsDevice = require("./Modules/gpsDevice/model");
 const VehicleDeviceMapping = require("./Modules/deviceMapping/model");
 const Driver = require("./Modules/drivers/model");
 const Vehicle = require("./Modules/vehicle/model");
 
 async function checkData() {
-    await mongoose.connect("mongodb+srv://Mandy123:Mandy12345@cluster0.gbgsz3f.mongodb.net/GPS?appName=Cluster0");
+    if (!process.env.MONGO_URI) {
+        throw new Error("MONGO_URI is not configured");
+    }
+
+    await mongoose.connect(process.env.MONGO_URI);
 
     const devices = await GpsDevice.find().limit(5).lean();
     console.log("--- 5 DEVICES ---");

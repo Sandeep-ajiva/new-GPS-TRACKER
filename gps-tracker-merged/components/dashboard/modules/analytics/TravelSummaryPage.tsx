@@ -240,8 +240,14 @@ export function TravelSummaryPage({
     );
 
     useEffect(() => {
+        const updatePanelTop = (nextTop: number | null) => {
+            queueMicrotask(() => {
+                setPlaybackPanelTop((currentTop) => (currentTop === nextTop ? currentTop : nextTop))
+            })
+        }
+
         if (!selectedPlaybackRow?.vehicleId || !tableCardRef.current) {
-            setPlaybackPanelTop(null)
+            updatePanelTop(null)
             return
         }
 
@@ -250,13 +256,13 @@ export function TravelSummaryPage({
             const anchor = playbackAnchorRefs.current[selectedPlaybackRow.vehicleId]
 
             if (!container || !anchor) {
-                setPlaybackPanelTop(null)
+                updatePanelTop(null)
                 return
             }
 
             const containerRect = container.getBoundingClientRect()
             const anchorRect = anchor.getBoundingClientRect()
-            setPlaybackPanelTop(anchorRect.top - containerRect.top)
+            updatePanelTop(anchorRect.top - containerRect.top)
         }
 
         updatePlaybackPanelTop()

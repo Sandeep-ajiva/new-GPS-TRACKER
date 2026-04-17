@@ -45,7 +45,7 @@ export default function VehicleEditModal({ vehicle, isOpen, onClose, onSuccess }
     // Pre-fill form when vehicle changes
     useEffect(() => {
         if (vehicle) {
-            setForm({
+            const nextForm = {
                 vehicleNumber: vehicle.vehicleNumber || vehicle.registrationNumber || "",
                 imei: vehicle.imei || vehicle.deviceImei || "",
                 driverName: vehicle.driverName || "",
@@ -53,9 +53,13 @@ export default function VehicleEditModal({ vehicle, isOpen, onClose, onSuccess }
                 model: vehicle.model || "",
                 color: vehicle.color || "",
                 vehicleType: vehicle.vehicleType || "",
+            }
+
+            queueMicrotask(() => {
+                setForm(nextForm)
+                setErrors({})
+                setServerError(null)
             })
-            setErrors({})
-            setServerError(null)
         }
     }, [vehicle])
 

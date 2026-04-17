@@ -58,8 +58,10 @@ export function ACSummaryPage({
     const isValidVehicle = filters.vehicleId !== ""
 
     useEffect(() => {
-        setAcPage(0)
-        setExpandedVehicleId(null)
+        queueMicrotask(() => {
+            setAcPage(0)
+            setExpandedVehicleId(null)
+        })
     }, [filters])
 
     const { data: res, isFetching, error } = useGetACSummaryQuery(

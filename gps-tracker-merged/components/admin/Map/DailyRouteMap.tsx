@@ -295,12 +295,18 @@ export default function DailyRouteMap({ points, satellite = true }: { points: Po
   const baseZoom = useMemo(() => computeSmartZoom(path), [path]);
   const routePositions = useMemo(() => path.map((p) => [p.lat, p.lng] as [number, number]), [path]);
 
-  useEffect(() => setMapTheme(satellite ? "satellite" : "street"), [satellite]);
+  useEffect(() => {
+    queueMicrotask(() => {
+      setMapTheme(satellite ? "satellite" : "street");
+    });
+  }, [satellite]);
 
   useEffect(() => {
-    setPlayheadIdx(0);
-    setIsPlaying(false);
-    setRenderPoint(path[0] || null);
+    queueMicrotask(() => {
+      setPlayheadIdx(0);
+      setIsPlaying(false);
+      setRenderPoint(path[0] || null);
+    });
     holdUntilRef.current = 0;
   }, [path]);
 

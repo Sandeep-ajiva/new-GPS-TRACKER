@@ -11,6 +11,7 @@ import { baseApi } from "@/redux/api/baseApi"
 import { useDispatch } from "react-redux"
 import { Badge } from "@/components/ui/badge"
 import { setActiveTab } from "@/redux/features/vehicleSlice"
+import { API_BASE_URL, buildAssetUrl } from "@/lib/runtime-config"
 
 type HeaderUser = {
     organizationId?: {
@@ -58,7 +59,7 @@ function ProfileDropdown({
                 <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full border border-[#cfe3c9] bg-white">
                     {user?.organizationId?.logo ? (
                         <img
-                            src={`http://localhost:5000${user.organizationId.logo}`}
+                            src={buildAssetUrl(user.organizationId.logo) || user.organizationId.logo}
                             alt="Org Logo"
                             className="h-full w-full object-contain p-1"
                         />
@@ -275,7 +276,7 @@ export function Header({
 
     const handleLogout = async () => {
         try {
-            await fetch("http://localhost:5000/api/users/logout", {
+            await fetch(`${API_BASE_URL}/users/logout`, {
                 method: "POST",
                 headers: {
                     Authorization: `Bearer ${getSecureItem("token")}`,
@@ -305,7 +306,7 @@ export function Header({
                         <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full border border-white/60 bg-white shadow-sm">
                             {user?.organizationId?.logo ? (
                                 <img
-                                    src={`http://localhost:5000${user.organizationId.logo}`}
+                                    src={buildAssetUrl(user.organizationId.logo) || user.organizationId.logo}
                                     alt="Logo"
                                     className="h-full w-full object-contain p-1"
                                 />
@@ -435,7 +436,7 @@ export function Header({
                             <div className="h-9 w-9 rounded-full bg-[#0076bb] border-2 border-white shadow-sm overflow-hidden flex items-center justify-center">
                                 {user?.organizationId?.logo ? (
                                     <img
-                                        src={`http://localhost:5000${user.organizationId.logo}`}
+                                        src={buildAssetUrl(user.organizationId.logo) || user.organizationId.logo}
                                         alt="Avatar"
                                         className="h-full w-full object-cover"
                                     />

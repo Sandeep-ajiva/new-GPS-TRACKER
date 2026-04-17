@@ -3,6 +3,7 @@ const path = require("path");
 const fs = require("fs");
 const multer = require("multer");
 const verifyToken = require("../../middleware/verifyToken");
+const checkAuthorization = require("../../middleware/checkAuthorization");
 const checkOrganization = require("../../middleware/checkOrganization");
 const Controller = require("./controller");
 const {
@@ -11,6 +12,29 @@ const {
 } = require("./constants");
 
 const router = express.Router();
+const ENTITY_MODULE_MAP = {
+  organizations: "organizations",
+  users: "users",
+  vehicles: "vehicle",
+  devices: "gpsDevice",
+  drivers: "drivers",
+  devicemapping: "deviceMapping",
+  drivermapping: "vehicleDriverMapping",
+};
+
+const authorizeEntityAction = (action) => (req, res, next) => {
+  const entity = String(req.params.entity || "").toLowerCase();
+  const moduleName = ENTITY_MODULE_MAP[entity];
+
+  if (!moduleName) {
+    return res.status(400).json({
+      status: false,
+      message: "Unsupported entity",
+    });
+  }
+
+  return checkAuthorization([], moduleName, action)(req, res, next);
+};
 
 const importUploadDir = path.join(__dirname, "../../uploads/imports");
 if (!fs.existsSync(importUploadDir)) {
@@ -60,6 +84,7 @@ const handleImportUpload = (req, res, next) => {
 router.post(
   "/import/:entity",
   verifyToken,
+  authorizeEntityAction("create"),
   checkOrganization,
   handleImportUpload,
   Controller.importData
@@ -68,6 +93,7 @@ router.post(
 router.get(
   "/export/:entity",
   verifyToken,
+  authorizeEntityAction("read"),
   checkOrganization,
   Controller.exportData
 );

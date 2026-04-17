@@ -10,6 +10,7 @@ const cors = require("cors");
 
 const responseTimeLogger = require("./middleware/responseTimeLogger");
 const connectDB = require("./config/database");
+const { corsOptions } = require("./config/security");
 
 connectDB();
 
@@ -25,10 +26,17 @@ let tcpServerStarted = false;
 
 const modulesPath = path.join(__dirname, "Modules");
 
-app.use(cors());
+app.disable("x-powered-by");
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(responseTimeLogger);
+app.use((req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "SAMEORIGIN");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  next();
+});
+app.use(cors(corsOptions));
 
 // 🔕 Chrome DevTools noise suppression (debug only)
 app.get("/json/list", (req, res) => res.send([]));
@@ -38,14 +46,6 @@ app.get("/json/version", (req, res) =>
 
 // Serve uploaded files as static content
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
-
-app.use(
-  cors({
-    origin: "*",
-    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allowedHeaders: ["*"], // Allow all requested headers
-  }),
-);
 
 app.get("/", (req, res) => {
   res.send("API is running...");

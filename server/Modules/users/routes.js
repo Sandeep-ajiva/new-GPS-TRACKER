@@ -8,6 +8,7 @@ const checkOrganization = require("../../middleware/checkOrganization");
 
 // AUTH
 router.post("/login", Controller.login);
+router.post("/logout", verifyToken, Controller.logout);
 router.get("/me", verifyToken, Controller.getMe);
 
 // SUPERADMIN – GLOBAL

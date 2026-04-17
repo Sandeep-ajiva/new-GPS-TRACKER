@@ -161,7 +161,9 @@ export default function UsersPage() {
 
   useEffect(() => {
     if (page > totalPages) {
-      setPage(totalPages);
+      queueMicrotask(() => {
+        setPage(totalPages);
+      });
     }
   }, [page, totalPages]);
 

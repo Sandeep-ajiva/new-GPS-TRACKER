@@ -589,7 +589,7 @@ export default function OrganizationDetailPage() {
             <p className="text-xs leading-5 text-slate-500 bg-slate-950/60 p-3 rounded-xl border border-slate-800/50">
               <Info size={14} className="inline mr-2 mb-0.5 text-emerald-400/70" />
               Advanced subscription lifecycle (Stripe/PayPal integration, trial periods, and auto-suspension) 
-              is pending further backend development. Current state is "Standard" for all clients.
+              is pending further backend development. Current state is &quot;Standard&quot; for all clients.
             </p>
           </div>
         </SectionCard>
@@ -618,7 +618,7 @@ export default function OrganizationDetailPage() {
             <div className="grid grid-cols-1 gap-2">
                <div className="flex items-center gap-3 px-1 text-xs text-slate-500">
                   <div className="h-1 w-1 rounded-full bg-slate-700" />
-                  <span>Auditable "View-As" platform mode</span>
+                  <span>Auditable &quot;View-As&quot; platform mode</span>
                </div>
                <div className="flex items-center gap-3 px-1 text-xs text-slate-500">
                   <div className="h-1 w-1 rounded-full bg-slate-700" />

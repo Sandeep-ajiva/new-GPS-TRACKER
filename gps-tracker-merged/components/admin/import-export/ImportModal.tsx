@@ -343,7 +343,9 @@ export default function ImportModal({
 
   useEffect(() => {
     if (!isOpen) return;
-    setSelectedOrgId(orgId || "");
+    queueMicrotask(() => {
+      setSelectedOrgId(orgId || "");
+    });
   }, [isOpen, orgId]);
 
   const rawPreviewRows = useMemo(() => {
@@ -442,7 +444,9 @@ export default function ImportModal({
   }, [filteredPreviewRows, previewPage]);
 
   useEffect(() => {
-    setPreviewPage(1);
+    queueMicrotask(() => {
+      setPreviewPage(1);
+    });
   }, [previewSearch, parsedFile]);
 
   const readinessState = useMemo<ReadinessState | null>(() => {

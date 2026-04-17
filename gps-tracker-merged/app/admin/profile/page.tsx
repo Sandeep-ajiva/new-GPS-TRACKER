@@ -25,6 +25,7 @@ import {
     getWorkspaceDescriptor,
 } from "@/components/admin/profile/profile-utils";
 import { useOrgContext } from "@/hooks/useOrgContext";
+import { buildAssetUrl } from "@/lib/runtime-config";
 
 type ProfileFormData = {
     firstName: string;
@@ -70,7 +71,7 @@ export default function ProfilePage() {
         role: user?.role || sessionRole,
         parentOrganizationId: organization.parentOrganizationId,
     });
-    const logoUrl = organization.logo ? `http://localhost:5000${organization.logo}` : null;
+    const logoUrl = buildAssetUrl(organization.logo);
     const canEditLogo = Boolean(user && organization.id && (!organization.parentOrganizationId || user.role === "superadmin"));
     const lastUpdated = formatDateTime(user?.updatedAt);
     const lastLogin = formatDateTime(user?.lastLoginAt || user?.lastLogin || user?.lastSeen);

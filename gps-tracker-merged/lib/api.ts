@@ -1,12 +1,11 @@
 /**
  * lib/api.ts
  * Centralized API service layer for the dashboard.
- * All functions call the real backend at http://localhost:5000/api
+ * All functions call the configured backend API.
  */
 
 import { getSecureItem } from "@/app/admin/Helpers/encryptionHelper"
-
-const BASE_URL = "http://localhost:5000/api"
+import { API_BASE_URL } from "@/lib/runtime-config"
 
 function authHeaders(): HeadersInit {
     const token = getSecureItem("token")
@@ -39,7 +38,7 @@ export interface UserProfile {
 }
 
 export async function getProfile(): Promise<UserProfile> {
-    const res = await fetch(`${BASE_URL}/users/me`, { headers: authHeaders() })
+    const res = await fetch(`${API_BASE_URL}/users/me`, { headers: authHeaders() })
     const json = await handleResponse<{ data: UserProfile }>(res)
     return json.data
 }
@@ -54,8 +53,8 @@ export interface DashboardStats {
 export async function getStats(): Promise<DashboardStats> {
     // Pull stats from individual list-endpoints (real backend has no dedicated /dashboard/stats)
     const [orgsRes, vehsRes] = await Promise.all([
-        fetch(`${BASE_URL}/organizations`, { headers: authHeaders() }),
-        fetch(`${BASE_URL}/vehicle`, { headers: authHeaders() }),
+        fetch(`${API_BASE_URL}/organizations`, { headers: authHeaders() }),
+        fetch(`${API_BASE_URL}/vehicle`, { headers: authHeaders() }),
     ])
     const orgsJson = await orgsRes.json()
     const vehsJson = await vehsRes.json()
@@ -104,7 +103,7 @@ export async function getVehicles(params?: {
     if (params?.limit) query.set("limit", String(params.limit))
     if (params?.status) query.set("status", params.status)
 
-    const res = await fetch(`${BASE_URL}/vehicle?${query.toString()}`, {
+    const res = await fetch(`${API_BASE_URL}/vehicle?${query.toString()}`, {
         headers: authHeaders(),
     })
     const json = await res.json()
@@ -121,7 +120,7 @@ export async function updateVehicle(
     id: string,
     body: Partial<VehicleRecord>
 ): Promise<VehicleRecord> {
-    const res = await fetch(`${BASE_URL}/vehicle/${id}`, {
+    const res = await fetch(`${API_BASE_URL}/vehicle/${id}`, {
         method: "PUT",
         headers: authHeaders(),
         body: JSON.stringify(body),
@@ -131,7 +130,7 @@ export async function updateVehicle(
 }
 
 export async function deleteVehicle(id: string): Promise<void> {
-    const res = await fetch(`${BASE_URL}/vehicle/${id}`, {
+    const res = await fetch(`${API_BASE_URL}/vehicle/${id}`, {
         method: "DELETE",
         headers: authHeaders(),
     })
@@ -155,7 +154,7 @@ export interface NotificationItem {
 }
 
 export async function getNotifications(): Promise<NotificationItem[]> {
-    const res = await fetch(`${BASE_URL}/alerts`, { headers: authHeaders() })
+    const res = await fetch(`${API_BASE_URL}/alerts`, { headers: authHeaders() })
     const json = await res.json()
     return json?.data || json?.alerts || []
 }
@@ -164,7 +163,7 @@ export async function getNotifications(): Promise<NotificationItem[]> {
 
 export async function logoutUser(): Promise<void> {
     try {
-        await fetch(`${BASE_URL}/users/logout`, {
+        await fetch(`${API_BASE_URL}/users/logout`, {
             method: "POST",
             headers: authHeaders(),
         })

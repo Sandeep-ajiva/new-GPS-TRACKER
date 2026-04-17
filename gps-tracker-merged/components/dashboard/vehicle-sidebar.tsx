@@ -1,6 +1,6 @@
 import { Filter, Fan, Power, Search, Signal, Zap } from "lucide-react"
 import type { Vehicle } from "@/lib/vehicles"
-import { useEffect, useState } from "react"
+import { useMemo, useState } from "react"
 import { useAppDispatch } from "@/redux/hooks"
 import { setSelectedVehicle as setReduxSelectedVehicle } from "@/redux/features/vehicleSlice"
 import { useDashboardContext } from "./DashboardContext"
@@ -30,13 +30,12 @@ export function VehicleSidebar({
     const { selectedVehicle, setSelectedVehicle } = useDashboardContext()
     const [searchTerm, setSearchTerm] = useState("")
     const [localStatusFilter, setLocalStatusFilter] = useState<typeof statusFilter>("total")
-    const [currentPage, setCurrentPage] = useState(1)
+    const [pageByKey, setPageByKey] = useState<Record<string, number>>({})
     const [showFilters, setShowFilters] = useState(false)
-
-    // Reset pagination when external status filter changes
-    useEffect(() => {
-        setCurrentPage(1)
-    }, [statusFilter])
+    const paginationKey = useMemo(
+        () => `${statusFilter}|${localStatusFilter}|${searchTerm.trim().toLowerCase()}`,
+        [localStatusFilter, searchTerm, statusFilter],
+    )
 
     const filteredVehicles = vehicles.filter((vehicle) => {
         const matchesGlobalStatus = (() => {
@@ -91,6 +90,7 @@ export function VehicleSidebar({
 
     const itemsPerPage = 10
     const totalPages = Math.ceil(sortedVehicles.length / itemsPerPage)
+    const currentPage = Math.min(pageByKey[paginationKey] || 1, Math.max(totalPages, 1))
     const paginatedVehicles = sortedVehicles.slice(
         (currentPage - 1) * itemsPerPage,
         currentPage * itemsPerPage
@@ -130,7 +130,6 @@ export function VehicleSidebar({
                         value={searchTerm}
                         onChange={(e) => {
                             setSearchTerm(e.target.value)
-                            setCurrentPage(1)
                         }}
                         className="w-full rounded-2xl border border-[#d6e3d0] bg-white py-3 pl-10 pr-4 text-sm font-medium text-slate-700 outline-none transition focus:border-[#38a63c]/40 focus:ring-2 focus:ring-[#38a63c]/15"
                     />
@@ -144,7 +143,6 @@ export function VehicleSidebar({
                                 type="button"
                                 onClick={() => {
                                     setLocalStatusFilter(filter as typeof statusFilter)
-                                    setCurrentPage(1)
                                 }}
                                 className={`rounded-full border px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors ${localStatusFilter === filter
                                     ? "border-[#38a63c]/30 bg-[#ecf8ea] text-[#2f8d35]"
@@ -218,7 +216,10 @@ export function VehicleSidebar({
                     <button
                         type="button"
                         disabled={currentPage === 1}
-                        onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                        onClick={() => setPageByKey((prev) => ({
+                            ...prev,
+                            [paginationKey]: Math.max(1, currentPage - 1),
+                        }))}
                         className="rounded-xl border border-[#d6e3d0] bg-white px-4 py-2 text-xs font-bold text-slate-700 shadow-sm transition-all hover:border-[#38a63c]/30 hover:bg-[#ecf8ea] hover:text-[#2f8d35] disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-[#d6e3d0] disabled:hover:bg-white disabled:hover:text-slate-400"
                     >
                         Prev
@@ -236,7 +237,10 @@ export function VehicleSidebar({
                     <button
                         type="button"
                         disabled={currentPage === totalPages || totalPages === 0}
-                        onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                        onClick={() => setPageByKey((prev) => ({
+                            ...prev,
+                            [paginationKey]: Math.min(totalPages, currentPage + 1),
+                        }))}
                         className="rounded-xl border border-[#d6e3d0] bg-white px-4 py-2 text-xs font-bold text-slate-700 shadow-sm transition-all hover:border-[#38a63c]/30 hover:bg-[#ecf8ea] hover:text-[#2f8d35] disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-[#d6e3d0] disabled:hover:bg-white disabled:hover:text-slate-400"
                     >
                         Next

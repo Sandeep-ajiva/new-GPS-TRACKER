@@ -28,7 +28,9 @@ export default function BillingPage() {
   const [statusFilter, setStatusFilter] = useState("all");
 
   useEffect(() => {
-    setStatusFilter("all");
+    queueMicrotask(() => {
+      setStatusFilter("all");
+    });
   }, [activeView]);
 
   const columns = [

@@ -8,6 +8,7 @@ import { useGetAdminNotificationCountsQuery } from "@/redux/api/adminNotificatio
 import { NotificationDropdown } from "./NotificationDropdown";
 import { Badge } from "@/components/ui/badge";
 import AdminGlobalSearch from "@/components/admin/search/AdminGlobalSearch";
+import { buildAssetUrl } from "@/lib/runtime-config";
 
 type HeaderProps = {
     onOpenSidebar?: () => void;
@@ -116,7 +117,7 @@ export default function Header({ onOpenSidebar, isSidebarOpen = false }: HeaderP
                     {adminUser?.organizationId?.logo ? (
                         <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center border-2 border-blue-200 overflow-hidden shadow-sm">
                             <img
-                                src={`http://localhost:5000${adminUser.organizationId.logo}`}
+                                src={buildAssetUrl(adminUser.organizationId.logo) || adminUser.organizationId.logo}
                                 alt="Org Logo"
                                 className="w-full h-full object-contain p-1"
                             />

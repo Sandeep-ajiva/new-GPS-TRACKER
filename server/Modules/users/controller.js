@@ -191,6 +191,13 @@ const validateUpdateUserData = async (data) => {
 
 exports.login = async (req, res) => {
   try {
+    if (!JWT_SECRET) {
+      return res.status(500).json({
+        status: false,
+        message: "Authentication is not configured",
+      });
+    }
+
     await validateLoginData(req.body);
 
     const { email, password } = req.body;
@@ -241,6 +248,13 @@ exports.login = async (req, res) => {
       message: error.message || "Server error",
     });
   }
+};
+
+exports.logout = async (req, res) => {
+  return res.status(200).json({
+    status: true,
+    message: "Logout successful",
+  });
 };
 
 exports.getMe = async (req, res) => {

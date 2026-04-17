@@ -60,8 +60,8 @@ export default function TripSegmentation({
     let currentTripPoints: TripPoint[] = [];
     let tripStartTime = '';
     let lastIgnitionState = points[0].ignition;
-    let stopStartTime = '';
-    let idleStartTime = '';
+    const stopStartTime = '';
+    const idleStartTime = '';
 
     const haversineDistance = (p1: TripPoint, p2: TripPoint): number => {
       const R = 6371; // Earth's radius in km
@@ -332,8 +332,8 @@ export default function TripSegmentation({
     });
   }, [tripSegments]);
 
-  // Calculate overall average speed
-  totalStats.avgSpeed = tripSegments.length > 0 ? totalStats.avgSpeed / tripSegments.length : 0;
+  // Calculate overall average speed without mutating memoized data
+  const averageSpeed = tripSegments.length > 0 ? totalStats.avgSpeed / tripSegments.length : 0;
 
   return (
     <div className={`bg-white border border-gray-200 rounded-lg shadow-lg ${className}`}>
@@ -385,7 +385,7 @@ export default function TripSegmentation({
               <span className="text-xs font-medium text-purple-800">Avg Speed</span>
             </div>
             <div className="text-lg font-bold text-purple-900">
-              {totalStats.avgSpeed.toFixed(1)} km/h
+              {averageSpeed.toFixed(1)} km/h
             </div>
           </div>
         </div>

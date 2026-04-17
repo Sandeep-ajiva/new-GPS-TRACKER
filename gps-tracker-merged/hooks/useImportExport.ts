@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { getSecureItem } from "@/app/admin/Helpers/encryptionHelper";
+import { API_BASE_URL } from "@/lib/runtime-config";
 
 type ImportExportState = {
   loading: boolean;
@@ -37,8 +38,6 @@ export type ImportResult = {
   };
   data?: unknown;
 };
-
-const API_BASE = "http://localhost:5000/api";
 
 export function useImportExport() {
   const [state, setState] = useState<ImportExportState>({
@@ -90,7 +89,7 @@ export function useImportExport() {
 
       const result = await new Promise<ImportResult>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
-        xhr.open("POST", `${API_BASE}${importUrl}`);
+        xhr.open("POST", `${API_BASE_URL}${importUrl}`);
         if (token) {
           xhr.setRequestHeader("Authorization", `Bearer ${token}`);
         }
@@ -167,7 +166,7 @@ export function useImportExport() {
       });
       query.set("format", format);
 
-      const url = `${API_BASE}${exportUrl}?${query.toString()}`;
+      const url = `${API_BASE_URL}${exportUrl}?${query.toString()}`;
       const response = await fetch(url, {
         method: "GET",
         headers: token ? { Authorization: `Bearer ${token}` } : {},

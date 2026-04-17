@@ -167,7 +167,9 @@ export default function UsersPage() {
   }, [isRootOrgAdmin, isSuperAdmin]);
 
   useEffect(() => {
-    setPage(1);
+    queueMicrotask(() => {
+      setPage(1);
+    });
   }, [
     filters.name,
     filters.email,

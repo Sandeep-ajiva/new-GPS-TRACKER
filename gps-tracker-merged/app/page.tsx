@@ -6,6 +6,7 @@ import { Lock, Mail, Loader2 } from "lucide-react"
 import { z } from "zod"
 
 import { saveSecureItem } from "@/app/admin/Helpers/encryptionHelper"
+import { API_BASE_URL } from "@/lib/runtime-config"
 
 // Roles information
 const ROLE_REDIRECTS: Record<string, string> = {
@@ -14,9 +15,6 @@ const ROLE_REDIRECTS: Record<string, string> = {
   manager: "/dashboard",
   driver: "/dashboard",
 }
-
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"
 
 export default function LoginPage() {
   const router = useRouter()

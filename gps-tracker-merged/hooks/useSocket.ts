@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { getSecureItem } from "@/app/admin/Helpers/encryptionHelper";
 import { socket } from "@/lib/socket";
 
 export const useSocket = <T>(event: string, callback: (data: T) => void) => {
@@ -20,6 +21,9 @@ export const useSocket = <T>(event: string, callback: (data: T) => void) => {
     socket.on("connect", onConnect);
     socket.on("disconnect", onDisconnect);
     socket.on(event, callback);
+
+    const token = getSecureItem("token");
+    socket.auth = typeof token === "string" && token ? { token } : {};
 
     if (!socket.connected) {
       socket.connect();

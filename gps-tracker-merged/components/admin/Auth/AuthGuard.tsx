@@ -31,9 +31,9 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
         } else if (!isSuperadminPath && isSuperAdmin) {
             // Superadmins redirected to /superadmin (optional, but follows existing logic)
             // router.push("/superadmin"); 
-            setAuthorized(true);
+            queueMicrotask(() => setAuthorized(true));
         } else {
-            setAuthorized(true);
+            queueMicrotask(() => setAuthorized(true));
         }
     }, [router, pathname, user, isSuperAdmin]);
 

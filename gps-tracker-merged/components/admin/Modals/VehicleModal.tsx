@@ -13,7 +13,12 @@ import { toast } from "sonner";
 // 🔧 ACTIVE STATUS FILTERING
 import { isActiveStatus } from "@/utils/mappingHelpers";
 import Select from "react-select";
-import { useForm, Controller } from "react-hook-form";
+import * as ReactHookForm from "react-hook-form";
+
+const { useForm, Controller } = ReactHookForm as unknown as {
+    useForm: any;
+    Controller: any;
+};
 
 interface VehicleModalProps {
     isOpen: boolean;
@@ -49,7 +54,7 @@ export default function VehicleModal({ isOpen, onClose, vehicle, onCreated }: Ve
     };
 
     // React Hook Form
-    const { register, handleSubmit, control, reset, watch } = useForm<any>({
+    const { register, handleSubmit, control, reset, watch } = useForm({
         defaultValues: {
             vehicleType: vehicle?.vehicleType || "car",
             vehicleNumber: vehicle?.vehicleNumber || "",

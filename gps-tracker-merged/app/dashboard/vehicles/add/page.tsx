@@ -105,7 +105,9 @@ export default function AddVehiclePage() {
         const role = getSecureItem("userRole")
         if (!token) { router.replace("/"); return }
         if (role === "admin") {
-            setIsAuthed(true)
+            queueMicrotask(() => {
+                setIsAuthed(true)
+            })
             // Pre-fill org if manager
         } else {
             toast.error("Only admins can add vehicles")

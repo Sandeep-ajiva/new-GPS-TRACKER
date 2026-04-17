@@ -28,28 +28,38 @@ export function useVehiclePositions(vehicles: Vehicle[]) {
   })
 
   useEffect(() => {
-    setPositions((prev) => {
-      const next: VehiclePositions = { ...prev }
-      const ids = new Set(vehicles.map((vehicle) => vehicle.id))
-      let changed = false
+    let cancelled = false
 
-      vehicles.forEach((vehicle) => {
-        if (next[vehicle.id]) return
-        const initialIndex = vehicle.status === "running" ? 0 : vehicle.route.length - 1
-        const point = vehicle.route[initialIndex]
-        next[vehicle.id] = { index: initialIndex, lat: point.lat, lng: point.lng }
-        changed = true
-      })
+    queueMicrotask(() => {
+      if (cancelled) return
 
-      Object.keys(next).forEach((id) => {
-        if (!ids.has(id)) {
-          delete next[id]
+      setPositions((prev) => {
+        const next: VehiclePositions = { ...prev }
+        const ids = new Set(vehicles.map((vehicle) => vehicle.id))
+        let changed = false
+
+        vehicles.forEach((vehicle) => {
+          if (next[vehicle.id]) return
+          const initialIndex = vehicle.status === "running" ? 0 : vehicle.route.length - 1
+          const point = vehicle.route[initialIndex]
+          next[vehicle.id] = { index: initialIndex, lat: point.lat, lng: point.lng }
           changed = true
-        }
-      })
+        })
 
-      return changed ? next : prev
+        Object.keys(next).forEach((id) => {
+          if (!ids.has(id)) {
+            delete next[id]
+            changed = true
+          }
+        })
+
+        return changed ? next : prev
+      })
     })
+
+    return () => {
+      cancelled = true
+    }
   }, [vehicles])
 
   useEffect(() => {

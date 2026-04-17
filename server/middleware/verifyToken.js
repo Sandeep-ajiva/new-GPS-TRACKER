@@ -3,10 +3,15 @@ const User = require("../Modules/users/model");
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
-console.log("VERIFY SECRET:", JWT_SECRET);
-
 const requireAuth = async (req, res, next) => {
   try {
+    if (!JWT_SECRET) {
+      return res.status(500).json({
+        status: false,
+        message: "Authentication is not configured",
+      });
+    }
+
     const authHeader = req.headers.authorization;
 
     // 🔥 STEP 1: Check header + Bearer

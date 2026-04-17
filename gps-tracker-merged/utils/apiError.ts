@@ -180,17 +180,29 @@ export const normalizeFetchBaseQueryError = (
   error: FetchBaseQueryError,
   fallback = "Request failed",
 ): FetchBaseQueryError => {
-  const normalizedData =
-    typeof error.data === "string"
-      ? { message: error.data }
-      : isRecord(error.data)
-        ? { ...error.data }
-        : {};
-
   const message = getApiErrorMessage(error, fallback);
+  const normalizedData =
+    "data" in error
+      ? typeof error.data === "string"
+        ? { message: error.data }
+        : isRecord(error.data)
+          ? { ...error.data }
+          : {}
+      : {};
+
+  if (typeof error.status === "number") {
+    return {
+      status: error.status,
+      data: {
+        ...normalizedData,
+        message,
+      },
+    };
+  }
 
   return {
-    ...error,
+    status: "CUSTOM_ERROR",
+    error: "error" in error && typeof error.error === "string" ? error.error : message,
     data: {
       ...normalizedData,
       message,

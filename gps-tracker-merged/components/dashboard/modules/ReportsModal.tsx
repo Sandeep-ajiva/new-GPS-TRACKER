@@ -728,7 +728,7 @@ export function ReportsModal({ isOpen, onClose }: ReportsModalProps) {
                     ) : (
                         <div className="rounded-2xl border border-[#d8e6d2] bg-[#f7fbf5] p-8 flex flex-col items-center justify-center text-slate-500 italic text-center min-h-[300px]">
                             <FileText size={48} className="mb-4 opacity-20" />
-                            <p className="text-sm">Select vehicles, date range, and click "Generate Report" to view results</p>
+                            <p className="text-sm">Select vehicles, date range, and click &quot;Generate Report&quot; to view results</p>
                             <p className="text-xs uppercase tracking-widest mt-2 opacity-50">Report engine ready</p>
                         </div>
                     )}

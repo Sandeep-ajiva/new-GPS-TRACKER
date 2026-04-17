@@ -46,8 +46,7 @@ export default function DashboardPage() {
   const queryFromSuperadmin = searchParams.get("from") === "superadmin";
   const queryOrgId = searchParams.get("org");
 
-  const [fromSuperadmin, setFromSuperadmin] = useState(false);
-  const [targetOrgId, setTargetOrgId] = useState<string | null>(null);
+  const fromSuperadmin = queryFromSuperadmin;
   const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] =
@@ -90,16 +89,11 @@ export default function DashboardPage() {
      URL + SESSION HANDLING
   ========================= */
   useEffect(() => {
-    let selectedOrg = queryOrgId;
-    let fromSuper = queryFromSuperadmin;
-
-    setTargetOrgId(selectedOrg);
-    setFromSuperadmin(fromSuper);
-  }, [queryOrgId, queryFromSuperadmin]);
-
-  useEffect(() => {
-    if (targetOrgId) setSelectedOrgId(targetOrgId);
-  }, [targetOrgId]);
+    if (!queryOrgId) return;
+    queueMicrotask(() => {
+      setSelectedOrgId((currentOrgId) => (currentOrgId === queryOrgId ? currentOrgId : queryOrgId));
+    });
+  }, [queryOrgId]);
 
   /* =========================
      ONLINE / OFFLINE FIX

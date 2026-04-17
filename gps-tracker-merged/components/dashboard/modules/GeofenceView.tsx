@@ -134,7 +134,7 @@ export function GeofenceView() {
                     </div>
                  </div>
                  <div className="relative z-10 border-l border-white/10 pl-6 h-full flex flex-col justify-center">
-                    <p className="text-[10px] font-black uppercase tracking-[0.25em] opacity-50">Today's Alerts</p>
+                    <p className="text-[10px] font-black uppercase tracking-[0.25em] opacity-50">Today&apos;s Alerts</p>
                     <p className="text-3xl font-black mt-2">142</p>
                  </div>
                  <div className="relative z-10 border-l border-white/10 pl-6 h-full flex flex-col justify-center">
@@ -151,4 +151,3 @@ export function GeofenceView() {
         </div>
     );
 }
-

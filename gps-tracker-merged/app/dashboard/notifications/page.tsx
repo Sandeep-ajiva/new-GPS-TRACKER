@@ -277,7 +277,7 @@ export default function NotificationsPage() {
               <div className="rounded-2xl border border-red-200 bg-red-50 p-12 text-center shadow-sm">
                 <AlertCircle className="mx-auto h-12 w-12 text-red-500/50" />
                 <h3 className="mt-4 text-lg font-bold text-slate-900">Oops! Something went wrong</h3>
-                <p className="mt-2 text-slate-600">We couldn't load your notifications at this time.</p>
+                <p className="mt-2 text-slate-600">We couldn&apos;t load your notifications at this time.</p>
                 <Button onClick={() => refetch()} className="mt-6 bg-[#38a63c] text-white hover:bg-[#2f8d35]">
                   <RefreshCw className="mr-2 h-4 w-4" />
                   Try Again

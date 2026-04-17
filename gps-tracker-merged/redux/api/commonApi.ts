@@ -6,6 +6,7 @@ import type {
 } from "@reduxjs/toolkit/query";
 import { encryptPayload } from "@/utils/encryption";
 import { getApiErrorMessage, normalizeFetchBaseQueryError } from "@/utils/apiError";
+import { API_BASE_URL } from "@/lib/runtime-config";
 
 import { getSecureItem } from "@/app/admin/Helpers/encryptionHelper";
 
@@ -18,7 +19,7 @@ import { getSecureItem } from "@/app/admin/Helpers/encryptionHelper";
  * - NO auth header on login
  */
 const rawBaseQuery = fetchBaseQuery({
-  baseUrl: "http://localhost:5000/api",
+  baseUrl: API_BASE_URL,
 
   prepareHeaders: (headers, { endpoint }) => {
     // ❌ login endpoint pe token nahi bhejna

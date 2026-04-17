@@ -16,6 +16,7 @@ type VehicleApiRecord = {
 type VehicleMutationResponse = {
   status: boolean;
   message: string;
+  _id?: string;
   data?: VehicleApiRecord;
 };
 

@@ -210,9 +210,11 @@ const { data: liveDataRes } = useGetLiveVehicleByDeviceIdQuery(deviceId, {
       animationCleanupRef.current = null;
     }
 
-      if (currentPos) {
+    if (currentPos) {
       const resetPos = { lat: currentPos.lat, lng: currentPos.lng };
-      setAnimatedPos(resetPos);
+      queueMicrotask(() => {
+        setAnimatedPos(resetPos);
+      });
       animatedPosRef.current = resetPos;
       prevPosRef.current = resetPos;
       lastTargetRef.current = resetPos;
@@ -257,7 +259,9 @@ const { data: liveDataRes } = useGetLiveVehicleByDeviceIdQuery(deviceId, {
     // Initialize animated position on first load
     if (animatedPosRef.current === null) {
       const initialPos = { lat: currentPos.lat, lng: currentPos.lng };
-      setAnimatedPos(initialPos);
+      queueMicrotask(() => {
+        setAnimatedPos(initialPos);
+      });
       animatedPosRef.current = initialPos;
       prevPosRef.current = initialPos;
       lastTargetRef.current = initialPos;

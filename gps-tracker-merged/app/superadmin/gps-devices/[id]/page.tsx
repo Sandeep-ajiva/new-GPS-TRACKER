@@ -1,10 +1,18 @@
 "use client";
 
 import { useMemo } from "react";
+import dynamic from "next/dynamic";
 import { useParams, useRouter } from "next/navigation";
-import SinglePointMap from "@/components/admin/Map/SinglePointMap";
-import { useGetGpsDeviceQuery } from "@/redux/api/gpsDeviceApi";
+import {
+  extractGpsDeviceDetails,
+  useGetGpsDeviceQuery,
+} from "@/redux/api/gpsDeviceApi";
 import { formatDateTime, formatStatus } from "@/components/superadmin/superadmin-data";
+
+const SinglePointMap = dynamic(
+  () => import("@/components/admin/Map/SinglePointMap"),
+  { ssr: false },
+);
 
 type Coordinates = { lat: number; lng: number };
 
@@ -19,9 +27,8 @@ export default function DeviceDetailPage() {
   });
 
   const device = useMemo(() => {
-    if (!data || typeof data !== "object") return null;
-    if ("data" in data && data.data && typeof data.data === "object") return data.data as Record<string, unknown>;
-    return data as Record<string, unknown>;
+    const payload = extractGpsDeviceDetails(data);
+    return payload ? (payload as unknown as Record<string, unknown>) : null;
   }, [data]);
 
   const position = useMemo(() => getCoordinates(device), [device]);

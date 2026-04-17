@@ -45,7 +45,7 @@ export function ExportModal({ isOpen, onClose, reportData, reportType, currentFi
         // Determine dates based on selection
         let exportFrom = exportState.from
         let exportTo = exportState.to
-        let dataToExport = reportData
+        const dataToExport = reportData
 
         if (exportState.dateRange === "all") {
             // For "All Dates", use a very wide date range

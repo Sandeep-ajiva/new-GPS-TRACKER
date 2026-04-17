@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { MapPin, Navigation, ShieldCheck, Car, Calendar, User as UserIcon } from "lucide-react";
 import { useGetMeQuery } from "@/redux/api/usersApi";
@@ -8,9 +9,16 @@ import { useGetVehicleQuery } from "@/redux/api/vehicleApi";
 import { useGetLiveVehiclesQuery } from "@/redux/api/gpsLiveApi";
 import { useGetVehicleHistoryQuery } from "@/redux/api/gpsHistoryApi";
 import { getSecureItem } from "@/app/admin/Helpers/encryptionHelper";
-import SinglePointMap from "@/components/admin/Map/SinglePointMap";
-import HistoryMap from "@/components/admin/Map/HistoryMap";
 import DriverTelemetryPanel from "@/components/driver/DriverTelemetryPanel";
+
+const SinglePointMap = dynamic(
+  () => import("@/components/admin/Map/SinglePointMap"),
+  { ssr: false },
+);
+const HistoryMap = dynamic(
+  () => import("@/components/admin/Map/HistoryMap"),
+  { ssr: false },
+);
 
 /* ================= HELPERS ================= */
 

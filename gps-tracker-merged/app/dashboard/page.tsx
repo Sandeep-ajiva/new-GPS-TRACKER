@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react"
 import { createPortal } from "react-dom"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Header } from "@/components/dashboard/header"
@@ -138,7 +138,7 @@ const formatCoordinateText = (latitude?: number | null, longitude?: number | nul
   return `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`
 }
 
-export default function DashboardPage() {
+function DashboardPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { data: vehData } = useGetVehiclesQuery({ page: 0, limit: 1000 })
@@ -1028,5 +1028,21 @@ setLiveByVehicleId((prev) => {
         onClose={() => setShowReportsModal(false)} 
       />
     </div>
+  )
+}
+
+function DashboardPageFallback() {
+  return (
+    <div className="flex min-h-[60vh] items-center justify-center bg-slate-950 text-slate-400">
+      <span>Loading dashboard...</span>
+    </div>
+  )
+}
+
+export default function DashboardPage() {
+  return (
+    <Suspense fallback={<DashboardPageFallback />}>
+      <DashboardPageContent />
+    </Suspense>
   )
 }

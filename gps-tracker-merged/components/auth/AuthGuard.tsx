@@ -28,8 +28,10 @@ export function AuthGuard({
       return
     }
 
-    setIsAuthorized(true)
-    setIsLoading(false)
+    queueMicrotask(() => {
+      setIsAuthorized(true)
+      setIsLoading(false)
+    })
   }, [router, requiredRoles])
 
   if (isLoading) {

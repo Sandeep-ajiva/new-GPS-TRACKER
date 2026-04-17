@@ -1,6 +1,29 @@
 import CryptoJS from "crypto-js";
 
-const SECRET_KEY = "admin_security_key_2026";
+const LEGACY_SECRET_KEYS = [
+    "admin_security_key_2026",
+    "fallback_dev_secret_key_12345",
+].filter(Boolean);
+
+const getPrimarySecretKey = () => {
+    const envKey =
+        process.env.NEXT_PUBLIC_STORAGE_SECRET ||
+        process.env.NEXT_PUBLIC_ENCRYPTION_KEY;
+
+    if (envKey) {
+        return envKey;
+    }
+
+    if (typeof window !== "undefined" && window.location?.origin) {
+        return `gps-tracker:${window.location.origin}`;
+    }
+
+    return "gps-tracker-local";
+};
+
+const getCandidateSecretKeys = () => {
+    return [...new Set([getPrimarySecretKey(), ...LEGACY_SECRET_KEYS].filter(Boolean))];
+};
 
 const canUseStorage = () => {
     return (
@@ -17,7 +40,7 @@ const canUseStorage = () => {
  */
 export const encryptData = (data) => {
     try {
-        const ciphertext = CryptoJS.AES.encrypt(JSON.stringify(data), SECRET_KEY).toString();
+        const ciphertext = CryptoJS.AES.encrypt(JSON.stringify(data), getPrimarySecretKey()).toString();
         return ciphertext;
     } catch (e) {
         console.error("Encryption failed", e);
@@ -31,20 +54,22 @@ export const encryptData = (data) => {
 export const decryptData = (ciphertext) => {
     try {
         if (!ciphertext) return null;
-        const bytes = CryptoJS.AES.decrypt(ciphertext, SECRET_KEY);
-        const decryptedStr = bytes.toString(CryptoJS.enc.Utf8);
-        
-        if (!decryptedStr) {
-            return null;
+        for (const secretKey of getCandidateSecretKeys()) {
+            const bytes = CryptoJS.AES.decrypt(ciphertext, secretKey);
+            const decryptedStr = bytes.toString(CryptoJS.enc.Utf8);
+
+            if (!decryptedStr) {
+                continue;
+            }
+
+            try {
+                return JSON.parse(decryptedStr);
+            } catch (_) {
+                return decryptedStr;
+            }
         }
 
-        try {
-            return JSON.parse(decryptedStr);
-        } catch (parseError) {
-            // If it's not valid JSON, it might be a raw string from a previous version
-            // though encryptData uses JSON.stringify.
-            return decryptedStr;
-        }
+        return null;
     } catch (e) {
         // This is where "Malformed UTF-8 data" usually happens
         return null;

@@ -111,7 +111,9 @@ export default function DriversPage() {
     const vehicles = useMemo(() => (vehData?.data as any[]) || [], [vehData]);
 
     useEffect(() => {
-        setPage(1);
+        queueMicrotask(() => {
+            setPage(1);
+        });
     }, [
         filters.name,
         filters.phone,

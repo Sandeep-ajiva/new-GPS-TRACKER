@@ -68,7 +68,7 @@ export const showNotificationToast = (notification: any) => {
   const location = notification.address || 'Location unavailable';
 
   return toast.custom(
-    (
+    (toastId) => (
       <div className="flex items-start gap-3 p-3 bg-white rounded-lg border border-gray-200 shadow-lg max-w-sm w-80">
         {/* Alert Icon */}
         <div className="flex-shrink-0 mt-1">
@@ -82,7 +82,7 @@ export const showNotificationToast = (notification: any) => {
               {vehicleNumber}
             </h4>
             <button
-              onClick={() => toast.dismiss()}
+              onClick={() => toast.dismiss(toastId)}
               className="text-gray-400 hover:text-gray-600 transition-colors"
             >
               <X size={14} />
@@ -115,7 +115,7 @@ export const showNotificationToast = (notification: any) => {
                 if (notification.vehicleId) {
                   window.location.href = `/admin/vehicles?vehicle=${notification.vehicleId}`;
                 }
-                toast.dismiss();
+                toast.dismiss(toastId);
               }}
               className="mt-2 w-full text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-2 rounded-lg transition-colors"
             >

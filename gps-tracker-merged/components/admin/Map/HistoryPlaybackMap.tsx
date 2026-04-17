@@ -126,9 +126,17 @@ export default function HistoryPlaybackMap({
   const baseZoom = useMemo(() => computeSmartZoom(path), [path]);
   const pauseRef = useRef<number>(0);
 
-  useEffect(() => setMapTheme(satellite ? "satellite" : "street"), [satellite]);
+  useEffect(() => {
+    queueMicrotask(() => {
+      setMapTheme(satellite ? "satellite" : "street");
+    });
+  }, [satellite]);
 
-  useEffect(() => setRenderPoint(playPoint || null), [playPoint]);
+  useEffect(() => {
+    queueMicrotask(() => {
+      setRenderPoint(playPoint || null);
+    });
+  }, [playPoint]);
 
   useEffect(() => {
     if (!map || !path.length) return;

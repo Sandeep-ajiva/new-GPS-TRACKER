@@ -165,17 +165,6 @@ export default function OrganizationsPage() {
     router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
   }, [filters, page, pathname, router]);
 
-  useEffect(() => {
-    if (searchParams.get("action") === "create") {
-      openCreateModal();
-      // Clean up URL
-      const params = new URLSearchParams(searchParams.toString());
-      params.delete("action");
-      const nextQuery = params.toString();
-      router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, { scroll: false });
-    }
-  }, [searchParams, pathname, router]); // openCreateModal is omitted from deps to avoid re-triggering if it changes
-
   const organizationFormFields = useMemo<FormField[]>(() => {
     const baseFields: FormField[] = [
       {
@@ -322,10 +311,21 @@ export default function OrganizationsPage() {
     });
   }, [editingOrg]);
 
-  const openCreateModal = () => {
+  function openCreateModal() {
     setEditingOrg(null);
     openPopup("orgModal");
-  };
+  }
+
+  useEffect(() => {
+    if (searchParams.get("action") === "create") {
+      openCreateModal();
+      // Clean up URL
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete("action");
+      const nextQuery = params.toString();
+      router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, { scroll: false });
+    }
+  }, [searchParams, pathname, router]);
 
   const openEditModal = (organization: Organization) => {
     setEditingOrg(organization);
@@ -471,7 +471,7 @@ export default function OrganizationsPage() {
             </p>
             <h1 className="text-3xl font-black tracking-tight text-slate-100">Organizations</h1>
             <p className="mt-1 max-w-3xl font-bold text-slate-400">
-              Create client organizations, maintain lifecycle state, and drill into each organization's
+              Create client organizations, maintain lifecycle state, and drill into each organization&apos;s
               operational detail view. Root organization deletion remains hidden because the current backend
               does not support it.
             </p>

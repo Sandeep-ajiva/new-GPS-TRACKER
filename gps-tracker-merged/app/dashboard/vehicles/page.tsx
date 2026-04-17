@@ -22,8 +22,10 @@ export default function VehiclesPage() {
             return
         }
         if (role && ["admin", "manager", "driver"].includes(role)) {
-            setIsAuthed(true)
-            setCanCreate(role === "admin")
+            queueMicrotask(() => {
+                setIsAuthed(true)
+                setCanCreate(role === "admin")
+            })
         } else {
             router.replace("/")
         }
