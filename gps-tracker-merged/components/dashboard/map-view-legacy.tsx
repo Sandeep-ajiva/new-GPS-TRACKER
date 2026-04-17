@@ -11,6 +11,7 @@ import { useGetLiveVehicleByDeviceIdQuery } from "@/redux/api/gpsLiveApi";
 import "leaflet/dist/leaflet.css";
 import "leaflet-defaulticon-compatibility/dist/leaflet-defaulticon-compatibility.css";
 import "leaflet-defaulticon-compatibility";
+import "../../styles/map.css"
 
 
 function FitBounds({
@@ -97,25 +98,76 @@ export function MapView() {
         <FitBounds points={pointsForBounds} />
 
         {currentPos && (
-          <Marker
-            position={currentPos}
-            icon={markerIcon(statusColor(currentPos.status), 18)}
-          >
-            <Popup className="dark-leaflet-popup">
-              <div className="min-w-[300px] bg-slate-900 p-2">
-                <TelemetryGrid vehicle={selectedVehicle} compact />
-                <div className="mt-2 border-t border-white/5 pt-2 space-y-1">
-                  <div className="flex justify-between text-[9px]">
-                    <span className="text-slate-400 font-bold uppercase tracking-wider">POI</span>
-                    <span className="text-slate-200 font-semibold">{livePoi}</span>
-                  </div>
-                  <div className="text-[8px] text-slate-500 italic">
-                    Last update: {new Date().toLocaleTimeString()}
-                  </div>
-                </div>
-              </div>
-            </Popup>
-          </Marker>
+<Marker
+  position={currentPos}
+  icon={markerIcon(statusColor(currentPos.status), 18)}
+>
+  {/* Ensure you still have the custom-sleek-popup class to remove Leaflet's default white box */}
+{/* Notice we added minWidth and maxWidth here! */}
+<Popup className="custom-sleek-popup" minWidth={340} maxWidth={340}>
+  
+  <div className="w-[340px] bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden font-sans">
+    
+    {/* --- TOP: Registration & Status --- */}
+    <div className="flex justify-between items-center px-4 py-3 border-b border-slate-100">
+      <div>
+        <h3 className="text-base font-bold text-slate-800 leading-tight">
+          {selectedVehicle?.registrationNumber || "DL20E4750"}
+        </h3>
+        <div className="flex items-center gap-1.5 mt-1 text-slate-500 text-xs font-medium">
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
+          {selectedVehicle?.driver || "Ram Dev"}
+        </div>
+      </div>
+      
+      <div className="px-2.5 py-1 bg-red-50 border border-red-100 text-red-600 rounded-md text-[10px] font-bold uppercase tracking-wider">
+        {selectedVehicle?.status || "Stopped"}
+      </div>
+    </div>
+
+    {/* --- MIDDLE: Quick Vitals --- */}
+    <div className="flex justify-between items-center px-4 py-2.5 bg-slate-50/50">
+      
+      <div className="flex flex-col items-center">
+        <div className="flex items-center gap-1 text-slate-400 text-[10px] uppercase font-bold tracking-wider mb-0.5">
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+          Speed
+        </div>
+        <span className="text-slate-800 text-sm font-semibold">0 <span className="text-[10px] text-slate-500 font-normal">km/h</span></span>
+      </div>
+
+      <div className="flex flex-col items-center">
+        <div className="flex items-center gap-1 text-slate-400 text-[10px] uppercase font-bold tracking-wider mb-0.5">
+          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
+          Ignition
+        </div>
+        <span className="text-slate-800 text-sm font-semibold">Off</span>
+      </div>
+
+      <div className="flex flex-col items-center">
+        <div className="flex items-center gap-1 text-slate-400 text-[10px] uppercase font-bold tracking-wider mb-0.5">
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0"></path></svg>
+          GPS
+        </div>
+        <span className="text-green-600 text-sm font-semibold flex items-center gap-1.5">
+          <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
+          Live
+        </span>
+      </div>
+
+    </div>
+
+    {/* --- BOTTOM: Single Line Location --- */}
+    <div className="px-4 py-2.5 border-t border-slate-100 flex items-center gap-2 bg-white">
+      <svg className="w-4 h-4 text-blue-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+      <p className="text-xs text-slate-600 font-medium truncate w-full" title={livePoi}>
+        {livePoi || "NH5, Kharar, Kharar Tahsil, Punjab"}
+      </p>
+    </div>
+
+  </div>
+</Popup>
+</Marker>
         )}
 
         {/* Live dashboard map should show only current points.
@@ -139,10 +191,6 @@ export function MapView() {
         <div className="mt-1 flex items-center gap-2">
           <span className="h-2 w-2 rounded-full bg-cyan-400" />
           <span>Inactive</span>
-        </div>
-        <div className="mt-1 flex items-center gap-2">
-          <span className="h-2 w-2 rounded-full bg-slate-400" />
-          <span>No Data</span>
         </div>
       </div>
     </div>

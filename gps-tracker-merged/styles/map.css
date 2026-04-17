@@ -1,0 +1,60 @@
+/* Fix Leaflet map z-index to prevent overlapping UI overlays */
+.leaflet-pane,
+.leaflet-top,
+.leaflet-bottom {
+  z-index: 0 !important;
+}
+
+/* Remove default Leaflet popup styling so our custom design works */
+.custom-sleek-popup .leaflet-popup-content-wrapper {
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+}
+.custom-sleek-popup .leaflet-popup-content {
+  margin: 0 !important;
+  width: auto !important;
+}
+.custom-sleek-popup .leaflet-popup-tip-container {
+  display: none !important; 
+} 
+
+/* Ensure all overlay containers are properly stacked */
+.overlay-root {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Fix dropdown z-index issues */
+.dropdown-container {
+  z-index: 999;
+  position: relative;
+}
+
+/* Prevent layout clipping */
+.layout-container {
+  overflow: visible;
+}
+
+/* Ensure modals are always on top */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Notification center positioning */
+.notification-center {
+  z-index: 1000;
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+}

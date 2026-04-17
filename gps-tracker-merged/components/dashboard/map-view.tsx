@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { DivIcon, latLng } from "leaflet";
 import { MapContainer, Marker, Popup, useMap, useMapEvents } from "react-leaflet";
 import { Fuel, Gauge, Navigation, Thermometer } from "lucide-react";
-import { TelemetryGrid } from "./telemetry-grid";
 import { useDashboardContext } from "./DashboardContext";
 import { useGetLiveVehicleByDeviceIdQuery } from "@/redux/api/gpsLiveApi";
 import { MapTileLayer } from "../admin/Map/MapTileLayer";
@@ -12,6 +11,7 @@ import { animatePosition, calculateAnimationDuration } from "@/lib/positionInter
 import "leaflet/dist/leaflet.css";
 import "leaflet-defaulticon-compatibility/dist/leaflet-defaulticon-compatibility.css";
 import "leaflet-defaulticon-compatibility";
+import "../../styles/map.css";
 import type { Vehicle } from "@/lib/vehicles";
 import type { VehiclePositions } from "@/lib/use-vehicle-positions";
 
@@ -59,6 +59,12 @@ function SmoothFocus({
       }, 8000);
     },
   });
+
+  useEffect(() => {
+    return () => {
+      if (lockTimer.current) clearTimeout(lockTimer.current);
+    };
+  }, []);
 
   useEffect(() => {
     if (!point) return;
@@ -173,12 +179,12 @@ const { data: liveDataRes } = useGetLiveVehicleByDeviceIdQuery(deviceId, {
     const lng = typeof lngRaw === "string" ? parseFloat(lngRaw) : lngRaw;
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
     const timestampRaw = liveNode.gpsTimestamp || liveNode.updatedAt || null;
-    const timestampMs = timestampRaw ? new Date(timestampRaw).getTime() : Date.now();
+    const parsedTimestampMs = timestampRaw ? new Date(timestampRaw).getTime() : 0;
     return {
       lat: lat as number,
       lng: lng as number,
       status: liveNode.status || selectedVehicle?.status || "running",
-      timestampMs: Number.isFinite(timestampMs) ? timestampMs : Date.now(),
+      timestampMs: Number.isFinite(parsedTimestampMs) && parsedTimestampMs > 0 ? parsedTimestampMs : 0,
     };
   }, [liveNode, selectedVehicle]);
 
@@ -380,63 +386,111 @@ const { data: liveDataRes } = useGetLiveVehicleByDeviceIdQuery(deviceId, {
   const fallbackRoutePoint = selectedVehicle?.route?.[selectedVehicle?.route.length - 1] || selectedVehicle?.route?.[0] || null;
   // Use animated position if available, fall back to current position, then fallback route
   const displayPoint = animatedPos || currentPos || fallbackRoutePoint;
-  const center = displayPoint || { lat: 20.5937, lng: 78.9629 };
+  const center = displayPoint
+    ? { lat: displayPoint.lat, lng: displayPoint.lng }
+    : { lat: 20.5937, lng: 78.9629 };
+  const mapRenderKey =
+    selectedVehicle.id ||
+    selectedVehicle.vehicleNumber ||
+    selectedVehicleId ||
+    "dashboard-map";
   const markerStatus = currentPos?.status || selectedVehicle?.status || "running";
+  const statusChipClass =
+    markerStatus === "running"
+      ? "bg-emerald-50 border-emerald-100 text-emerald-600"
+      : markerStatus === "idle"
+        ? "bg-amber-50 border-amber-100 text-amber-600"
+        : markerStatus === "inactive"
+          ? "bg-cyan-50 border-cyan-100 text-cyan-600"
+          : markerStatus === "nodata"
+            ? "bg-slate-100 border-slate-200 text-slate-500"
+            : "bg-red-50 border-red-100 text-red-600";
+  const registrationLabel =
+    selectedVehicle.vehicleNumber ||
+    (selectedVehicle as Vehicle & { registrationNumber?: string; registration?: string }).registrationNumber ||
+    (selectedVehicle as Vehicle & { registrationNumber?: string; registration?: string }).registration ||
+    selectedVehicle.vehicleNumber ||
+    "N/A";
+  const ignitionLabel =
+    markerStatus === "running" || markerStatus === "idle" ? "On" : "Off";
+  const gpsLabel = currentPos ? "Live" : "No Signal";
 
   return (
     <div className="relative h-full w-full bg-[#f6fbf4]">
-      <MapContainer center={center as any} zoom={13} className="h-full w-full" style={{ zIndex: 1 }}>
+      <MapContainer key={mapRenderKey} center={center} zoom={13} className="h-full w-full" style={{ zIndex: 1 }}>
         <MapTileLayer />
         <SmoothFocus
-          point={displayPoint as any}
-          selectedId={(selectedVehicle as any)?.id || (selectedVehicle as any)?._id || null}
+          point={displayPoint ? { lat: displayPoint.lat, lng: displayPoint.lng } : null}
+          selectedId={selectedVehicle.id || null}
           focusKey={focusKey}
           isFollowMode={isFollowMode}
         />
 
         {displayPoint && (
           <Marker
-            position={displayPoint as any}
+            position={{ lat: displayPoint.lat, lng: displayPoint.lng }}
             icon={markerIcon(statusColor(markerStatus), 16)}
           >
-            <Popup>
-              <div className="min-w-[320px]">
-                <div className="mb-3 rounded-2xl border border-[#dbe7d4] bg-[#f8fcf7] p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Selected Vehicle</p>
-                      <h4 className="mt-1 text-lg font-black text-slate-900">{selectedVehicle.vehicleNumber || "N/A"}</h4>
-                      <p className="mt-1 text-sm font-medium text-slate-500">{selectedVehicle.driver || "Unassigned"}</p>
+            <Popup className="custom-sleek-popup" minWidth={340} maxWidth={340}>
+              <div className="w-[340px] overflow-hidden rounded-xl border border-slate-200 bg-white font-sans shadow-lg">
+                <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
+                  <div>
+                    <h3 className="text-base font-bold leading-tight text-slate-800">
+                      {registrationLabel}
+                    </h3>
+                    <div className="mt-1 flex items-center gap-1.5 text-xs font-medium text-slate-500">
+                      <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
+                      </svg>
+                      {selectedVehicle.driver || "Unassigned"}
                     </div>
-                    <span className="rounded-full bg-[#ecf8ea] px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-[#2f8d35]">
-                      {selectedVehicle.status || "N/A"}
-                    </span>
                   </div>
-                  <div className="mt-4 grid grid-cols-3 gap-2">
-                    <div className="rounded-xl bg-white p-3">
-                      <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
-                        Speed
-                        <Gauge className="h-3.5 w-3.5 text-[#38a63c]" />
-                      </div>
-                      <p className="mt-2 text-sm font-bold text-slate-800">{selectedVehicle.speed || 0} km/h</p>
-                    </div>
-                    <div className="rounded-xl bg-white p-3">
-                      <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
-                        Fuel
-                        <Fuel className="h-3.5 w-3.5 text-[#38a63c]" />
-                      </div>
-                      <p className="mt-2 text-sm font-bold text-slate-800">{selectedVehicle.fuel != null ? `${selectedVehicle.fuel}%` : "N/A"}</p>
-                    </div>
-                    <div className="rounded-xl bg-white p-3">
-                      <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
-                        Temp
-                        <Thermometer className="h-3.5 w-3.5 text-[#38a63c]" />
-                      </div>
-                      <p className="mt-2 text-sm font-bold text-slate-800">{selectedVehicle.temperature || "N/A"}</p>
-                    </div>
+
+                  <div className={`rounded-md border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${statusChipClass}`}>
+                    {markerStatus}
                   </div>
                 </div>
-                <TelemetryGrid vehicle={selectedVehicle} compact />
+
+                <div className="flex items-center justify-between bg-slate-50/50 px-4 py-2.5">
+                  <div className="flex flex-col items-center">
+                    <div className="mb-0.5 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      <Gauge className="h-3.5 w-3.5" />
+                      Speed
+                    </div>
+                    <span className="text-sm font-semibold text-slate-800">
+                      {selectedVehicle.speed || 0} <span className="text-[10px] font-normal text-slate-500">km/h</span>
+                    </span>
+                  </div>
+
+                  <div className="flex flex-col items-center">
+                    <div className="mb-0.5 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      <Fuel className="h-3.5 w-3.5" />
+                      Ignition
+                    </div>
+                    <span className="text-sm font-semibold text-slate-800">{ignitionLabel}</span>
+                  </div>
+
+                  <div className="flex flex-col items-center">
+                    <div className="mb-0.5 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      <Thermometer className="h-3.5 w-3.5" />
+                      GPS
+                    </div>
+                    <span className={`flex items-center gap-1.5 text-sm font-semibold ${currentPos ? "text-green-600" : "text-slate-500"}`}>
+                      <span className={`h-1.5 w-1.5 rounded-full ${currentPos ? "bg-green-500 animate-pulse" : "bg-slate-400"}`}></span>
+                      {gpsLabel}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 border-t border-slate-100 bg-white px-4 py-2.5">
+                  <svg className="h-4 w-4 shrink-0 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                  </svg>
+                  <p className="w-full truncate text-xs font-medium text-slate-600" title={livePoi}>
+                    {livePoi || "Location unavailable"}
+                  </p>
+                </div>
               </div>
             </Popup>
           </Marker>

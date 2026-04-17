@@ -26,5 +26,5 @@ const Map = dynamic<MapWrapperProps>(() => import("./map-view").then((mod) => mo
 
 
 export function MapWrapper(props: MapWrapperProps) {
-    return <Map {...props} />
+    return <Map key={props.selectedVehicleId || "dashboard-map"} {...props} />
 }
