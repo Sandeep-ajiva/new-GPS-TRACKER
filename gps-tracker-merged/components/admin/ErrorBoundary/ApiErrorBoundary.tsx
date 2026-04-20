@@ -26,7 +26,7 @@ export default function ApiErrorBoundary({
           <h3 className="text-lg font-black text-amber-950">API Unavailable</h3>
           <p className="mt-2 text-sm font-medium leading-6 text-amber-800">{errorMessage}</p>
           <p className="mt-4 text-xs font-semibold uppercase tracking-[0.2em] text-amber-600">
-            Make sure your Node.js backend is running on port 5000
+            Check your environment configuration and ensure the backend is reachable
           </p>
         </div>
       </div>

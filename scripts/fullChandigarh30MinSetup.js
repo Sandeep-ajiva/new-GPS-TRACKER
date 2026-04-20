@@ -46,16 +46,16 @@ const DATA = {
   superadmin: {
     firstName: "Super",
     lastName: "Admin",
-    email: "superadmin@gmail.com",
+    email: process.env.SUPERADMIN_EMAIL || "superadmin@gmail.com",
     mobile: "1234567890",
-    password: "admin@123",
+    password: process.env.SUPERADMIN_PASSWORD || "admin@123",
   },
   admin: {
     firstName: "Sim",
     lastName: "Admin",
-    email: "sim.admin@ajiva.test",
+    email: process.env.SIM_ADMIN_EMAIL || "sim.admin@ajiva.test",
     mobile: "9876500001",
-    password: "Admin@123",
+    password: process.env.SIM_ADMIN_PASSWORD || "Admin@123",
   },
   vehicleMain: {
     vehicleNumber: "TS09ER1234",

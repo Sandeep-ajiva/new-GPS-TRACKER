@@ -7,10 +7,22 @@ require("dotenv").config({
 const fs = require("fs");
 
 const cors = require("cors");
+const helmet = require("helmet");
+const compression = require("compression");
 
 const responseTimeLogger = require("./middleware/responseTimeLogger");
 const connectDB = require("./config/database");
 const { corsOptions } = require("./config/security");
+const mongoose = require("mongoose");
+
+// --- Environment Validation ---
+const REQUIRED_ENV_VARS = ["MONGO_URI", "JWT_SECRET"];
+REQUIRED_ENV_VARS.forEach((varName) => {
+  if (!process.env[varName]) {
+    console.error(`❌ CRITICAL ERROR: Environment variable ${varName} is not defined!`);
+    process.exit(1);
+  }
+});
 
 connectDB();
 
@@ -18,6 +30,15 @@ const http = require("http");
 const { initializeSocket } = require("./socket");
 
 const app = express();
+
+// --- Production Middlewares ---
+app.use(helmet({
+  contentSecurityPolicy: false, // Disable CSP if it interferes with your frontend (typical for APIs)
+  crossOriginResourcePolicy: { policy: "cross-origin" }
+}));
+app.use(compression());
+app.disable("x-powered-by");
+
 const server = http.createServer(app);
 const io = initializeSocket(server);
 const DEFAULT_HTTP_PORT = Number(process.env.PORT) || 5000;
@@ -26,7 +47,6 @@ let tcpServerStarted = false;
 
 const modulesPath = path.join(__dirname, "Modules");
 
-app.disable("x-powered-by");
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(responseTimeLogger);
@@ -119,6 +139,34 @@ function startHttpServer(port, attemptsRemaining = MAX_PORT_FALLBACK_ATTEMPTS) {
   server.once("error", handleError);
   server.listen(port);
 }
+
+// ─────────────────────────────────────────────
+// GRACEFUL SHUTDOWN
+// ─────────────────────────────────────────────
+function handleGracefulShutdown(signal) {
+  console.log(`🛑 ${signal} received. Closing HTTP server and DB...`);
+  
+  server.close(async () => {
+    console.log("✅ HTTP server closed.");
+    try {
+      await mongoose.connection.close();
+      console.log("✅ MongoDB connection closed.");
+      process.exit(0);
+    } catch (err) {
+      console.error("❌ Error closing MongoDB:", err.message);
+      process.exit(1);
+    }
+  });
+
+  // Force exit after timeout if components still pending
+  setTimeout(() => {
+    console.warn("⚠️ Forcing exit after shutdown timeout");
+    process.exit(1);
+  }, 10_000);
+}
+
+process.on("SIGTERM", () => handleGracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => handleGracefulShutdown("SIGINT"));
 
 startHttpServer(DEFAULT_HTTP_PORT);
 

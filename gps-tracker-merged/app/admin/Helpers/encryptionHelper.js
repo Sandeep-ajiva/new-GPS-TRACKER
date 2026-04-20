@@ -1,8 +1,8 @@
 import CryptoJS from "crypto-js";
 
 const LEGACY_SECRET_KEYS = [
-    "admin_security_key_2026",
-    "fallback_dev_secret_key_12345",
+    // Move any critical legacy keys to environment variables in production
+    process.env.NEXT_PUBLIC_LEGACY_KEY,
 ].filter(Boolean);
 
 const getPrimarySecretKey = () => {
@@ -14,15 +14,20 @@ const getPrimarySecretKey = () => {
         return envKey;
     }
 
+    if (process.env.NODE_ENV === "production") {
+        console.error("CRITICAL: Storage secrets (NEXT_PUBLIC_STORAGE_SECRET or NEXT_PUBLIC_ENCRYPTION_KEY) are missing!");
+    }
+
     if (typeof window !== "undefined" && window.location?.origin) {
         return `gps-tracker:${window.location.origin}`;
     }
 
-    return "gps-tracker-local";
+    return "gps-tracker-dev-key";
 };
 
 const getCandidateSecretKeys = () => {
-    return [...new Set([getPrimarySecretKey(), ...LEGACY_SECRET_KEYS].filter(Boolean))];
+    const primary = getPrimarySecretKey();
+    return [...new Set([primary, ...LEGACY_SECRET_KEYS].filter(Boolean))];
 };
 
 const canUseStorage = () => {

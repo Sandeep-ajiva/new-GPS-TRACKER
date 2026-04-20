@@ -10,21 +10,21 @@ const MONGO_URI = process.env.MONGO_URI;
     try {
         console.log("Connecting to DB:", MONGO_URI);
 
-        await mongoose.connect(MONGO_URI);
-        console.log("MongoDB connected");
+        const email = process.env.SUPERADMIN_EMAIL || "superadmin@gmail.com";
+        const password = process.env.SUPERADMIN_PASSWORD || "admin@123";
 
-        const existing = await User.findOne({ role: "superadmin" });
+        const existing = await User.findOne({ email });
         if (existing) {
             console.log("Super Admin already exists:", existing.email);
             process.exit();
         }
 
-        const passwordHash = await bcrypt.hash("admin@123", 10);
+        const passwordHash = await bcrypt.hash(password, 10);
 
         const superAdmin = new User({
             firstName: "Super",
             lastName: "Admin",
-            email: "superadmin@gmail.com",
+            email: email,
             mobile: "1234567890",
             passwordHash : passwordHash,
             role: "superadmin",

@@ -1,9 +1,10 @@
+require("dotenv").config();
 const mongoose = require("mongoose");
 const VehicleModel = require("./Modules/vehicle/model");
 const DriverModel = require("./Modules/drivers/model");
 
 // Connect to MongoDB
-mongoose.connect(process.env.MONGODB_URI || "your_mongodb_connection_string");
+mongoose.connect(process.env.MONGO_URI || process.env.MONGODB_URI);
 
 async function debugVehicles() {
   try {
