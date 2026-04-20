@@ -14,6 +14,7 @@ const buildAllowedOrigins = () => {
     process.env.APP_URL,
     process.env.NEXT_PUBLIC_APP_URL,
     process.env.NEXT_PUBLIC_FRONTEND_URL,
+    "https://track.ajivatech.com",
     ...(process.env.CORS_ORIGINS || "")
       .split(",")
       .map((value) => value.trim())
